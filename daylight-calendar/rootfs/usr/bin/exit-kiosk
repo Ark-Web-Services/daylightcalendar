@@ -1,0 +1,24 @@
+#!/bin/bash
+# ==============================================================================
+# Script to exit kiosk mode temporarily
+# ==============================================================================
+
+# Get process IDs
+CHROMIUM_PID=$(pgrep -f "chromium-browser --kiosk")
+OPENBOX_PID=$(pgrep openbox)
+
+# Kill Chromium
+if [ -n "$CHROMIUM_PID" ]; then
+  echo "Killing Chromium browser..."
+  kill -15 $CHROMIUM_PID
+fi
+
+# Wait for 5 seconds and restart
+echo "Waiting 5 seconds before restart..."
+sleep 5
+
+# Restart Chromium
+echo "Restarting Chromium browser..."
+chromium-browser --kiosk --no-first-run --disable-infobars --disable-pinch --overscroll-history-navigation=0 --app=http://localhost:8099 &
+
+echo "Kiosk mode reset completed" 

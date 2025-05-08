@@ -1,0 +1,46 @@
+name: "Daylight Calendar"
+version: "1.0.0"
+slug: "daylight_calendar"
+description: "A beautiful fullscreen calendar display for your Home Assistant touchscreen"
+url: "https://github.com/Ark-Web-Services/daylightcalendar"
+arch:
+  - armhf
+  - armv7
+  - aarch64
+  - amd64
+  - i386
+startup: application
+boot: auto
+init: false
+options:
+  theme: "light"
+  show_weather: true
+  locale: "en-US"
+  time_format: "12h"
+  kiosk_mode: true
+schema:
+  theme: "str"
+  show_weather: "bool"
+  locale: "str"
+  time_format: "str"
+  kiosk_mode: "bool"
+ports:
+  8099/tcp: 8099
+hassio_api: true
+ingress: true
+ingress_port: 8099
+panel_icon: mdi:calendar
+panel_title: "Daylight Calendar"
+devices:
+  - /dev/fb0
+  - /dev/dri/card0
+  - /dev/tty0
+  - /dev/tty1
+  - /dev/tty2
+  - /dev/vchiq
+  - /dev/vcio
+  - /dev/input
+environment:
+  DISPLAY: :0
+privileged:
+  - SYS_ADMIN 

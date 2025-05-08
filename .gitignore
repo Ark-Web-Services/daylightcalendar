@@ -1,0 +1,87 @@
+# Node.js dependencies and build artifacts
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+dist/
+build/
+.npm/
+.node_repl_history
+
+# Webpack
+.webpack/
+.hot-update.*
+*.hot-update.js
+*.hot-update.json
+
+# Home Assistant specific
+.storage/
+.cloud/
+.google.token
+home-assistant.log*
+home-assistant_v2.db*
+.homeassistant/
+custom_components/
+www/
+.supervisor/
+.addons/
+
+# App specific
+/config/
+/data/
+options.json
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~
+\#*\#
+.\#*
+
+# OS specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE and editor files
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.code-workspace
+
+# Build process
+.buildx/
+*.tar.gz
+
+# Docker
+docker-compose.override.yml
+.dockerignore
+
+# Private/sensitive information
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+secrets.yaml

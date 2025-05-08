@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Daylight Calendar</title>
+  <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@5.15.4/css/all.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.9/main.min.css" rel="stylesheet">
+  <link href="styles.css" rel="stylesheet">
+</head>
+<body>
+  <div id="app" class="theme-light">
+    <header>
+      <div class="date-time">
+        <h1 id="current-time">--:--</h1>
+        <h2 id="current-date">Loading...</h2>
+      </div>
+      <div class="weather" id="weather-container">
+        <div class="temp">--°</div>
+        <div class="condition"><i class="fas fa-cloud"></i></div>
+      </div>
+    </header>
+
+    <main>
+      <div id="calendar"></div>
+    </main>
+
+    <footer>
+      <div class="next-event" id="next-event">
+        <h3>Next Event</h3>
+        <p id="next-event-info">No upcoming events</p>
+      </div>
+    </footer>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/moment@2.29.4/moment.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.9/index.global.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.7.2/dist/socket.io.min.js"></script>
+  <script src="script.js"></script>
+</body>
+</html> 

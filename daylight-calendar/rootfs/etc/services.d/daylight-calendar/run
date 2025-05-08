@@ -1,0 +1,28 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Start the Daylight Calendar service
+# ==============================================================================
+
+# Set environment variables
+export PORT=8099
+export DISPLAY=:0
+
+# Run setup for X11 if in kiosk mode
+if bashio::config.true 'kiosk_mode'; then
+  # Start X server
+  bashio::log.info "Starting X server..."
+  X -s 0 dpms -nolisten tcp -nocursor &
+  sleep 2
+  
+  # Start openbox window manager
+  bashio::log.info "Starting Openbox window manager..."
+  openbox &
+  sleep 2
+fi
+
+# Change to app directory
+cd /app || bashio::exit.nok "Could not change to app directory"
+
+# Run the Node.js application
+bashio::log.info "Starting Daylight Calendar..."
+exec node index.js 

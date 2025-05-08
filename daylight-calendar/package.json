@@ -1,0 +1,28 @@
+{
+  "name": "daylight-calendar",
+  "version": "1.0.0",
+  "description": "A beautiful fullscreen calendar display for Home Assistant touchscreens",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "build": "webpack --mode production",
+    "dev": "webpack --mode development --watch",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "fullcalendar": "^6.1.9",
+    "moment": "^2.29.4",
+    "socket.io": "^4.7.2",
+    "axios": "^1.6.2"
+  },
+  "devDependencies": {
+    "webpack": "^5.89.0",
+    "webpack-cli": "^5.1.4",
+    "css-loader": "^6.8.1",
+    "style-loader": "^3.3.3",
+    "html-webpack-plugin": "^5.5.3"
+  }
+} 
