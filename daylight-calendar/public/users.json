@@ -1,0 +1,26 @@
+[
+  {
+    "id": "1",
+    "name": "Alex",
+    "color": "#4285f4",
+    "icon": "fa-user"
+  },
+  {
+    "id": "2",
+    "name": "Jordan",
+    "color": "#34a853",
+    "icon": "fa-user"
+  },
+  {
+    "id": "3",
+    "name": "Casey",
+    "color": "#fbbc05",
+    "icon": "fa-user"
+  },
+  {
+    "id": "4",
+    "name": "Taylor",
+    "color": "#ea4335",
+    "icon": "fa-user"
+  }
+] 

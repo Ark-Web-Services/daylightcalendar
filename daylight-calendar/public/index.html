@@ -11,11 +11,23 @@
 <body>
   <div id="app" class="theme-light">
     <div id="sidebar">
+      <div id="sidebar-logo" class="sidebar-toggle">
+        <i class="fas fa-calendar-alt"></i>
+        <span>Daylight</span>
+        <i class="fas fa-chevron-left toggle-icon"></i>
+      </div>
+      <div class="sidebar-divider"></div>
       <div class="tab-item active-tab" data-tab-target="calendar-content">
         <i class="fas fa-calendar-alt"></i><span>Calendar</span>
       </div>
       <div class="tab-item" data-tab-target="chores-content">
         <i class="fas fa-tasks"></i><span>Chores</span>
+      </div>
+      <div class="tab-item" data-tab-target="meals-content">
+        <i class="fas fa-utensils"></i><span>Meals</span>
+      </div>
+      <div class="tab-item" data-tab-target="games-content">
+        <i class="fas fa-gamepad"></i><span>Games</span>
       </div>
       <!-- Future tabs can go here -->
     </div>
@@ -32,6 +44,14 @@
             <div class="condition"><i class="fas fa-cloud"></i></div>
           </div>
         </header>
+        <div class="calendar-toolbar">
+          <div class="calendar-users">
+            <div class="users-toggle-label">Users:</div>
+            <div id="user-toggles" class="user-toggle-icons">
+              <!-- User icons will be populated by JavaScript -->
+            </div>
+          </div>
+        </div>
         <main>
           <div id="calendar"></div>
         </main>
@@ -44,22 +64,162 @@
       </div>
 
       <div id="chores-content" class="tab-content">
-        <section id="chore-chart-section">
-          <!-- Header for chore chart might be good here too -->
-          <header class="content-header">
-            <h1>Chore Chart</h1>
-          </header>
-          <div id="chore-chart" class="content-scrollable">
-            <!-- Chores will be loaded here by script.js -->
+        <header class="content-header">
+          <h1>Chore Board</h1>
+          <div class="header-actions">
+            <button id="jump-to-today" class="btn btn-secondary"><i class="fas fa-calendar-day"></i> Today</button>
+            <button id="toggle-completed" class="btn btn-secondary"><i class="fas fa-eye-slash"></i> Hide Completed</button>
+            <button id="add-chore-button" class="btn btn-primary"><i class="fas fa-plus"></i> New Chore</button>
           </div>
-        </section>
+        </header>
+        <div class="content-scrollable">
+          <!-- Add Chore Modal/Form -->
+          <div id="add-chore-modal" class="modal">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h3>Add New Chore</h3>
+                <button class="modal-close">&times;</button>
+              </div>
+              <div class="modal-body">
+                <form id="add-chore-form">
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label for="choreName">Chore</label>
+                      <input type="text" id="choreName" name="choreName" placeholder="What needs to be done?" required>
+                    </div>
+                  </div>
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label for="assigneeName">Assign to</label>
+                      <select id="assigneeName" name="assigneeName">
+                        <option value="">Unassigned</option>
+                        <option value="Alex" data-color="#4285f4">Alex</option>
+                        <option value="Jordan" data-color="#34a853">Jordan</option>
+                        <option value="Casey" data-color="#fbbc05">Casey</option>
+                        <option value="Taylor" data-color="#ea4335">Taylor</option>
+                      </select>
+                    </div>
+                    <div class="form-group">
+                      <label for="dueDate">Due Date</label>
+                      <input type="date" id="dueDate" name="dueDate">
+                    </div>
+                  </div>
+                  <div class="form-actions">
+                    <button type="button" class="btn btn-secondary modal-cancel">Cancel</button>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-plus-circle"></i> Add Chore</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Kanban Board for Chores -->
+          <div id="chore-board" class="kanban-board">
+            <!-- Lanes will be generated dynamically by JavaScript -->
+          </div>
+        </div>
       </div>
+
+      <div id="meals-content" class="tab-content">
+        <header class="content-header">
+          <h1>Meal Planner</h1>
+          <div class="header-actions">
+            <button id="prev-week" class="btn btn-secondary"><i class="fas fa-chevron-left"></i></button>
+            <button id="next-week" class="btn btn-secondary"><i class="fas fa-chevron-right"></i></button>
+            <button id="add-meal-button" class="btn btn-primary"><i class="fas fa-plus"></i> Add Meal</button>
+            <button id="meal-categories-button" class="btn btn-primary"><i class="fas fa-tags"></i> Categories</button>
+          </div>
+        </header>
+        <div class="content-scrollable">
+          <!-- Add Meal Modal -->
+          <div id="add-meal-modal" class="modal">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h3>Add New Meal</h3>
+                <button class="modal-close">&times;</button>
+              </div>
+              <div class="modal-body">
+                <form id="add-meal-form">
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label for="mealDescription">Description</label>
+                      <input type="text" id="mealDescription" name="mealDescription" placeholder="What's for dinner?" required>
+                    </div>
+                  </div>
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label for="mealType">Meal Type</label>
+                      <select id="mealType" name="mealType" required>
+                        <!-- Meal types will be populated by JavaScript -->
+                      </select>
+                    </div>
+                    <input type="hidden" id="mealDate" name="mealDate">
+                  </div>
+                  <div class="form-actions">
+                    <button type="button" class="btn btn-secondary modal-cancel">Cancel</button>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-plus-circle"></i> Add Meal</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Meal Categories Modal -->
+          <div id="meal-categories-modal" class="modal">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h3>Meal Categories</h3>
+                <button class="modal-close">&times;</button>
+              </div>
+              <div class="modal-body">
+                <div id="meal-categories-container" class="sortable-list">
+                  <!-- Categories will be populated dynamically -->
+                </div>
+                <button id="add-category" class="btn btn-secondary"><i class="fas fa-plus"></i> Add Category</button>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Weekly Meal Plan Grid -->
+          <div id="meal-plan-grid">
+            <div class="meal-plan-header">
+              <div class="meal-plan-cell meal-type-header"></div>
+              <div class="meal-plan-cell day-header" data-day="0">Monday</div>
+              <div class="meal-plan-cell day-header" data-day="1">Tuesday</div>
+              <div class="meal-plan-cell day-header" data-day="2">Wednesday</div>
+              <div class="meal-plan-cell day-header" data-day="3">Thursday</div>
+              <div class="meal-plan-cell day-header" data-day="4">Friday</div>
+              <div class="meal-plan-cell day-header" data-day="5">Saturday</div>
+              <div class="meal-plan-cell day-header" data-day="6">Sunday</div>
+            </div>
+            <!-- Meal rows will be populated dynamically by JavaScript -->
+          </div>
+        </div>
+      </div>
+
+      <div id="games-content" class="tab-content">
+        <header class="content-header">
+          <h1>Games</h1>
+          <div class="header-actions">
+            <button id="add-game-button" class="btn btn-primary"><i class="fas fa-plus"></i> Add Game</button>
+          </div>
+        </header>
+        <div class="content-scrollable">
+          <div class="empty-state">
+            <i class="fas fa-gamepad empty-icon"></i>
+            <p>No games added yet!</p>
+            <p>Click "Add Game" to get started.</p>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/moment@2.29.4/moment.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.9/index.global.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.7.2/dist/socket.io.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
   <script src="dist/bundle.js"></script>
 </body>
 </html> 

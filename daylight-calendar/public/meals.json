@@ -1,0 +1,26 @@
+[
+  {
+    "date": "2024-05-10",
+    "meals": [
+      {"type": "Breakfast", "description": "Oatmeal with berries"},
+      {"type": "Lunch", "description": "Chicken salad sandwich"},
+      {"type": "Dinner", "description": "Spaghetti bolognese"}
+    ]
+  },
+  {
+    "date": "2024-05-11",
+    "meals": [
+      {"type": "Breakfast", "description": "Scrambled eggs and toast"},
+      {"type": "Lunch", "description": "Leftover spaghetti"},
+      {"type": "Dinner", "description": "Salmon with roasted vegetables"}
+    ]
+  },
+  {
+    "date": "2024-05-12",
+    "meals": [
+      {"type": "Breakfast", "description": "Pancakes"},
+      {"type": "Lunch", "description": "Vegetable soup and bread"},
+      {"type": "Dinner", "description": "Tacos"}
+    ]
+  }
+] 

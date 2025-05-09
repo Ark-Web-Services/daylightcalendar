@@ -1,0 +1,20 @@
+[
+  {
+    "id": "1",
+    "name": "Breakfast",
+    "color": "#4285f4",
+    "icon": "fa-coffee"
+  },
+  {
+    "id": "2",
+    "name": "Lunch",
+    "color": "#34a853",
+    "icon": "fa-hamburger"
+  },
+  {
+    "id": "3",
+    "name": "Dinner",
+    "color": "#fbbc05",
+    "icon": "fa-utensils"
+  }
+] 
