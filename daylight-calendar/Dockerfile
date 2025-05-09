@@ -16,25 +16,37 @@ RUN apk add --no-cache \
     openbox \
     chromium
 
-# Copy script files
+# Copy S6 overlay and other rootfs items
 COPY rootfs /
 
-# Set permissions
+# Set permissions for S6 scripts
 RUN chmod a+x /etc/services.d/*/run \
     && chmod a+x /etc/cont-init.d/*
 
-# Install node modules
+# Set the working directory for the application build
 WORKDIR /app
-COPY package.json .
+
+# Copy package.json and package-lock.json (if it exists)
+# Only copy these first to leverage Docker layer caching for npm install
+COPY package.json package-lock.json* ./
+# Ensure options.json is also available in /app, as index.js reads it from __dirname
+COPY options.json ./
+
+# Install Node.js dependencies
+# This installs dependencies based on package.json in /app
 RUN npm install
 
-# Copy the app
+# Copy the rest of the application source code into /app
+# This will copy index.js, public/, etc.
 COPY . .
 
-# Build the app
+# Build the client-side assets (Webpack)
+# This uses the package.json scripts from /app/package.json
 RUN npm run build
 
-# Set entrypoint
+# /app now contains the fully built application and its dependencies.
+# The S6 init system will start, and its services should run from /app.
+
 ENTRYPOINT ["/init"]
 
 # Labels

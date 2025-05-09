@@ -8,46 +8,36 @@ const { exec } = require('child_process');
 
 // Configuration
 let config;
-const localOptionsPath = path.join(__dirname, 'options.json'); // Path to local options
+const localOptionsPath = path.join(__dirname, 'options.json');
 const supervisorOptionsPath = '/data/options.json';
 
 try {
   config = JSON.parse(fs.readFileSync(supervisorOptionsPath, 'utf8'));
   console.log(`Loaded configuration from ${supervisorOptionsPath}`);
 } catch (error) {
-  console.warn(`Could not read ${supervisorOptionsPath}. This is normal if running locally.`);
+  console.warn(`Could not read ${supervisorOptionsPath}. This is normal if running locally or if HA Supervisor has not provided it yet.`);
   try {
     config = JSON.parse(fs.readFileSync(localOptionsPath, 'utf8'));
     console.log(`Loaded local fallback configuration from ${localOptionsPath}`);
   } catch (localError) {
     console.error(`Failed to load local fallback configuration from ${localOptionsPath}:`, localError);
-    // Set a very basic default config if even local options fail, to prevent crashes
-    config = { 
-      theme: "light", 
-      show_weather: true, 
-      locale: "en-US", 
-      time_format: "12h", 
-      kiosk_mode: false 
-    };
-    console.log("Using hardcoded default configuration.");
+    config = { theme: "light", show_weather: true, locale: "en-US", time_format: "12h", kiosk_mode: false };
+    console.log("Using hardcoded default configuration for debugging.");
   }
 }
 
-// const config = JSON.parse(fs.readFileSync('/data/options.json', 'utf8')); // Old line
 const PORT = process.env.PORT || 8099;
 
-// Initialize Express app
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// Serve static files
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Home Assistant API connection
+// Home Assistant API connection - KEEP THESE VARS, but we won't call them initially
 const hassApiUrl = process.env.SUPERVISOR_TOKEN 
   ? 'http://supervisor/core/api' 
-  : 'http://localhost:8123/api';
+  : 'http://localhost:8123/api'; // This localhost is likely wrong for local dev talking to actual HA
 
 const hassHeaders = {
   Authorization: `Bearer ${process.env.SUPERVISOR_TOKEN || process.env.HASS_TOKEN}`,
@@ -59,23 +49,40 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// API endpoints
 app.get('/api/config', (req, res) => {
-  res.json(config);
+  res.json(config); // Config should still load
 });
 
+app.get('/api/chores', (req, res) => {
+  const choresFilePath = path.join(__dirname, 'public', 'chores.json');
+  fs.readFile(choresFilePath, 'utf8', (err, data) => {
+    if (err) {
+      console.error('[DEBUG] Error reading chores.json:', err);
+      return res.status(500).json({ error: 'Failed to load chores data' });
+    }
+    try {
+      const chores = JSON.parse(data);
+      res.json(chores);
+    } catch (parseError) {
+      console.error('[DEBUG] Error parsing chores.json:', parseError);
+      res.status(500).json({ error: 'Failed to parse chores data' });
+    }
+  });
+});
+
+/* // Temporarily comment out other API routes that depend on hassApiUrl for startup
 app.get('/api/calendar', async (req, res) => {
   try {
     const response = await axios.get(`${hassApiUrl}/calendars`, { headers: hassHeaders });
     res.json(response.data);
   } catch (error) {
-    console.error('Error fetching calendar data:', error.message);
+    console.error('[DEBUG] Error fetching calendar data:', error.message);
     res.status(500).json({ error: 'Failed to fetch calendar data' });
   }
 });
 
 app.get('/api/weather', async (req, res) => {
-  if (!config.show_weather) {
+  if (!config || !config.show_weather) { // Added null check for config
     return res.json({ enabled: false });
   }
   
@@ -83,66 +90,51 @@ app.get('/api/weather', async (req, res) => {
     const response = await axios.get(`${hassApiUrl}/states/weather.forecast`, { headers: hassHeaders });
     res.json(response.data);
   } catch (error) {
-    console.error('Error fetching weather data:', error.message);
+    console.error('[DEBUG] Error fetching weather data:', error.message);
     res.status(500).json({ error: 'Failed to fetch weather data' });
   }
 });
+*/
 
-app.get('/api/chores', (req, res) => {
-  const choresFilePath = path.join(__dirname, 'public', 'chores.json');
-  fs.readFile(choresFilePath, 'utf8', (err, data) => {
-    if (err) {
-      console.error('Error reading chores.json:', err);
-      return res.status(500).json({ error: 'Failed to load chores data' });
-    }
-    try {
-      const chores = JSON.parse(data);
-      res.json(chores);
-    } catch (parseError) {
-      console.error('Error parsing chores.json:', parseError);
-      res.status(500).json({ error: 'Failed to parse chores data' });
-    }
-  });
-});
-
-// Socket.io for real-time updates
 io.on('connection', (socket) => {
-  console.log('Client connected');
-  
-  // Handle exit kiosk mode request
+  console.log('[DEBUG] Client connected (simplified for debugging)');
+  // Temporarily comment out exec for kiosk mode
+  /*
   socket.on('exit_kiosk', () => {
-    console.log('Received request to exit kiosk mode');
+    console.log('[DEBUG] Received request to exit kiosk mode');
     if (config.kiosk_mode && process.env.DISPLAY) {
       exec('/usr/bin/exit-kiosk', (error) => {
         if (error) {
-          console.error('Failed to exit kiosk mode:', error);
+          console.error('[DEBUG] Failed to exit kiosk mode:', error);
         } else {
-          console.log('Kiosk mode exited successfully');
+          console.log('[DEBUG] Kiosk mode exited successfully');
         }
       });
     }
   });
-  
+  */
   socket.on('disconnect', () => {
-    console.log('Client disconnected');
+    console.log('[DEBUG] Client disconnected (simplified for debugging)');
   });
 });
 
-// Start server
 server.listen(PORT, () => {
-  console.log(`Daylight Calendar server running on port ${PORT}`);
+  console.log(`[DEBUG] Daylight Calendar server (simplified for debugging) running on port ${PORT}`);
+  console.log('[DEBUG] If you see this, the basic server started!');
+  console.log('[DEBUG] Current config loaded for debugging:', JSON.stringify(config));
 });
 
-// Handle startup for kiosk mode
-if (process.env.DISPLAY && config.kiosk_mode) {
+// Temporarily comment out kiosk mode startup
+/*
+if (process.env.DISPLAY && config && config.kiosk_mode) { // Added null check for config
   // Start Chromium in kiosk mode
   const startBrowser = () => {
     exec('chromium-browser --kiosk --no-first-run --disable-infobars --disable-pinch --overscroll-history-navigation=0 --app=http://localhost:8099 &', 
       (error) => {
         if (error) {
-          console.error('Failed to start browser:', error);
+          console.error('[DEBUG] Failed to start browser:', error);
         } else {
-          console.log('Kiosk mode started successfully');
+          console.log('[DEBUG] Kiosk mode started successfully');
         }
       }
     );
@@ -150,4 +142,5 @@ if (process.env.DISPLAY && config.kiosk_mode) {
   
   // Wait for server to start, then launch browser
   setTimeout(startBrowser, 5000);
-} 
+}
+*/ 

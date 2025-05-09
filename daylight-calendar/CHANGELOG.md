@@ -1,6 +1,14 @@
 # Changelog
 
-## [1.1.0] - YYYY-MM-DD
+## [1.1.1] - 2024-05-09
+
+### Fixed
+- Corrected Dockerfile to properly build and place application files in `/app`.
+- Simplified and fixed `rootfs/etc/cont-init.d/setup.sh` to work with the new Dockerfile structure, resolving startup errors when running the add-on via S6 init.
+
+---
+
+## [1.1.0] - 2024-05-09
 
 ### Added
 - Sidebar navigation with tabs for "Calendar" and "Chores".

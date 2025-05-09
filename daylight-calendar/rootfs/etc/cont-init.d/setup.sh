@@ -3,37 +3,51 @@
 # Setup the environment for Daylight Calendar
 # ==============================================================================
 
-# Make scripts executable
-chmod +x /etc/services.d/daylight-calendar/run
+# Make S6 service scripts executable (if any)
+# Example: chmod +x /etc/services.d/my-service/run
+# Your run script is at /etc/services.d/daylight-calendar/run
+if [ -f "/etc/services.d/daylight-calendar/run" ]; then
+  chmod +x /etc/services.d/daylight-calendar/run
+fi
 
-# Create app directory
-mkdir -p /app
+# The Dockerfile should have placed all necessary application files (index.js, package.json, public/, etc.)
+# and built assets into /app.
+# We primarily need to ensure Node.js dependencies are present if they somehow weren't built into the image
+# or if /app is a volume mount (less common for the main app dir in HA add-ons).
 
-# Copy application files
-cp -r /package.json /index.js /app/
-cp -r /public /app/public
+# Verify options in configuration using bashio
+bashio::log.info "Verifying configuration options..."
+bashio::config.require 'theme' '"theme" is a required configuration option'
+bashio::config.require 'show_weather' '"show_weather" is a required configuration option'
+bashio::config.require 'locale' '"locale" is a required configuration option'
+bashio::config.require 'time_format' '"time_format" is a required configuration option'
 
-# Verify options in configuration
-bashio::config.require 'theme'
-bashio::config.require 'show_weather'
-bashio::config.require 'locale'
-bashio::config.require 'time_format'
-
-# Add kiosk_mode option if not present
+# Add kiosk_mode option if not present, defaulting to false (as per your current logic)
 if ! bashio::config.exists 'kiosk_mode'; then
-  bashio::log.info "Adding kiosk_mode option with default value (true)"
-  bashio::addon.option kiosk_mode true
+  bashio::log.info "Adding kiosk_mode option with default value (false)" # Changed default to false based on recent discussions
+  bashio::addon.option kiosk_mode false
 fi
 
-# Install additional dependencies if needed
-if [ ! -d "/app/node_modules" ]; then
-  bashio::log.info "Installing Node.js dependencies..."
-  cd /app && npm install
+# Ensure Node.js dependencies are installed in /app
+if [ -d "/app" ] && [ -f "/app/package.json" ]; then
+  if [ ! -d "/app/node_modules" ]; then
+    bashio::log.info "Node_modules not found in /app. Installing Node.js dependencies..."
+    if cd /app; then
+      npm install || bashio::exit.nok "Failed to install Node.js dependencies in /app"
+    else
+      bashio::exit.nok "Failed to cd to /app to install dependencies."
+    fi
+  else
+    bashio::log.info "Node_modules found in /app."
+  fi
+else
+  bashio::log.warning "/app directory or /app/package.json not found. Skipping npm install check."
 fi
 
-# Setup for kiosk mode
+# Setup for kiosk mode (if enabled in the add-on configuration)
+# This configuration is read from /data/options.json by bashio
 if bashio::config.true 'kiosk_mode'; then
-  bashio::log.info "Setting up kiosk mode..."
+  bashio::log.info "Setting up kiosk mode as per configuration..."
   
   # Create X11 configuration
   mkdir -p /etc/X11

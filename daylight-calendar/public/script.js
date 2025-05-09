@@ -128,7 +128,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     const timeStr = moment(now).format(timeFormat);
-    const dateStr = moment(now).format('dddd, MMMM D, YYYY');
+    const dateStr = moment(now).format('dddd, MMMM D, Y');
     
     document.getElementById('current-time').textContent = timeStr;
     document.getElementById('current-date').textContent = dateStr;
