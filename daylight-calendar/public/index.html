@@ -126,6 +126,8 @@
           <div class="header-actions">
             <button id="prev-week" class="btn btn-secondary"><i class="fas fa-chevron-left"></i></button>
             <button id="next-week" class="btn btn-secondary"><i class="fas fa-chevron-right"></i></button>
+            <button id="recipe-book-button" class="btn btn-primary"><i class="fas fa-book"></i> Recipe Book</button>
+            <button id="grocery-list-button" class="btn btn-primary"><i class="fas fa-shopping-basket"></i> Grocery List</button>
             <button id="add-meal-button" class="btn btn-primary"><i class="fas fa-plus"></i> Add Meal</button>
             <button id="meal-categories-button" class="btn btn-primary"><i class="fas fa-tags"></i> Categories</button>
           </div>
@@ -143,7 +145,10 @@
                   <div class="form-row">
                     <div class="form-group">
                       <label for="mealDescription">Description</label>
-                      <input type="text" id="mealDescription" name="mealDescription" placeholder="What's for dinner?" required>
+                      <div class="meal-input-group">
+                        <input type="text" id="mealDescription" name="mealDescription" placeholder="What's for dinner?" required>
+                        <button type="button" id="select-recipe-btn" class="btn btn-sm btn-secondary"><i class="fas fa-book-open"></i> Select Recipe</button>
+                      </div>
                     </div>
                   </div>
                   <div class="form-row">
@@ -154,12 +159,103 @@
                       </select>
                     </div>
                     <input type="hidden" id="mealDate" name="mealDate">
+                    <input type="hidden" id="recipeId" name="recipeId">
                   </div>
                   <div class="form-actions">
                     <button type="button" class="btn btn-secondary modal-cancel">Cancel</button>
                     <button type="submit" class="btn btn-primary"><i class="fas fa-plus-circle"></i> Add Meal</button>
                   </div>
                 </form>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Recipe Book Modal -->
+          <div id="recipe-book-modal" class="modal">
+            <div class="modal-content recipe-book-modal">
+              <div class="modal-header">
+                <h3>Recipe Book</h3>
+                <div class="recipe-book-actions">
+                  <button id="add-recipe-button" class="btn btn-sm btn-primary"><i class="fas fa-plus"></i> New Recipe</button>
+                  <button class="modal-close">&times;</button>
+                </div>
+              </div>
+              <div class="modal-body recipe-book-body">
+                <div class="recipe-book">
+                  <div class="recipe-list">
+                    <!-- Recipe list will be populated by JavaScript -->
+                    <div class="recipe-list-placeholder">
+                      <i class="fas fa-spinner fa-spin"></i> Loading recipes...
+                    </div>
+                  </div>
+                  <div class="recipe-detail">
+                    <div class="recipe-detail-placeholder">
+                      <i class="fas fa-book"></i>
+                      <p>Select a recipe to view details</p>
+                    </div>
+                    <div class="recipe-detail-content" style="display: none;">
+                      <div class="recipe-header">
+                        <div class="recipe-image-container">
+                          <img id="recipe-image" src="" alt="Recipe Image">
+                        </div>
+                        <div class="recipe-info">
+                          <h3 id="recipe-name"></h3>
+                          <p id="recipe-description"></p>
+                          <div class="recipe-actions">
+                            <button id="add-to-meal-plan" class="btn btn-sm btn-primary"><i class="fas fa-calendar-plus"></i> Add to Meal Plan</button>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="recipe-divider"></div>
+                      <div class="recipe-ingredients">
+                        <h4>Ingredients</h4>
+                        <ul id="recipe-ingredients-list">
+                          <!-- Ingredients will be populated by JavaScript -->
+                        </ul>
+                      </div>
+                      <div class="recipe-divider"></div>
+                      <div class="recipe-instructions">
+                        <h4>Instructions</h4>
+                        <div id="recipe-instructions-text"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Grocery List Modal -->
+          <div id="grocery-list-modal" class="modal">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h3>Grocery List</h3>
+                <button class="modal-close">&times;</button>
+              </div>
+              <div class="modal-body">
+                <div class="grocery-list-container">
+                  <div class="grocery-list-add">
+                    <form id="add-grocery-item-form">
+                      <div class="form-row">
+                        <div class="form-group">
+                          <input type="text" id="groceryItemName" name="groceryItemName" placeholder="Add item..." required>
+                        </div>
+                        <div class="form-group">
+                          <input type="text" id="groceryItemQuantity" name="groceryItemQuantity" placeholder="Quantity">
+                        </div>
+                        <button type="submit" class="btn btn-primary"><i class="fas fa-plus"></i></button>
+                      </div>
+                    </form>
+                  </div>
+                  <div class="grocery-list-items">
+                    <ul id="grocery-items-list">
+                      <!-- Grocery items will be populated by JavaScript -->
+                      <li class="loading-items">
+                        <i class="fas fa-spinner fa-spin"></i> Loading items...
+                      </li>
+                    </ul>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

@@ -740,6 +740,467 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   });
 
+  // Recipe book button
+  const recipeBookButton = document.getElementById('recipe-book-button');
+  if (recipeBookButton) {
+    recipeBookButton.addEventListener('click', () => {
+      loadRecipes(); // Load recipes when opening the modal
+      openModal('recipe-book-modal');
+    });
+  }
+  
+  // Grocery list button
+  const groceryListButton = document.getElementById('grocery-list-button');
+  if (groceryListButton) {
+    groceryListButton.addEventListener('click', () => {
+      loadGroceryList(); // Load grocery list when opening the modal
+      openModal('grocery-list-modal');
+    });
+  }
+  
+  // Select recipe button in add meal form
+  const selectRecipeBtn = document.getElementById('select-recipe-btn');
+  if (selectRecipeBtn) {
+    selectRecipeBtn.addEventListener('click', () => {
+      loadRecipes(); // Load recipes when opening the modal
+      openModal('recipe-book-modal');
+      
+      // Set a flag to indicate we're selecting a recipe for the meal plan
+      document.body.dataset.selectingForMeal = 'true';
+    });
+  }
+  
+  // Handle "Add to Meal Plan" button in recipe detail
+  const addToMealPlanBtn = document.getElementById('add-to-meal-plan');
+  if (addToMealPlanBtn) {
+    addToMealPlanBtn.addEventListener('click', () => {
+      // Get the selected recipe
+      const recipeId = addToMealPlanBtn.dataset.recipeId;
+      const recipeName = document.getElementById('recipe-name').textContent;
+      
+      // If we're selecting for the meal form, fill in the form and close the recipe book
+      if (document.body.dataset.selectingForMeal === 'true') {
+        document.getElementById('mealDescription').value = recipeName;
+        document.getElementById('recipeId').value = recipeId;
+        closeModal('recipe-book-modal');
+        document.body.dataset.selectingForMeal = 'false';
+      } else {
+        // Otherwise, add the recipe to today's meal plan
+        const today = new Date();
+        const formattedDate = today.toISOString().split('T')[0];
+        const mealType = document.querySelector('.recipe-list-item.active .recipe-list-item-type').textContent;
+        
+        // Here you would save the meal to the server
+        alert(`Added ${recipeName} to ${mealType} for today (${formattedDate})`);
+      }
+    });
+  }
+  
+  // Add grocery item form submission
+  const addGroceryItemForm = document.getElementById('add-grocery-item-form');
+  if (addGroceryItemForm) {
+    addGroceryItemForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      
+      const itemName = event.target.groceryItemName.value;
+      const itemQuantity = event.target.groceryItemQuantity.value;
+      
+      if (!itemName) {
+        alert('Item name is required');
+        return;
+      }
+      
+      try {
+        const response = await fetch('/api/grocery-list', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ name: itemName, quantity: itemQuantity })
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        // Clear the form
+        event.target.reset();
+        
+        // Reload the grocery list
+        loadGroceryList();
+      } catch (error) {
+        console.error('Error adding grocery item:', error);
+        alert('Failed to add item to grocery list');
+      }
+    });
+  }
+  
+  // Function to load recipes into the recipe book
+  async function loadRecipes() {
+    const recipeList = document.querySelector('.recipe-list');
+    if (!recipeList) return;
+    
+    // Show loading placeholder
+    recipeList.innerHTML = `
+      <div class="recipe-list-placeholder">
+        <i class="fas fa-spinner fa-spin"></i>
+        <p>Loading recipes...</p>
+      </div>
+    `;
+    
+    try {
+      const response = await fetch('/api/recipes');
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const recipes = await response.json();
+      
+      // Clear the recipe list
+      recipeList.innerHTML = '';
+      
+      // Populate recipe list
+      recipes.forEach(recipe => {
+        const recipeItem = document.createElement('div');
+        recipeItem.className = 'recipe-list-item';
+        recipeItem.dataset.recipeId = recipe.id;
+        
+        recipeItem.innerHTML = `
+          <div class="recipe-list-item-name">${recipe.name}</div>
+          <div class="recipe-list-item-type">${recipe.type}</div>
+        `;
+        
+        recipeItem.addEventListener('click', () => {
+          // Remove active class from all recipes
+          document.querySelectorAll('.recipe-list-item').forEach(item => {
+            item.classList.remove('active');
+          });
+          
+          // Add active class to clicked recipe
+          recipeItem.classList.add('active');
+          
+          // Load recipe details
+          loadRecipeDetails(recipe.id);
+        });
+        
+        recipeList.appendChild(recipeItem);
+      });
+      
+      // If we have recipes, select the first one by default
+      if (recipes.length > 0) {
+        const firstRecipe = recipeList.querySelector('.recipe-list-item');
+        if (firstRecipe) {
+          firstRecipe.classList.add('active');
+          loadRecipeDetails(recipes[0].id);
+        }
+      } else {
+        // If no recipes, show empty state
+        recipeList.innerHTML = `
+          <div class="recipe-list-placeholder">
+            <i class="fas fa-book"></i>
+            <p>No recipes found</p>
+          </div>
+        `;
+      }
+    } catch (error) {
+      console.error('Error loading recipes:', error);
+      recipeList.innerHTML = `
+        <div class="recipe-list-placeholder">
+          <i class="fas fa-exclamation-circle"></i>
+          <p>Failed to load recipes</p>
+        </div>
+      `;
+    }
+  }
+  
+  // Function to load recipe details
+  async function loadRecipeDetails(recipeId) {
+    const recipeDetail = document.querySelector('.recipe-detail');
+    const recipeDetailContent = document.querySelector('.recipe-detail-content');
+    const recipePlaceholder = document.querySelector('.recipe-detail-placeholder');
+    
+    if (!recipeDetail || !recipeDetailContent || !recipePlaceholder) return;
+    
+    // Hide content, show placeholder with loading
+    recipeDetailContent.style.display = 'none';
+    recipePlaceholder.innerHTML = `
+      <i class="fas fa-spinner fa-spin"></i>
+      <p>Loading recipe details...</p>
+    `;
+    recipePlaceholder.style.display = 'flex';
+    
+    try {
+      const response = await fetch(`/api/recipes/${recipeId}`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const recipe = await response.json();
+      
+      // Update recipe image
+      document.getElementById('recipe-image').src = recipe.image;
+      document.getElementById('recipe-image').alt = recipe.name;
+      
+      // Update recipe info
+      document.getElementById('recipe-name').textContent = recipe.name;
+      document.getElementById('recipe-description').textContent = recipe.description;
+      
+      // Set recipe ID for "Add to Meal Plan" button
+      document.getElementById('add-to-meal-plan').dataset.recipeId = recipe.id;
+      
+      // Update ingredients list
+      const ingredientsList = document.getElementById('recipe-ingredients-list');
+      ingredientsList.innerHTML = '';
+      
+      recipe.ingredients.forEach(ingredient => {
+        const li = document.createElement('li');
+        li.className = 'recipe-ingredient-item';
+        
+        const availableClass = ingredient.available ? 'available' : '';
+        const availableIcon = ingredient.available ? '<i class="fas fa-check"></i>' : '';
+        const purchasedDate = ingredient.lastPurchased 
+          ? `<span class="ingredient-purchased-date">Purchased: ${formatDate(ingredient.lastPurchased)}</span>` 
+          : '';
+        
+        li.innerHTML = `
+          <div class="ingredient-check">
+            <div class="ingredient-status ${availableClass}" data-ingredient="${ingredient.name}">${availableIcon}</div>
+          </div>
+          <div class="ingredient-name">${ingredient.name}${purchasedDate}</div>
+          <div class="ingredient-amount">${ingredient.amount}</div>
+          <button class="add-to-grocery" data-ingredient="${ingredient.name}" data-amount="${ingredient.amount}">
+            <i class="fas fa-cart-plus"></i>
+          </button>
+        `;
+        
+        ingredientsList.appendChild(li);
+      });
+      
+      // Update instructions
+      document.getElementById('recipe-instructions-text').textContent = recipe.instructions;
+      
+      // Show recipe details
+      recipePlaceholder.style.display = 'none';
+      recipeDetailContent.style.display = 'block';
+      
+      // Add event listeners for ingredient actions
+      addIngredientEventListeners();
+      
+    } catch (error) {
+      console.error('Error loading recipe details:', error);
+      recipePlaceholder.innerHTML = `
+        <i class="fas fa-exclamation-circle"></i>
+        <p>Failed to load recipe details</p>
+      `;
+    }
+  }
+  
+  // Function to add event listeners to ingredient actions
+  function addIngredientEventListeners() {
+    // Ingredient status toggle
+    document.querySelectorAll('.ingredient-status').forEach(status => {
+      status.addEventListener('click', () => {
+        status.classList.toggle('available');
+        
+        if (status.classList.contains('available')) {
+          status.innerHTML = '<i class="fas fa-check"></i>';
+          
+          // Create purchased date element if it doesn't exist
+          let purchasedDate = status.closest('.recipe-ingredient-item').querySelector('.ingredient-purchased-date');
+          if (!purchasedDate) {
+            purchasedDate = document.createElement('span');
+            purchasedDate.className = 'ingredient-purchased-date';
+            status.closest('.recipe-ingredient-item').querySelector('.ingredient-name').appendChild(purchasedDate);
+          }
+          
+          // Update purchased date
+          const today = new Date();
+          purchasedDate.textContent = `Purchased: ${formatDate(today.toISOString().split('T')[0])}`;
+        } else {
+          status.innerHTML = '';
+        }
+        
+        // In a real app, you would save this change to the server
+      });
+    });
+    
+    // Add to grocery list
+    document.querySelectorAll('.add-to-grocery').forEach(button => {
+      button.addEventListener('click', async () => {
+        const ingredientName = button.dataset.ingredient;
+        const ingredientAmount = button.dataset.amount;
+        
+        try {
+          const response = await fetch('/api/grocery-list', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ 
+              name: ingredientName, 
+              quantity: ingredientAmount 
+            })
+          });
+          
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          
+          alert(`Added ${ingredientName} to grocery list`);
+        } catch (error) {
+          console.error('Error adding to grocery list:', error);
+          alert('Failed to add item to grocery list');
+        }
+      });
+    });
+  }
+  
+  // Function to load grocery list
+  async function loadGroceryList() {
+    const groceryList = document.getElementById('grocery-items-list');
+    if (!groceryList) return;
+    
+    // Show loading placeholder
+    groceryList.innerHTML = `
+      <li class="loading-items">
+        <i class="fas fa-spinner fa-spin"></i> Loading items...
+      </li>
+    `;
+    
+    try {
+      const response = await fetch('/api/grocery-list');
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const groceryData = await response.json();
+      
+      // Clear the grocery list
+      groceryList.innerHTML = '';
+      
+      if (groceryData.items.length === 0) {
+        groceryList.innerHTML = `
+          <li class="empty-list-message">
+            Your grocery list is empty
+          </li>
+        `;
+        return;
+      }
+      
+      // Populate grocery list
+      groceryData.items.forEach(item => {
+        const li = document.createElement('li');
+        li.className = `grocery-item ${item.checked ? 'checked' : ''}`;
+        li.dataset.id = item.id;
+        
+        li.innerHTML = `
+          <div class="grocery-item-check">
+            <input type="checkbox" ${item.checked ? 'checked' : ''}>
+          </div>
+          <div class="grocery-item-name">${item.name}</div>
+          <div class="grocery-item-quantity">${item.quantity}</div>
+          <button class="grocery-item-delete">
+            <i class="fas fa-trash-alt"></i>
+          </button>
+        `;
+        
+        groceryList.appendChild(li);
+      });
+      
+      // Add event listeners for grocery item actions
+      addGroceryItemEventListeners();
+      
+    } catch (error) {
+      console.error('Error loading grocery list:', error);
+      groceryList.innerHTML = `
+        <li class="error-message">
+          Failed to load grocery list
+        </li>
+      `;
+    }
+  }
+  
+  // Function to add event listeners to grocery item actions
+  function addGroceryItemEventListeners() {
+    // Checkbox toggle
+    document.querySelectorAll('.grocery-item-check input').forEach(checkbox => {
+      checkbox.addEventListener('change', async () => {
+        const item = checkbox.closest('.grocery-item');
+        const itemId = item.dataset.id;
+        const checked = checkbox.checked;
+        
+        try {
+          const response = await fetch(`/api/grocery-list/${itemId}`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ checked })
+          });
+          
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          
+          // Update UI
+          if (checked) {
+            item.classList.add('checked');
+          } else {
+            item.classList.remove('checked');
+          }
+        } catch (error) {
+          console.error('Error updating grocery item:', error);
+          // Revert the checkbox state
+          checkbox.checked = !checked;
+        }
+      });
+    });
+    
+    // Delete button
+    document.querySelectorAll('.grocery-item-delete').forEach(button => {
+      button.addEventListener('click', async () => {
+        const item = button.closest('.grocery-item');
+        const itemId = item.dataset.id;
+        
+        if (confirm('Are you sure you want to remove this item?')) {
+          try {
+            const response = await fetch(`/api/grocery-list/${itemId}`, {
+              method: 'DELETE'
+            });
+            
+            if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            // Remove item from UI
+            item.remove();
+            
+            // If list is now empty, show message
+            if (document.querySelectorAll('.grocery-item').length === 0) {
+              document.getElementById('grocery-items-list').innerHTML = `
+                <li class="empty-list-message">
+                  Your grocery list is empty
+                </li>
+              `;
+            }
+          } catch (error) {
+            console.error('Error deleting grocery item:', error);
+            alert('Failed to delete item');
+          }
+        }
+      });
+    });
+  }
+  
+  // Helper function to format dates
+  function formatDate(dateString) {
+    return new Date(dateString).toLocaleDateString(appConfig.locale, {
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric'
+    });
+  }
+  
   // Initialize the page
   fetchAndDisplayChores();
   updateMealWeekDates(); // This will also call fetchAndDisplayMeals

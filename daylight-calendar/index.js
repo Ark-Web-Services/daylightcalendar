@@ -418,6 +418,199 @@ app.get('/api/meals', (req, res) => {
   });
 });
 
+// GET endpoint for recipes
+app.get('/api/recipes', (req, res) => {
+  const recipesFilePath = path.join(__dirname, 'public', 'recipes.json');
+  fs.readFile(recipesFilePath, 'utf8', (err, data) => {
+    if (err) {
+      console.error('[ERROR] Error reading recipes.json:', err);
+      return res.status(500).json({ error: 'Failed to load recipe data' });
+    }
+    try {
+      const recipes = JSON.parse(data);
+      res.json(recipes);
+    } catch (parseError) {
+      console.error('[ERROR] Error parsing recipes.json:', parseError);
+      res.status(500).json({ error: 'Failed to parse recipe data' });
+    }
+  });
+});
+
+// GET a specific recipe by ID
+app.get('/api/recipes/:id', (req, res) => {
+  const recipeId = req.params.id;
+  const recipesFilePath = path.join(__dirname, 'public', 'recipes.json');
+  
+  fs.readFile(recipesFilePath, 'utf8', (err, data) => {
+    if (err) {
+      console.error('[ERROR] Error reading recipes.json:', err);
+      return res.status(500).json({ error: 'Failed to load recipe data' });
+    }
+    try {
+      const recipes = JSON.parse(data);
+      const recipe = recipes.find(r => r.id === recipeId);
+      
+      if (!recipe) {
+        return res.status(404).json({ error: 'Recipe not found' });
+      }
+      
+      res.json(recipe);
+    } catch (parseError) {
+      console.error('[ERROR] Error parsing recipes.json:', parseError);
+      res.status(500).json({ error: 'Failed to parse recipe data' });
+    }
+  });
+});
+
+// GET endpoint for grocery list
+app.get('/api/grocery-list', (req, res) => {
+  const groceryListPath = path.join(__dirname, 'public', 'grocery-list.json');
+  fs.readFile(groceryListPath, 'utf8', (err, data) => {
+    if (err) {
+      console.error('[ERROR] Error reading grocery-list.json:', err);
+      return res.status(500).json({ error: 'Failed to load grocery list data' });
+    }
+    try {
+      const groceryList = JSON.parse(data);
+      res.json(groceryList);
+    } catch (parseError) {
+      console.error('[ERROR] Error parsing grocery-list.json:', parseError);
+      res.status(500).json({ error: 'Failed to parse grocery list data' });
+    }
+  });
+});
+
+// POST to add an item to the grocery list
+app.post('/api/grocery-list', (req, res) => {
+  const { name, quantity } = req.body;
+  if (!name) {
+    return res.status(400).json({ error: 'Item name is required' });
+  }
+  
+  const groceryListPath = path.join(__dirname, 'public', 'grocery-list.json');
+  
+  fs.readFile(groceryListPath, 'utf8', (err, data) => {
+    if (err) {
+      console.error('[ERROR] Error reading grocery-list.json:', err);
+      return res.status(500).json({ error: 'Failed to load grocery list data' });
+    }
+    
+    try {
+      const groceryList = JSON.parse(data);
+      
+      // Create new item
+      const newItem = {
+        id: `g${Date.now()}`,
+        name,
+        quantity: quantity || '1',
+        checked: false,
+        added: new Date().toISOString().split('T')[0]
+      };
+      
+      // Add item to list
+      groceryList.items.push(newItem);
+      groceryList.lastUpdated = new Date().toISOString().split('T')[0];
+      
+      // Write updated list back to file
+      fs.writeFile(groceryListPath, JSON.stringify(groceryList, null, 2), writeErr => {
+        if (writeErr) {
+          console.error('[ERROR] Error writing grocery-list.json:', writeErr);
+          return res.status(500).json({ error: 'Failed to update grocery list' });
+        }
+        
+        res.status(201).json(newItem);
+      });
+    } catch (parseError) {
+      console.error('[ERROR] Error parsing grocery-list.json:', parseError);
+      res.status(500).json({ error: 'Failed to parse grocery list data' });
+    }
+  });
+});
+
+// PATCH to toggle item checked status
+app.patch('/api/grocery-list/:id', (req, res) => {
+  const itemId = req.params.id;
+  const { checked } = req.body;
+  
+  if (checked === undefined) {
+    return res.status(400).json({ error: 'Checked status is required' });
+  }
+  
+  const groceryListPath = path.join(__dirname, 'public', 'grocery-list.json');
+  
+  fs.readFile(groceryListPath, 'utf8', (err, data) => {
+    if (err) {
+      console.error('[ERROR] Error reading grocery-list.json:', err);
+      return res.status(500).json({ error: 'Failed to load grocery list data' });
+    }
+    
+    try {
+      const groceryList = JSON.parse(data);
+      const itemIndex = groceryList.items.findIndex(item => item.id === itemId);
+      
+      if (itemIndex === -1) {
+        return res.status(404).json({ error: 'Item not found' });
+      }
+      
+      // Update the item
+      groceryList.items[itemIndex].checked = checked;
+      groceryList.lastUpdated = new Date().toISOString().split('T')[0];
+      
+      // Write updated list back to file
+      fs.writeFile(groceryListPath, JSON.stringify(groceryList, null, 2), writeErr => {
+        if (writeErr) {
+          console.error('[ERROR] Error writing grocery-list.json:', writeErr);
+          return res.status(500).json({ error: 'Failed to update grocery list' });
+        }
+        
+        res.json(groceryList.items[itemIndex]);
+      });
+    } catch (parseError) {
+      console.error('[ERROR] Error parsing grocery-list.json:', parseError);
+      res.status(500).json({ error: 'Failed to parse grocery list data' });
+    }
+  });
+});
+
+// DELETE item from grocery list
+app.delete('/api/grocery-list/:id', (req, res) => {
+  const itemId = req.params.id;
+  const groceryListPath = path.join(__dirname, 'public', 'grocery-list.json');
+  
+  fs.readFile(groceryListPath, 'utf8', (err, data) => {
+    if (err) {
+      console.error('[ERROR] Error reading grocery-list.json:', err);
+      return res.status(500).json({ error: 'Failed to load grocery list data' });
+    }
+    
+    try {
+      const groceryList = JSON.parse(data);
+      const itemIndex = groceryList.items.findIndex(item => item.id === itemId);
+      
+      if (itemIndex === -1) {
+        return res.status(404).json({ error: 'Item not found' });
+      }
+      
+      // Remove the item
+      groceryList.items.splice(itemIndex, 1);
+      groceryList.lastUpdated = new Date().toISOString().split('T')[0];
+      
+      // Write updated list back to file
+      fs.writeFile(groceryListPath, JSON.stringify(groceryList, null, 2), writeErr => {
+        if (writeErr) {
+          console.error('[ERROR] Error writing grocery-list.json:', writeErr);
+          return res.status(500).json({ error: 'Failed to update grocery list' });
+        }
+        
+        res.status(204).send();
+      });
+    } catch (parseError) {
+      console.error('[ERROR] Error parsing grocery-list.json:', parseError);
+      res.status(500).json({ error: 'Failed to parse grocery list data' });
+    }
+  });
+});
+
 io.on('connection', (socket) => {
   console.log('[DEBUG] Client connected (simplified for debugging)');
   // Temporarily comment out exec for kiosk mode

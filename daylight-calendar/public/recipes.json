@@ -1,0 +1,88 @@
+[
+  {
+    "id": "1",
+    "name": "Spaghetti Bolognese",
+    "type": "Dinner",
+    "image": "https://images.unsplash.com/photo-1622973536968-3ead9e780960?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60",
+    "description": "Classic Italian pasta dish with a rich meaty sauce",
+    "ingredients": [
+      {"name": "Ground beef", "amount": "1 lb", "available": false, "lastPurchased": null},
+      {"name": "Spaghetti pasta", "amount": "1 package", "available": true, "lastPurchased": "2025-05-01"},
+      {"name": "Tomato sauce", "amount": "2 cups", "available": true, "lastPurchased": "2025-05-01"},
+      {"name": "Onion", "amount": "1 medium", "available": false, "lastPurchased": null},
+      {"name": "Garlic", "amount": "3 cloves", "available": true, "lastPurchased": "2025-05-05"},
+      {"name": "Olive oil", "amount": "2 tbsp", "available": true, "lastPurchased": "2025-04-15"},
+      {"name": "Italian herbs", "amount": "1 tbsp", "available": true, "lastPurchased": "2025-04-10"}
+    ],
+    "instructions": "1. Heat olive oil in a pan and sauté diced onions and garlic until fragrant.\n2. Add ground beef and cook until browned.\n3. Pour in tomato sauce and Italian herbs.\n4. Simmer for 20 minutes.\n5. Cook spaghetti according to package instructions.\n6. Serve sauce over pasta."
+  },
+  {
+    "id": "2",
+    "name": "Scrambled Eggs with Toast",
+    "type": "Breakfast",
+    "image": "https://images.unsplash.com/photo-1525351484163-7529414344d8?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60",
+    "description": "Quick and easy breakfast classic",
+    "ingredients": [
+      {"name": "Eggs", "amount": "3", "available": true, "lastPurchased": "2025-05-07"},
+      {"name": "Milk", "amount": "2 tbsp", "available": true, "lastPurchased": "2025-05-06"},
+      {"name": "Butter", "amount": "1 tbsp", "available": true, "lastPurchased": "2025-05-01"},
+      {"name": "Salt", "amount": "to taste", "available": true, "lastPurchased": "2025-04-01"},
+      {"name": "Pepper", "amount": "to taste", "available": true, "lastPurchased": "2025-04-01"},
+      {"name": "Bread", "amount": "2 slices", "available": false, "lastPurchased": null}
+    ],
+    "instructions": "1. Whisk eggs, milk, salt, and pepper in a bowl.\n2. Melt butter in a non-stick pan over medium heat.\n3. Pour egg mixture into the pan.\n4. Stir gently until eggs are cooked but still moist.\n5. Toast bread slices.\n6. Serve eggs with toast."
+  },
+  {
+    "id": "3",
+    "name": "Chicken Salad Sandwich",
+    "type": "Lunch",
+    "image": "https://images.unsplash.com/photo-1550507992-eb63ffee0847?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60",
+    "description": "Creamy chicken salad on your choice of bread",
+    "ingredients": [
+      {"name": "Cooked chicken", "amount": "2 cups, shredded", "available": false, "lastPurchased": null},
+      {"name": "Mayonnaise", "amount": "1/4 cup", "available": true, "lastPurchased": "2025-05-02"},
+      {"name": "Celery", "amount": "1 stalk, diced", "available": false, "lastPurchased": null},
+      {"name": "Red onion", "amount": "2 tbsp, diced", "available": false, "lastPurchased": null},
+      {"name": "Bread", "amount": "4 slices", "available": false, "lastPurchased": null},
+      {"name": "Lettuce", "amount": "2 leaves", "available": false, "lastPurchased": null}
+    ],
+    "instructions": "1. Mix shredded chicken, mayonnaise, celery, and red onion in a bowl.\n2. Season with salt and pepper to taste.\n3. Spread chicken salad on bread slice.\n4. Add lettuce and top with second bread slice.\n5. Cut in half and serve."
+  },
+  {
+    "id": "4",
+    "name": "Pancakes",
+    "type": "Breakfast",
+    "image": "https://images.unsplash.com/photo-1567620905732-2d1ec7ab7445?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60",
+    "description": "Fluffy homemade pancakes perfect for weekend breakfast",
+    "ingredients": [
+      {"name": "All-purpose flour", "amount": "1 cup", "available": true, "lastPurchased": "2025-04-15"},
+      {"name": "Baking powder", "amount": "2 tsp", "available": true, "lastPurchased": "2025-04-15"},
+      {"name": "Sugar", "amount": "2 tbsp", "available": true, "lastPurchased": "2025-04-15"},
+      {"name": "Salt", "amount": "1/4 tsp", "available": true, "lastPurchased": "2025-04-01"},
+      {"name": "Milk", "amount": "1 cup", "available": true, "lastPurchased": "2025-05-06"},
+      {"name": "Egg", "amount": "1", "available": true, "lastPurchased": "2025-05-07"},
+      {"name": "Butter", "amount": "2 tbsp, melted", "available": true, "lastPurchased": "2025-05-01"},
+      {"name": "Maple syrup", "amount": "for serving", "available": true, "lastPurchased": "2025-04-20"}
+    ],
+    "instructions": "1. Combine flour, baking powder, sugar, and salt in a bowl.\n2. In another bowl, whisk milk, egg, and melted butter.\n3. Pour wet ingredients into dry and stir until just combined.\n4. Heat a lightly greased griddle over medium heat.\n5. Pour 1/4 cup batter for each pancake.\n6. Cook until bubbles form, then flip and cook until golden.\n7. Serve with maple syrup."
+  },
+  {
+    "id": "5",
+    "name": "Vegetable Soup",
+    "type": "Lunch",
+    "image": "https://images.unsplash.com/photo-1547592166-23ac45744acd?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60",
+    "description": "Hearty vegetable soup with seasonal vegetables",
+    "ingredients": [
+      {"name": "Carrots", "amount": "2, diced", "available": false, "lastPurchased": null},
+      {"name": "Celery", "amount": "2 stalks, diced", "available": false, "lastPurchased": null},
+      {"name": "Onion", "amount": "1, diced", "available": false, "lastPurchased": null},
+      {"name": "Garlic", "amount": "2 cloves, minced", "available": true, "lastPurchased": "2025-05-05"},
+      {"name": "Vegetable broth", "amount": "6 cups", "available": false, "lastPurchased": null},
+      {"name": "Diced tomatoes", "amount": "1 can", "available": true, "lastPurchased": "2025-05-01"},
+      {"name": "Green beans", "amount": "1 cup", "available": false, "lastPurchased": null},
+      {"name": "Potatoes", "amount": "2, diced", "available": false, "lastPurchased": null},
+      {"name": "Italian seasoning", "amount": "1 tsp", "available": true, "lastPurchased": "2025-04-10"}
+    ],
+    "instructions": "1. Heat olive oil in a large pot.\n2. Add onions, carrots, and celery and cook until softened.\n3. Add garlic and cook for another minute.\n4. Add vegetable broth, diced tomatoes, green beans, potatoes, and seasonings.\n5. Bring to a boil, then reduce heat and simmer for 20-25 minutes until vegetables are tender.\n6. Season with salt and pepper to taste."
+  }
+] 

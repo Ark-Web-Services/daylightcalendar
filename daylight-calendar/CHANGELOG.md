@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.5] - 2025-05-09
+
+### Added
+- Recipe book feature with ingredient tracking
+- Grocery list management system
+- Integration between recipe ingredients and grocery list
+- Ability to track ingredient availability and purchase dates
+- Select recipes when adding to meal plan
+
 ## [1.1.4] - 2025-05-09
 
 ### Added

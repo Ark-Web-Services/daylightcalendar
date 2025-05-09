@@ -8,6 +8,8 @@ A beautiful fullscreen calendar display for your Home Assistant touchscreen, ins
 - **New:** Tabbed navigation for Calendar, Chores, Meals, and Games.
 - **New:** Interactive Kanban-style Chore board for task management.
 - **New:** Meal planning with weekly layout.
+- **New:** Recipe book with ingredient tracking and grocery list integration.
+- **New:** Grocery list management for meal planning.
 - **New:** Games tab with Geometry Dash integration in fullscreen mode.
 - Automatically switches command line interface to calendar display
 - Shows upcoming events from your Home Assistant calendars

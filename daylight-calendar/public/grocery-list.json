@@ -1,0 +1,33 @@
+{
+  "items": [
+    {
+      "id": "g1",
+      "name": "Bread",
+      "quantity": "1 loaf",
+      "checked": false,
+      "added": "2025-05-08"
+    },
+    {
+      "id": "g2",
+      "name": "Onions",
+      "quantity": "3",
+      "checked": false,
+      "added": "2025-05-08"
+    },
+    {
+      "id": "g3",
+      "name": "Ground beef",
+      "quantity": "1 lb",
+      "checked": false,
+      "added": "2025-05-09"
+    },
+    {
+      "id": "g4",
+      "name": "Carrots",
+      "quantity": "1 bag",
+      "checked": false,
+      "added": "2025-05-09"
+    }
+  ],
+  "lastUpdated": "2025-05-09"
+} 
