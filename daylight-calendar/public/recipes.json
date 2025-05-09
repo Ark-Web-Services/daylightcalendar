@@ -84,5 +84,92 @@
       {"name": "Italian seasoning", "amount": "1 tsp", "available": true, "lastPurchased": "2025-04-10"}
     ],
     "instructions": "1. Heat olive oil in a large pot.\n2. Add onions, carrots, and celery and cook until softened.\n3. Add garlic and cook for another minute.\n4. Add vegetable broth, diced tomatoes, green beans, potatoes, and seasonings.\n5. Bring to a boil, then reduce heat and simmer for 20-25 minutes until vegetables are tender.\n6. Season with salt and pepper to taste."
+  },
+  {
+    "id": "6",
+    "name": "Greek Salad",
+    "type": "Lunch",
+    "image": "https://images.unsplash.com/photo-1604326537907-27e2e913ab09?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60",
+    "description": "Refreshing Mediterranean salad with feta cheese and olives",
+    "cookTime": 15,
+    "ingredients": [
+      {"name": "Cucumber", "amount": "1, diced", "available": false, "lastPurchased": null},
+      {"name": "Tomatoes", "amount": "2, diced", "available": false, "lastPurchased": null},
+      {"name": "Red onion", "amount": "1/2, thinly sliced", "available": false, "lastPurchased": null},
+      {"name": "Feta cheese", "amount": "4 oz, crumbled", "available": false, "lastPurchased": null},
+      {"name": "Kalamata olives", "amount": "1/4 cup", "available": false, "lastPurchased": null},
+      {"name": "Olive oil", "amount": "3 tbsp", "available": true, "lastPurchased": "2025-04-15"},
+      {"name": "Lemon juice", "amount": "1 tbsp", "available": false, "lastPurchased": null},
+      {"name": "Dried oregano", "amount": "1 tsp", "available": true, "lastPurchased": "2025-04-10"}
+    ],
+    "instructions": "1. Combine cucumber, tomatoes, and red onion in a bowl.\n2. Add crumbled feta cheese and olives.\n3. In a small bowl, whisk together olive oil, lemon juice, oregano, salt, and pepper.\n4. Pour dressing over salad and toss gently.\n5. Serve immediately or chill for 30 minutes to blend flavors."
+  },
+  {
+    "id": "7",
+    "name": "Grilled Cheese Sandwich",
+    "type": "Lunch",
+    "image": "https://images.unsplash.com/photo-1528736235302-52922df5c122?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60",
+    "description": "Classic comfort food with crispy bread and melted cheese",
+    "cookTime": 10,
+    "ingredients": [
+      {"name": "Bread", "amount": "2 slices", "available": false, "lastPurchased": null},
+      {"name": "Cheddar cheese", "amount": "2 slices", "available": false, "lastPurchased": null},
+      {"name": "Butter", "amount": "1 tbsp", "available": true, "lastPurchased": "2025-05-01"}
+    ],
+    "instructions": "1. Butter one side of each bread slice.\n2. Place one slice butter-side down in a skillet over medium heat.\n3. Add cheese slices on top of bread in the pan.\n4. Place second bread slice on top, butter-side up.\n5. Cook until bottom is golden brown, about 3-4 minutes.\n6. Flip and cook until second side is golden brown and cheese is melted, about 2-3 minutes."
+  },
+  {
+    "id": "8",
+    "name": "Oatmeal with Fruit",
+    "type": "Breakfast",
+    "image": "https://images.unsplash.com/photo-1530136717958-9f12bf6577cf?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60",
+    "description": "Hearty breakfast oatmeal topped with fresh fruits",
+    "cookTime": 10,
+    "ingredients": [
+      {"name": "Rolled oats", "amount": "1/2 cup", "available": true, "lastPurchased": "2025-05-01"},
+      {"name": "Milk", "amount": "1 cup", "available": true, "lastPurchased": "2025-05-06"},
+      {"name": "Banana", "amount": "1/2, sliced", "available": false, "lastPurchased": null},
+      {"name": "Berries", "amount": "1/4 cup", "available": false, "lastPurchased": null},
+      {"name": "Honey", "amount": "1 tbsp", "available": true, "lastPurchased": "2025-04-15"},
+      {"name": "Cinnamon", "amount": "1/4 tsp", "available": true, "lastPurchased": "2025-04-10"}
+    ],
+    "instructions": "1. Combine oats and milk in a microwave-safe bowl.\n2. Microwave on high for 2-3 minutes, stirring halfway through.\n3. Let stand for 1 minute.\n4. Top with sliced banana, berries, honey, and cinnamon.\n5. Stir and enjoy warm."
+  },
+  {
+    "id": "9",
+    "name": "Taco Night",
+    "type": "Dinner",
+    "image": "https://images.unsplash.com/photo-1565299585323-38d6b0865b47?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60",
+    "description": "Build-your-own tacos with seasoned meat and toppings",
+    "cookTime": 30,
+    "ingredients": [
+      {"name": "Ground beef", "amount": "1 lb", "available": false, "lastPurchased": null},
+      {"name": "Taco seasoning", "amount": "1 packet", "available": false, "lastPurchased": null},
+      {"name": "Taco shells", "amount": "8", "available": false, "lastPurchased": null},
+      {"name": "Lettuce", "amount": "1 cup, shredded", "available": false, "lastPurchased": null},
+      {"name": "Tomatoes", "amount": "2, diced", "available": false, "lastPurchased": null},
+      {"name": "Cheddar cheese", "amount": "1 cup, shredded", "available": false, "lastPurchased": null},
+      {"name": "Sour cream", "amount": "1/2 cup", "available": false, "lastPurchased": null},
+      {"name": "Salsa", "amount": "1/2 cup", "available": false, "lastPurchased": null}
+    ],
+    "instructions": "1. Brown ground beef in a skillet over medium heat.\n2. Drain excess fat.\n3. Add taco seasoning and water according to package directions.\n4. Simmer for 5-10 minutes until thickened.\n5. Heat taco shells according to package instructions.\n6. Serve meat in shells with lettuce, tomatoes, cheese, sour cream, and salsa."
+  },
+  {
+    "id": "10",
+    "name": "Smoothie Bowl",
+    "type": "Breakfast",
+    "image": "https://images.unsplash.com/photo-1546039907-7fa05f864c02?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60",
+    "description": "Thick fruit smoothie topped with granola and fresh fruits",
+    "cookTime": 5,
+    "ingredients": [
+      {"name": "Frozen berries", "amount": "1 cup", "available": false, "lastPurchased": null},
+      {"name": "Banana", "amount": "1", "available": false, "lastPurchased": null},
+      {"name": "Greek yogurt", "amount": "1/4 cup", "available": false, "lastPurchased": null},
+      {"name": "Milk", "amount": "1/4 cup", "available": true, "lastPurchased": "2025-05-06"},
+      {"name": "Honey", "amount": "1 tbsp", "available": true, "lastPurchased": "2025-04-15"},
+      {"name": "Granola", "amount": "1/4 cup", "available": false, "lastPurchased": null},
+      {"name": "Fresh fruit", "amount": "1/4 cup", "available": false, "lastPurchased": null}
+    ],
+    "instructions": "1. Blend frozen berries, banana, yogurt, milk, and honey until smooth and thick.\n2. Pour into a bowl.\n3. Top with granola and fresh fruit.\n4. Serve immediately."
   }
 ] 

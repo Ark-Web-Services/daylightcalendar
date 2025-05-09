@@ -29,6 +29,9 @@
       <div class="tab-item" data-tab-target="games-content">
         <i class="fas fa-gamepad"></i><span>Games</span>
       </div>
+      <div class="tab-item" data-tab-target="settings-content">
+        <i class="fas fa-cog"></i><span>Settings</span>
+      </div>
       <!-- Future tabs can go here -->
     </div>
 
@@ -218,6 +221,13 @@
                         <h4>Instructions</h4>
                         <div id="recipe-instructions-text"></div>
                       </div>
+                      <div class="recipe-divider"></div>
+                      <div class="recipe-actions-footer">
+                        <div class="cooking-info">
+                          <span id="recipe-cooking-time"><i class="fas fa-clock"></i> Prep Time: 30 min</span>
+                        </div>
+                        <button id="start-cooking-mode" class="btn btn-primary"><i class="fas fa-utensils"></i> Start Cooking</button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -276,6 +286,47 @@
             </div>
           </div>
           
+          <!-- Cooking Mode Modal -->
+          <div id="cooking-mode-modal" class="modal">
+            <div class="modal-content cooking-mode-modal">
+              <div class="modal-header">
+                <h3 id="cooking-recipe-name">Recipe Name</h3>
+                <button class="modal-close">&times;</button>
+              </div>
+              <div class="modal-body cooking-mode-body">
+                <div class="cooking-mode">
+                  <div class="cooking-steps">
+                    <h2>Steps</h2>
+                    <ul id="cooking-steps-list" class="step-list">
+                      <!-- Steps will be populated by JavaScript -->
+                    </ul>
+                  </div>
+                  <div class="cooking-content">
+                    <img id="cooking-recipe-image" src="" alt="Recipe Image">
+                    <div id="current-step-content">
+                      <h3>Step <span id="current-step-number">1</span></h3>
+                      <p id="current-step-instructions"></p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="cooking-controls">
+                <div class="cooking-nav-buttons">
+                  <button id="prev-step" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Previous</button>
+                  <button id="next-step" class="btn btn-primary">Next <i class="fas fa-arrow-right"></i></button>
+                </div>
+                <div class="cooking-timer">
+                  <button id="start-timer" class="btn btn-secondary"><i class="fas fa-stopwatch"></i></button>
+                  <span class="cooking-timer-display" id="timer-display">00:00</span>
+                </div>
+                <div class="voice-command-indicator" id="voice-command-indicator">
+                  <i class="fas fa-microphone"></i>
+                  <span>Voice Commands</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          
           <!-- Weekly Meal Plan Grid -->
           <div id="meal-plan-grid">
             <div class="meal-plan-header">
@@ -298,17 +349,44 @@
           <h1>Games</h1>
           <div class="header-actions">
             <button id="add-game-button" class="btn btn-primary"><i class="fas fa-plus"></i> Add Game</button>
+            <button id="get-more-games-button" class="btn btn-secondary"><i class="fas fa-download"></i> Get More Games</button>
           </div>
         </header>
         <div class="content-scrollable">
+          <div class="game-profile-selector">
+            <div class="game-profile-header">
+              <h3>Select Profile</h3>
+              <div class="profile-actions">
+                <span id="playtime-balance">Available Playtime: <span id="playtime-minutes">30</span> minutes</span>
+              </div>
+            </div>
+            <div class="profile-list" id="profile-list">
+              <!-- Profiles will be populated by JavaScript -->
+            </div>
+          </div>
+          
           <div class="games-grid">
-            <div class="game-item" data-game-url="https://geometrydashonline.github.io/">
+            <div class="game-item" data-game-url="https://geometrydashonline.github.io/" data-game-age="8+">
               <div class="game-icon geometry-dash-icon">
-                <img src="https://geometrydashonline.github.io/assets/images/icon.png" alt="Geometry Dash" onerror="this.src='https://geometrydashonline.github.io/assets/images/icon.webp'">
+                <img src="https://vignette2.wikia.nocookie.net/geometry-dash/images/9/90/GeometryDash.png" alt="Geometry Dash" onerror="this.src='https://geometrydashonline.github.io/assets/images/icon.webp'">
               </div>
               <div class="game-title">Geometry Dash</div>
+              <div class="playtime-indicator">15 min</div>
             </div>
-            <!-- More games can be added here -->
+            <div class="game-item" data-game-url="https://playsnake.org/" data-game-age="5+">
+              <div class="game-icon">
+                <img src="https://playsnake.org/assets/icon-snake.png" alt="Snake" onerror="this.src='https://via.placeholder.com/64'">
+              </div>
+              <div class="game-title">Snake</div>
+              <div class="playtime-indicator">10 min</div>
+            </div>
+            <div class="game-item" data-game-url="https://tetris.com/play-tetris" data-game-age="6+">
+              <div class="game-icon">
+                <img src="https://tetris.com/img/tetris-logo.png" alt="Tetris" onerror="this.src='https://via.placeholder.com/64'">
+              </div>
+              <div class="game-title">Tetris</div>
+              <div class="playtime-indicator">20 min</div>
+            </div>
           </div>
           
           <!-- Game Focus Modal -->
@@ -319,7 +397,118 @@
                 <button class="modal-close">&times;</button>
               </div>
               <div class="modal-body game-modal-body">
+                <div id="game-timer-overlay" class="game-timer-overlay">
+                  <div class="game-timer-display" id="game-timer-display">15:00</div>
+                  <div class="game-timer-user" id="game-timer-user">Alex</div>
+                </div>
                 <iframe id="game-iframe" src="" frameborder="0" allowfullscreen></iframe>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Get More Games Modal -->
+          <div id="get-more-games-modal" class="modal">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h3>Community Games</h3>
+                <button class="modal-close">&times;</button>
+              </div>
+              <div class="modal-body">
+                <div class="community-games-grid">
+                  <div class="community-game-item">
+                    <div class="community-game-icon">
+                      <img src="https://cdn2.scratch.mit.edu/get_image/project/104711816_480x360.png" alt="Platformer">
+                    </div>
+                    <div class="community-game-info">
+                      <h4>Platformer Adventure</h4>
+                      <p>A classic platformer game with multiple levels</p>
+                      <div class="community-game-meta">
+                        <span><i class="fas fa-user"></i> GameCreator123</span>
+                        <span><i class="fas fa-star"></i> 4.5/5</span>
+                      </div>
+                    </div>
+                    <button class="btn btn-sm btn-primary install-game-btn"><i class="fas fa-download"></i> Install</button>
+                  </div>
+                  
+                  <div class="community-game-item">
+                    <div class="community-game-icon">
+                      <img src="https://cdn2.scratch.mit.edu/get_image/project/31903442_480x360.png" alt="Space Shooter">
+                    </div>
+                    <div class="community-game-info">
+                      <h4>Space Shooter</h4>
+                      <p>Defend your ship against waves of alien invaders</p>
+                      <div class="community-game-meta">
+                        <span><i class="fas fa-user"></i> SpaceGameDev</span>
+                        <span><i class="fas fa-star"></i> 4.2/5</span>
+                      </div>
+                    </div>
+                    <button class="btn btn-sm btn-primary install-game-btn"><i class="fas fa-download"></i> Install</button>
+                  </div>
+                  
+                  <div class="community-game-item">
+                    <div class="community-game-icon">
+                      <img src="https://cdn2.scratch.mit.edu/get_image/project/116222711_480x360.png" alt="Puzzle Quest">
+                    </div>
+                    <div class="community-game-info">
+                      <h4>Puzzle Quest</h4>
+                      <p>Test your brain with challenging puzzles</p>
+                      <div class="community-game-meta">
+                        <span><i class="fas fa-user"></i> PuzzleMaster</span>
+                        <span><i class="fas fa-star"></i> 4.8/5</span>
+                      </div>
+                    </div>
+                    <button class="btn btn-sm btn-primary install-game-btn"><i class="fas fa-download"></i> Install</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="settings-content" class="tab-content">
+        <header class="content-header">
+          <h1>Settings</h1>
+        </header>
+        <div class="content-scrollable">
+          <div class="settings-section">
+            <h2>Media Testing</h2>
+            <div class="settings-card">
+              <h3>Camera Test</h3>
+              <div class="camera-test-container">
+                <video id="camera-test" autoplay playsinline></video>
+                <div class="media-test-buttons">
+                  <button id="start-camera" class="btn btn-primary"><i class="fas fa-video"></i> Start Camera</button>
+                  <button id="stop-camera" class="btn btn-secondary" disabled><i class="fas fa-video-slash"></i> Stop Camera</button>
+                </div>
+              </div>
+            </div>
+            
+            <div class="settings-card">
+              <h3>Microphone Test</h3>
+              <div class="microphone-test-container">
+                <div id="mic-level-indicator">
+                  <div id="mic-level-bar"></div>
+                </div>
+                <div class="media-test-buttons">
+                  <button id="start-microphone" class="btn btn-primary"><i class="fas fa-microphone"></i> Start Microphone</button>
+                  <button id="stop-microphone" class="btn btn-secondary" disabled><i class="fas fa-microphone-slash"></i> Stop Microphone</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="settings-section">
+            <h2>App Settings</h2>
+            <div class="settings-card">
+              <h3>Theme</h3>
+              <div class="theme-selector">
+                <button class="theme-button" data-theme="light">
+                  <i class="fas fa-sun"></i> Light
+                </button>
+                <button class="theme-button" data-theme="dark">
+                  <i class="fas fa-moon"></i> Dark
+                </button>
               </div>
             </div>
           </div>

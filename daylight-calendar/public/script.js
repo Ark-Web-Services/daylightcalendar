@@ -1204,4 +1204,743 @@ document.addEventListener('DOMContentLoaded', function() {
   // Initialize the page
   fetchAndDisplayChores();
   updateMealWeekDates(); // This will also call fetchAndDisplayMeals
+});
+
+// Settings Tab Functionality - Media Testing
+document.addEventListener('DOMContentLoaded', function() {
+  // Camera Testing
+  const startCameraButton = document.getElementById('start-camera');
+  const stopCameraButton = document.getElementById('stop-camera');
+  const cameraTest = document.getElementById('camera-test');
+  let cameraStream = null;
+
+  if (startCameraButton) {
+    startCameraButton.addEventListener('click', async () => {
+      try {
+        cameraStream = await navigator.mediaDevices.getUserMedia({ video: true });
+        cameraTest.srcObject = cameraStream;
+        startCameraButton.disabled = true;
+        stopCameraButton.disabled = false;
+      } catch (error) {
+        console.error('Error accessing camera:', error);
+        alert('Could not access the camera. Please check your permissions.');
+      }
+    });
+  }
+
+  if (stopCameraButton) {
+    stopCameraButton.addEventListener('click', () => {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+        cameraTest.srcObject = null;
+        startCameraButton.disabled = false;
+        stopCameraButton.disabled = true;
+      }
+    });
+  }
+
+  // Microphone Testing
+  const startMicrophoneButton = document.getElementById('start-microphone');
+  const stopMicrophoneButton = document.getElementById('stop-microphone');
+  const micLevelBar = document.getElementById('mic-level-bar');
+  let microphoneStream = null;
+  let audioContext = null;
+  let analyser = null;
+  let dataArray = null;
+  let animationFrameId = null;
+
+  if (startMicrophoneButton) {
+    startMicrophoneButton.addEventListener('click', async () => {
+      try {
+        microphoneStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = audioContext.createAnalyser();
+        const source = audioContext.createMediaStreamSource(microphoneStream);
+        source.connect(analyser);
+        analyser.fftSize = 256;
+        const bufferLength = analyser.frequencyBinCount;
+        dataArray = new Uint8Array(bufferLength);
+
+        function updateMicLevel() {
+          analyser.getByteFrequencyData(dataArray);
+          let sum = 0;
+          for (let i = 0; i < dataArray.length; i++) {
+            sum += dataArray[i];
+          }
+          const average = sum / dataArray.length;
+          const level = (average / 128) * 100; // Scale to 0-100%
+          micLevelBar.style.width = `${level}%`;
+          animationFrameId = requestAnimationFrame(updateMicLevel);
+        }
+
+        updateMicLevel();
+        startMicrophoneButton.disabled = true;
+        stopMicrophoneButton.disabled = false;
+      } catch (error) {
+        console.error('Error accessing microphone:', error);
+        alert('Could not access the microphone. Please check your permissions.');
+      }
+    });
+  }
+
+  if (stopMicrophoneButton) {
+    stopMicrophoneButton.addEventListener('click', () => {
+      if (microphoneStream) {
+        microphoneStream.getTracks().forEach(track => track.stop());
+        if (audioContext) {
+          audioContext.close();
+        }
+        if (animationFrameId) {
+          cancelAnimationFrame(animationFrameId);
+        }
+        micLevelBar.style.width = '0';
+        startMicrophoneButton.disabled = false;
+        stopMicrophoneButton.disabled = true;
+      }
+    });
+  }
+
+  // Theme Selection
+  const themeButtons = document.querySelectorAll('.theme-button');
+  
+  themeButtons.forEach(button => {
+    button.addEventListener('click', () => {
+      const theme = button.dataset.theme;
+      updateTheme(theme);
+      
+      // Update active state
+      themeButtons.forEach(btn => btn.classList.remove('active'));
+      button.classList.add('active');
+      
+      // Save preference
+      fetch('/api/config', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ theme }),
+      }).catch(error => {
+        console.error('Error saving theme preference:', error);
+      });
+    });
+  });
+  
+  // Initialize theme button state
+  const currentTheme = appConfig.theme || 'light';
+  const activeThemeButton = document.querySelector(`.theme-button[data-theme="${currentTheme}"]`);
+  if (activeThemeButton) {
+    activeThemeButton.classList.add('active');
+  }
+});
+
+// Cooking Mode Functionality
+document.addEventListener('DOMContentLoaded', function() {
+  const startCookingButton = document.getElementById('start-cooking-mode');
+  const cookingModeModal = document.getElementById('cooking-mode-modal');
+  const cookingRecipeName = document.getElementById('cooking-recipe-name');
+  const cookingRecipeImage = document.getElementById('cooking-recipe-image');
+  const cookingStepsList = document.getElementById('cooking-steps-list');
+  const currentStepNumber = document.getElementById('current-step-number');
+  const currentStepInstructions = document.getElementById('current-step-instructions');
+  const prevStepButton = document.getElementById('prev-step');
+  const nextStepButton = document.getElementById('next-step');
+  const startTimerButton = document.getElementById('start-timer');
+  const timerDisplay = document.getElementById('timer-display');
+  const voiceCommandIndicator = document.getElementById('voice-command-indicator');
+  
+  let currentRecipe = null;
+  let currentStepIndex = 0;
+  let cookingSteps = [];
+  let timerInterval = null;
+  let timerSeconds = 0;
+  let recognition = null;
+  
+  if (startCookingButton) {
+    startCookingButton.addEventListener('click', () => {
+      const recipeId = document.getElementById('recipe-detail-content').dataset.recipeId;
+      if (recipeId) {
+        initCookingMode(recipeId);
+      }
+    });
+  }
+  
+  async function initCookingMode(recipeId) {
+    try {
+      const response = await fetch('/api/recipes');
+      const recipes = await response.json();
+      currentRecipe = recipes.find(recipe => recipe.id === recipeId);
+      
+      if (currentRecipe) {
+        cookingRecipeName.textContent = currentRecipe.name;
+        cookingRecipeImage.src = currentRecipe.image;
+        
+        // Parse cooking steps from instructions
+        cookingSteps = currentRecipe.instructions.split('\n').filter(step => step.trim() !== '');
+        
+        // Populate steps list
+        cookingStepsList.innerHTML = '';
+        cookingSteps.forEach((step, index) => {
+          const li = document.createElement('li');
+          li.className = 'step-item';
+          if (index === 0) li.classList.add('active');
+          li.dataset.step = index;
+          li.textContent = step.replace(/^\d+\.\s*/, '').substring(0, 50) + '...';
+          li.addEventListener('click', () => {
+            goToStep(index);
+          });
+          cookingStepsList.appendChild(li);
+        });
+        
+        // Set initial step
+        currentStepIndex = 0;
+        updateCurrentStep();
+        
+        // Initialize voice recognition if available
+        initVoiceRecognition();
+        
+        // Show the modal
+        cookingModeModal.classList.add('show');
+      }
+    } catch (error) {
+      console.error('Error initializing cooking mode:', error);
+    }
+  }
+  
+  function updateCurrentStep() {
+    const steps = cookingStepsList.querySelectorAll('.step-item');
+    steps.forEach((step, index) => {
+      if (index === currentStepIndex) {
+        step.classList.add('active');
+        step.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else {
+        step.classList.remove('active');
+      }
+    });
+    
+    currentStepNumber.textContent = currentStepIndex + 1;
+    currentStepInstructions.textContent = cookingSteps[currentStepIndex].replace(/^\d+\.\s*/, '');
+  }
+  
+  function goToStep(index) {
+    if (index >= 0 && index < cookingSteps.length) {
+      currentStepIndex = index;
+      updateCurrentStep();
+    }
+  }
+  
+  if (prevStepButton) {
+    prevStepButton.addEventListener('click', () => {
+      if (currentStepIndex > 0) {
+        currentStepIndex--;
+        updateCurrentStep();
+      }
+    });
+  }
+  
+  if (nextStepButton) {
+    nextStepButton.addEventListener('click', () => {
+      if (currentStepIndex < cookingSteps.length - 1) {
+        currentStepIndex++;
+        updateCurrentStep();
+      }
+    });
+  }
+  
+  if (startTimerButton) {
+    startTimerButton.addEventListener('click', () => {
+      if (timerInterval) {
+        // Stop timer
+        clearInterval(timerInterval);
+        timerInterval = null;
+        startTimerButton.innerHTML = '<i class="fas fa-stopwatch"></i>';
+      } else {
+        // Start timer
+        timerSeconds = 0;
+        updateTimerDisplay();
+        timerInterval = setInterval(() => {
+          timerSeconds++;
+          updateTimerDisplay();
+        }, 1000);
+        startTimerButton.innerHTML = '<i class="fas fa-stop"></i>';
+      }
+    });
+  }
+  
+  function updateTimerDisplay() {
+    const minutes = Math.floor(timerSeconds / 60);
+    const seconds = timerSeconds % 60;
+    timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  }
+  
+  function initVoiceRecognition() {
+    if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = false;
+      
+      recognition.onstart = () => {
+        voiceCommandIndicator.classList.add('listening');
+      };
+      
+      recognition.onend = () => {
+        voiceCommandIndicator.classList.remove('listening');
+        // Restart recognition
+        if (cookingModeModal.classList.contains('show')) {
+          recognition.start();
+        }
+      };
+      
+      recognition.onresult = (event) => {
+        const transcript = event.results[event.results.length - 1][0].transcript.toLowerCase().trim();
+        
+        // Process voice commands
+        if (transcript.includes('next') || transcript.includes('next step')) {
+          if (currentStepIndex < cookingSteps.length - 1) {
+            currentStepIndex++;
+            updateCurrentStep();
+          }
+        } else if (transcript.includes('previous') || transcript.includes('back')) {
+          if (currentStepIndex > 0) {
+            currentStepIndex--;
+            updateCurrentStep();
+          }
+        } else if (transcript.includes('start timer')) {
+          if (!timerInterval) {
+            timerSeconds = 0;
+            updateTimerDisplay();
+            timerInterval = setInterval(() => {
+              timerSeconds++;
+              updateTimerDisplay();
+            }, 1000);
+            startTimerButton.innerHTML = '<i class="fas fa-stop"></i>';
+          }
+        } else if (transcript.includes('stop timer')) {
+          if (timerInterval) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+            startTimerButton.innerHTML = '<i class="fas fa-stopwatch"></i>';
+          }
+        }
+      };
+      
+      recognition.onerror = (event) => {
+        console.error('Speech recognition error:', event.error);
+        voiceCommandIndicator.classList.remove('listening');
+      };
+      
+      // Start recognition
+      try {
+        recognition.start();
+      } catch (e) {
+        console.error('Error starting speech recognition:', e);
+      }
+      
+      // Add event listener to stop recognition when modal is closed
+      document.querySelector('#cooking-mode-modal .modal-close').addEventListener('click', () => {
+        if (recognition) {
+          recognition.stop();
+        }
+        if (timerInterval) {
+          clearInterval(timerInterval);
+          timerInterval = null;
+        }
+      });
+    } else {
+      console.warn('Speech recognition not supported in this browser');
+      voiceCommandIndicator.style.display = 'none';
+    }
+  }
+});
+
+// Games Profile and Timer Functionality
+document.addEventListener('DOMContentLoaded', function() {
+  // Load user profiles for games
+  const profileList = document.getElementById('profile-list');
+  const playtimeMinutes = document.getElementById('playtime-minutes');
+  const gameItems = document.querySelectorAll('.game-item');
+  const gameTimerDisplay = document.getElementById('game-timer-display');
+  const gameTimerUser = document.getElementById('game-timer-user');
+  const gameTimerOverlay = document.getElementById('game-timer-overlay');
+  const getModeGamesButton = document.getElementById('get-more-games-button');
+  
+  let selectedProfile = null;
+  let gameTimerInterval = null;
+  let remainingGameTime = 0;
+  
+  // Load user profiles
+  async function loadUserProfiles() {
+    try {
+      const response = await fetch('/api/users');
+      const users = await response.json();
+      
+      if (profileList) {
+        profileList.innerHTML = '';
+        
+        users.forEach(user => {
+          const profileItem = document.createElement('div');
+          profileItem.className = 'profile-item';
+          profileItem.dataset.userId = user.id;
+          profileItem.dataset.userName = user.name;
+          
+          // Get reward points for the user
+          const rewardPoints = getRewardPointsForUser(user.name);
+          // Calculate available playtime (5 minutes per 50 points)
+          const availablePlaytime = Math.floor((rewardPoints / 50) * 5);
+          profileItem.dataset.playtime = availablePlaytime;
+          
+          profileItem.innerHTML = `
+            <div class="profile-avatar" style="background-color: ${user.color};">
+              <i class="fas ${user.icon}"></i>
+            </div>
+            <div class="profile-name">${user.name}</div>
+          `;
+          
+          profileItem.addEventListener('click', () => {
+            selectProfile(profileItem);
+          });
+          
+          profileList.appendChild(profileItem);
+        });
+      }
+    } catch (error) {
+      console.error('Error loading user profiles:', error);
+    }
+  }
+  
+  // Get reward points for a user from the rewards.json data
+  function getRewardPointsForUser(userName) {
+    // This would typically fetch from the server, but for now we'll use hardcoded values
+    const rewardPoints = {
+      'Alex': 125,
+      'Jordan': 85,
+      'Casey': 60,
+      'Taylor': 45
+    };
+    
+    return rewardPoints[userName] || 0;
+  }
+  
+  // Select a profile
+  function selectProfile(profileItem) {
+    // Remove active class from all profiles
+    const profiles = profileList.querySelectorAll('.profile-item');
+    profiles.forEach(p => p.classList.remove('active'));
+    
+    // Add active class to selected profile
+    profileItem.classList.add('active');
+    
+    // Update selected profile
+    selectedProfile = {
+      id: profileItem.dataset.userId,
+      name: profileItem.dataset.userName,
+      playtime: parseInt(profileItem.dataset.playtime || 0, 10)
+    };
+    
+    // Update playtime display
+    if (playtimeMinutes) {
+      playtimeMinutes.textContent = selectedProfile.playtime;
+    }
+    
+    // Filter games based on profile
+    filterGamesForProfile(selectedProfile);
+  }
+  
+  // Filter games based on profile age/interests
+  function filterGamesForProfile(profile) {
+    if (!profile) return;
+    
+    // In a real implementation, this would filter based on age restrictions
+    // or user preferences. For now, we'll just show/hide the play time.
+    gameItems.forEach(item => {
+      const playTimeIndicator = item.querySelector('.playtime-indicator');
+      if (playTimeIndicator) {
+        playTimeIndicator.style.display = 'block';
+      }
+    });
+  }
+  
+  // Initialize game play
+  gameItems.forEach(item => {
+    item.addEventListener('click', () => {
+      if (!selectedProfile) {
+        alert('Please select a profile first!');
+        return;
+      }
+      
+      const gameUrl = item.dataset.gameUrl;
+      const gameTitle = item.querySelector('.game-title').textContent;
+      const playTimeText = item.querySelector('.playtime-indicator').textContent;
+      const playTimeMinutes = parseInt(playTimeText.replace(/[^0-9]/g, ''), 10);
+      
+      // Check if user has enough playtime
+      if (selectedProfile.playtime < playTimeMinutes) {
+        alert(`Not enough playtime available. ${selectedProfile.name} has ${selectedProfile.playtime} minutes, but this game requires ${playTimeMinutes} minutes.`);
+        return;
+      }
+      
+      // Set up the game iframe
+      const gameIframe = document.getElementById('game-iframe');
+      const gameModalTitle = document.getElementById('game-modal-title');
+      
+      if (gameIframe && gameModalTitle) {
+        gameIframe.src = gameUrl;
+        gameModalTitle.textContent = gameTitle;
+        
+        // Set up timer
+        remainingGameTime = playTimeMinutes * 60; // Convert to seconds
+        updateGameTimer();
+        
+        if (gameTimerInterval) {
+          clearInterval(gameTimerInterval);
+        }
+        
+        gameTimerInterval = setInterval(() => {
+          remainingGameTime--;
+          updateGameTimer();
+          
+          if (remainingGameTime <= 0) {
+            endGame();
+          }
+        }, 1000);
+        
+        // Update timer overlay
+        if (gameTimerOverlay) {
+          gameTimerOverlay.style.display = 'block';
+        }
+        
+        if (gameTimerUser) {
+          gameTimerUser.textContent = selectedProfile.name;
+        }
+        
+        // Show game modal
+        const gameModal = document.getElementById('game-focus-modal');
+        if (gameModal) {
+          gameModal.classList.add('show');
+          
+          // Add event listener to stop the timer when modal is closed
+          const closeButton = gameModal.querySelector('.modal-close');
+          if (closeButton) {
+            closeButton.addEventListener('click', () => {
+              endGame();
+            });
+          }
+        }
+      }
+    });
+  });
+  
+  // Update game timer display
+  function updateGameTimer() {
+    if (gameTimerDisplay) {
+      const minutes = Math.floor(remainingGameTime / 60);
+      const seconds = remainingGameTime % 60;
+      gameTimerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+      
+      // Add visual indication when time is running low
+      if (remainingGameTime <= 60) { // Last minute
+        gameTimerDisplay.style.color = '#ff3860';
+      } else {
+        gameTimerDisplay.style.color = 'white';
+      }
+    }
+  }
+  
+  // End game session
+  function endGame() {
+    if (gameTimerInterval) {
+      clearInterval(gameTimerInterval);
+      gameTimerInterval = null;
+    }
+    
+    // Update user's remaining playtime
+    if (selectedProfile) {
+      const playedMinutes = Math.ceil((playTimeMinutes * 60 - remainingGameTime) / 60);
+      selectedProfile.playtime -= playedMinutes;
+      if (selectedProfile.playtime < 0) selectedProfile.playtime = 0;
+      
+      // Update display
+      if (playtimeMinutes) {
+        playtimeMinutes.textContent = selectedProfile.playtime;
+      }
+      
+      // Update the profile item
+      const profileItem = profileList.querySelector(`.profile-item[data-user-id="${selectedProfile.id}"]`);
+      if (profileItem) {
+        profileItem.dataset.playtime = selectedProfile.playtime;
+      }
+    }
+    
+    // Clear game iframe
+    const gameIframe = document.getElementById('game-iframe');
+    if (gameIframe) {
+      gameIframe.src = '';
+    }
+    
+    // Hide game modal (if it's not already being closed)
+    const gameModal = document.getElementById('game-focus-modal');
+    if (gameModal && gameModal.classList.contains('show')) {
+      gameModal.classList.remove('show');
+    }
+  }
+  
+  // Initialize Community Games Modal
+  if (getModeGamesButton) {
+    getModeGamesButton.addEventListener('click', () => {
+      const modal = document.getElementById('get-more-games-modal');
+      if (modal) {
+        modal.classList.add('show');
+      }
+    });
+  }
+  
+  // Handle community game installation
+  const installButtons = document.querySelectorAll('.install-game-btn');
+  installButtons.forEach(button => {
+    button.addEventListener('click', () => {
+      const gameItem = button.closest('.community-game-item');
+      const gameTitle = gameItem.querySelector('h4').textContent;
+      
+      // Simulate installation
+      button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Installing...';
+      
+      setTimeout(() => {
+        button.innerHTML = '<i class="fas fa-check"></i> Installed';
+        button.disabled = true;
+        
+        alert(`${gameTitle} has been installed and added to your games library!`);
+      }, 2000);
+    });
+  });
+  
+  // Initialize profiles on load
+  loadUserProfiles();
+});
+
+// Meal Categories Functionality
+document.addEventListener('DOMContentLoaded', function() {
+  const addCategoryButton = document.getElementById('add-category');
+  const categoriesContainer = document.getElementById('meal-categories-container');
+  
+  if (addCategoryButton && categoriesContainer) {
+    addCategoryButton.addEventListener('click', () => {
+      const categoryName = prompt('Enter new category name:');
+      if (categoryName && categoryName.trim()) {
+        addNewCategory(categoryName.trim());
+      }
+    });
+  }
+  
+  async function addNewCategory(categoryName) {
+    try {
+      // In a real implementation, this would call an API endpoint
+      // For now, we'll update the DOM directly
+      const newCategory = {
+        id: Date.now().toString(),
+        name: categoryName,
+        color: getRandomColor(),
+        icon: 'fa-utensils'
+      };
+      
+      // Add to UI
+      appendCategoryToUI(newCategory);
+      
+      // Refresh the meal type dropdown
+      const mealTypeSelect = document.getElementById('mealType');
+      if (mealTypeSelect) {
+        const option = document.createElement('option');
+        option.value = newCategory.name;
+        option.textContent = newCategory.name;
+        mealTypeSelect.appendChild(option);
+      }
+      
+      // Simulate saving to server
+      console.log('New category added:', newCategory);
+    } catch (error) {
+      console.error('Error adding category:', error);
+    }
+  }
+  
+  function appendCategoryToUI(category) {
+    const categoryItem = document.createElement('div');
+    categoryItem.className = 'sortable-item';
+    categoryItem.dataset.id = category.id;
+    
+    categoryItem.innerHTML = `
+      <div class="sortable-handle">
+        <i class="fas fa-grip-lines"></i>
+      </div>
+      <div class="sortable-content">
+        <div class="category-icon" style="background-color: ${category.color}">
+          <i class="fas ${category.icon}"></i>
+        </div>
+        <div class="category-name">${category.name}</div>
+      </div>
+      <div class="sortable-actions">
+        <button class="btn btn-sm btn-icon edit-category"><i class="fas fa-edit"></i></button>
+        <button class="btn btn-sm btn-icon delete-category"><i class="fas fa-trash"></i></button>
+      </div>
+    `;
+    
+    categoriesContainer.appendChild(categoryItem);
+    
+    // Add event listeners for edit/delete
+    const editButton = categoryItem.querySelector('.edit-category');
+    if (editButton) {
+      editButton.addEventListener('click', () => {
+        const newName = prompt('Edit category name:', category.name);
+        if (newName && newName.trim()) {
+          categoryItem.querySelector('.category-name').textContent = newName.trim();
+          // TODO: Save to server
+        }
+      });
+    }
+    
+    const deleteButton = categoryItem.querySelector('.delete-category');
+    if (deleteButton) {
+      deleteButton.addEventListener('click', () => {
+        if (confirm(`Are you sure you want to delete the "${category.name}" category?`)) {
+          categoryItem.remove();
+          // TODO: Save to server
+        }
+      });
+    }
+  }
+  
+  function getRandomColor() {
+    const colors = ['#4285f4', '#34a853', '#fbbc05', '#ea4335', '#9c27b0', '#009688'];
+    return colors[Math.floor(Math.random() * colors.length)];
+  }
+  
+  // Load existing categories
+  async function loadCategories() {
+    try {
+      const response = await fetch('/api/meal-categories');
+      const categories = await response.json();
+      
+      if (categoriesContainer) {
+        categoriesContainer.innerHTML = '';
+        categories.forEach(category => {
+          appendCategoryToUI(category);
+        });
+      }
+    } catch (error) {
+      console.error('Error loading meal categories:', error);
+    }
+  }
+  
+  // Initialize Sortable.js for drag-and-drop reordering
+  if (categoriesContainer) {
+    new Sortable(categoriesContainer, {
+      handle: '.sortable-handle',
+      animation: 150,
+      onEnd: function() {
+        // TODO: Save new order to server
+        console.log('Categories reordered');
+      }
+    });
+  }
+  
+  // Load categories on page load
+  loadCategories();
 }); 

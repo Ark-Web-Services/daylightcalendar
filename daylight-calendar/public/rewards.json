@@ -1,0 +1,86 @@
+{
+  "points": {
+    "Alex": {
+      "total": 125,
+      "history": [
+        {"date": "2025-05-08", "amount": 15, "description": "Cleaned kitchen", "chore_id": "c1"},
+        {"date": "2025-05-08", "amount": 10, "description": "Took out trash", "chore_id": "c2"},
+        {"date": "2025-05-07", "amount": 50, "description": "Mowed lawn", "chore_id": "c3"},
+        {"date": "2025-05-06", "amount": 50, "description": "Weekly bonus", "chore_id": null}
+      ]
+    },
+    "Jordan": {
+      "total": 85,
+      "history": [
+        {"date": "2025-05-09", "amount": 20, "description": "Vacuumed living room", "chore_id": "c4"},
+        {"date": "2025-05-08", "amount": 25, "description": "Laundry", "chore_id": "c5"},
+        {"date": "2025-05-07", "amount": 40, "description": "Dishes for the week", "chore_id": "c6"}
+      ]
+    },
+    "Casey": {
+      "total": 60,
+      "history": [
+        {"date": "2025-05-09", "amount": 30, "description": "Cleaned bathroom", "chore_id": "c7"},
+        {"date": "2025-05-07", "amount": 30, "description": "Grocery shopping", "chore_id": "c8"}
+      ]
+    },
+    "Taylor": {
+      "total": 45,
+      "history": [
+        {"date": "2025-05-08", "amount": 15, "description": "Organized bookshelf", "chore_id": "c9"},
+        {"date": "2025-05-07", "amount": 30, "description": "Fixed leaky faucet", "chore_id": "c10"}
+      ]
+    }
+  },
+  "redemptions": [
+    {
+      "user": "Alex",
+      "date": "2025-05-05",
+      "points": 100,
+      "reward": "Extra screen time"
+    },
+    {
+      "user": "Jordan",
+      "date": "2025-05-04",
+      "points": 150,
+      "reward": "Movie night choice"
+    }
+  ],
+  "rewards": [
+    {
+      "id": "r1",
+      "name": "30 minutes of game time",
+      "points": 50,
+      "icon": "fa-gamepad",
+      "category": "Entertainment"
+    },
+    {
+      "id": "r2",
+      "name": "Choose dinner",
+      "points": 75,
+      "icon": "fa-utensils",
+      "category": "Food"
+    },
+    {
+      "id": "r3",
+      "name": "Movie night pick",
+      "points": 100,
+      "icon": "fa-film",
+      "category": "Entertainment"
+    },
+    {
+      "id": "r4",
+      "name": "Stay up 30 minutes later",
+      "points": 50,
+      "icon": "fa-clock",
+      "category": "Privileges"
+    },
+    {
+      "id": "r5",
+      "name": "Skip one chore",
+      "points": 150,
+      "icon": "fa-broom",
+      "category": "Chores"
+    }
+  ]
+} 

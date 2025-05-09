@@ -424,14 +424,14 @@ app.get('/api/recipes', (req, res) => {
   fs.readFile(recipesFilePath, 'utf8', (err, data) => {
     if (err) {
       console.error('[ERROR] Error reading recipes.json:', err);
-      return res.status(500).json({ error: 'Failed to load recipe data' });
+      return res.status(500).json({ error: 'Failed to load recipes data' });
     }
     try {
       const recipes = JSON.parse(data);
       res.json(recipes);
-    } catch (parseError) {
-      console.error('[ERROR] Error parsing recipes.json:', parseError);
-      res.status(500).json({ error: 'Failed to parse recipe data' });
+    } catch (err) {
+      console.error('[ERROR] Error parsing recipes.json:', err);
+      res.status(500).json({ error: 'Invalid recipes data format' });
     }
   });
 });
@@ -607,6 +607,56 @@ app.delete('/api/grocery-list/:id', (req, res) => {
     } catch (parseError) {
       console.error('[ERROR] Error parsing grocery-list.json:', parseError);
       res.status(500).json({ error: 'Failed to parse grocery list data' });
+    }
+  });
+});
+
+// POST endpoint to add a new meal category
+app.post('/api/meal-categories', (req, res) => {
+  const categoriesFilePath = path.join(__dirname, 'public', 'meal-categories.json');
+  fs.readFile(categoriesFilePath, 'utf8', (err, data) => {
+    if (err) {
+      console.error('[ERROR] Error reading meal-categories.json for POST:', err);
+      return res.status(500).json({ error: 'Failed to read meal categories data' });
+    }
+    try {
+      const categories = JSON.parse(data);
+      const newCategory = {
+        id: Date.now().toString(),
+        name: req.body.name,
+        color: req.body.color || '#fbbc05',
+        icon: req.body.icon || 'fa-utensils'
+      };
+      categories.push(newCategory);
+      
+      fs.writeFile(categoriesFilePath, JSON.stringify(categories, null, 2), (err) => {
+        if (err) {
+          console.error('[ERROR] Error writing meal-categories.json:', err);
+          return res.status(500).json({ error: 'Failed to save category' });
+        }
+        res.status(201).json(newCategory);
+      });
+    } catch (err) {
+      console.error('[ERROR] Error parsing meal-categories.json:', err);
+      res.status(500).json({ error: 'Invalid meal categories data format' });
+    }
+  });
+});
+
+// API endpoint for rewards data
+app.get('/api/rewards', (req, res) => {
+  const rewardsFilePath = path.join(__dirname, 'public', 'rewards.json');
+  fs.readFile(rewardsFilePath, 'utf8', (err, data) => {
+    if (err) {
+      console.error('[ERROR] Error reading rewards.json:', err);
+      return res.status(500).json({ error: 'Failed to load rewards data' });
+    }
+    try {
+      const rewards = JSON.parse(data);
+      res.json(rewards);
+    } catch (err) {
+      console.error('[ERROR] Error parsing rewards.json:', err);
+      res.status(500).json({ error: 'Invalid rewards data format' });
     }
   });
 });
