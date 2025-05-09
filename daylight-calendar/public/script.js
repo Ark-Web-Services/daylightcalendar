@@ -48,6 +48,11 @@ document.addEventListener('DOMContentLoaded', function() {
     button.addEventListener('click', () => {
       const modal = button.closest('.modal');
       modal.classList.remove('show');
+      
+      // If this is the game modal, clear the iframe src when closing
+      if (modal.id === 'game-focus-modal') {
+        document.getElementById('game-iframe').src = '';
+      }
     });
   });
 
@@ -718,6 +723,21 @@ document.addEventListener('DOMContentLoaded', function() {
         }
       });
     }
+  });
+
+  // Handle game item clicks
+  document.querySelectorAll('.game-item').forEach(gameItem => {
+    gameItem.addEventListener('click', () => {
+      const gameUrl = gameItem.dataset.gameUrl;
+      const gameTitle = gameItem.querySelector('.game-title').textContent;
+      
+      // Set the iframe source and modal title
+      document.getElementById('game-iframe').src = gameUrl;
+      document.getElementById('game-modal-title').textContent = gameTitle;
+      
+      // Open the modal
+      openModal('game-focus-modal');
+    });
   });
 
   // Initialize the page

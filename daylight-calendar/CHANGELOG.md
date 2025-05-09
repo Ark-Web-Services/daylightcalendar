@@ -6,6 +6,7 @@
 - Expanded "Chores" feature with interactive Kanban board.
 - New "Meals" tab for meal planning functionality.
 - New "Games" tab placeholder for future functionality.
+- Added Geometry Dash to the Games tab with fullscreen modal play capability.
 - Added modals for adding new chores and meals.
 - Implemented user color coding system.
 

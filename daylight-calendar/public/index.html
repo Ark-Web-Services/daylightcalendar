@@ -205,10 +205,27 @@
           </div>
         </header>
         <div class="content-scrollable">
-          <div class="empty-state">
-            <i class="fas fa-gamepad empty-icon"></i>
-            <p>No games added yet!</p>
-            <p>Click "Add Game" to get started.</p>
+          <div class="games-grid">
+            <div class="game-item" data-game-url="https://geometrydashonline.github.io/">
+              <div class="game-icon geometry-dash-icon">
+                <img src="https://geometrydashonline.github.io/assets/images/icon.png" alt="Geometry Dash" onerror="this.src='https://geometrydashonline.github.io/assets/images/icon.webp'">
+              </div>
+              <div class="game-title">Geometry Dash</div>
+            </div>
+            <!-- More games can be added here -->
+          </div>
+          
+          <!-- Game Focus Modal -->
+          <div id="game-focus-modal" class="modal">
+            <div class="modal-content game-modal-content">
+              <div class="modal-header">
+                <h3 id="game-modal-title">Game</h3>
+                <button class="modal-close">&times;</button>
+              </div>
+              <div class="modal-body game-modal-body">
+                <iframe id="game-iframe" src="" frameborder="0" allowfullscreen></iframe>
+              </div>
+            </div>
           </div>
         </div>
       </div>
