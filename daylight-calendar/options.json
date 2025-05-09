@@ -1,0 +1,7 @@
+{
+  "theme": "light",
+  "show_weather": true,
+  "locale": "en-US",
+  "time_format": "12h",
+  "kiosk_mode": false
+} 
