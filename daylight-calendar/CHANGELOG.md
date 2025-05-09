@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.6] - 2025-05-09
+
+### Added
+- Added Hextris hexagonal puzzle game to Games tab
+- Added Clumsy Bird arcade game to Games tab
+- Improved game modal interface for consistent user experience
+
 ## [1.1.5] - 2025-05-09
 
 ### Added
