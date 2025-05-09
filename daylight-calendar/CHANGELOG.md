@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.2] - 2024-05-09
+
+### Fixed
+- Ensured `options.json` is included in the Git repository for the Docker build process.
+
+---
+
 ## [1.1.1] - 2024-05-09
 
 ### Fixed
