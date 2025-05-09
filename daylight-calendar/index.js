@@ -7,7 +7,33 @@ const fs = require('fs');
 const { exec } = require('child_process');
 
 // Configuration
-const config = JSON.parse(fs.readFileSync('/data/options.json', 'utf8'));
+let config;
+const localOptionsPath = path.join(__dirname, 'options.json'); // Path to local options
+const supervisorOptionsPath = '/data/options.json';
+
+try {
+  config = JSON.parse(fs.readFileSync(supervisorOptionsPath, 'utf8'));
+  console.log(`Loaded configuration from ${supervisorOptionsPath}`);
+} catch (error) {
+  console.warn(`Could not read ${supervisorOptionsPath}. This is normal if running locally.`);
+  try {
+    config = JSON.parse(fs.readFileSync(localOptionsPath, 'utf8'));
+    console.log(`Loaded local fallback configuration from ${localOptionsPath}`);
+  } catch (localError) {
+    console.error(`Failed to load local fallback configuration from ${localOptionsPath}:`, localError);
+    // Set a very basic default config if even local options fail, to prevent crashes
+    config = { 
+      theme: "light", 
+      show_weather: true, 
+      locale: "en-US", 
+      time_format: "12h", 
+      kiosk_mode: false 
+    };
+    console.log("Using hardcoded default configuration.");
+  }
+}
+
+// const config = JSON.parse(fs.readFileSync('/data/options.json', 'utf8')); // Old line
 const PORT = process.env.PORT || 8099;
 
 // Initialize Express app
