@@ -188,6 +188,7 @@ document.addEventListener('DOMContentLoaded', function() {
   
   // Initial data load
   fetchCalendarEvents();
+  fetchAndDisplayChores(); // Call it here with other initial fetches
   
   // Set up periodic refresh
   setInterval(fetchCalendarEvents, 5 * 60 * 1000); // Refresh every 5 minutes
@@ -219,4 +220,94 @@ document.addEventListener('DOMContentLoaded', function() {
       socket.emit('exit_kiosk');
     }
   });
+
+  // Tab switching logic
+  const tabItems = document.querySelectorAll('.tab-item');
+  const tabContents = document.querySelectorAll('.tab-content');
+
+  tabItems.forEach(tab => {
+    tab.addEventListener('click', () => {
+      const targetId = tab.dataset.tabTarget;
+      const targetContent = document.getElementById(targetId);
+
+      // Remove active state from all tabs and content
+      tabItems.forEach(t => t.classList.remove('active-tab'));
+      tabContents.forEach(c => c.classList.remove('active-content'));
+
+      // Set active state for clicked tab and corresponding content
+      tab.classList.add('active-tab');
+      if (targetContent) {
+        targetContent.classList.add('active-content');
+      }
+      
+      // Special handling for calendar rendering when its tab becomes active
+      if (targetId === 'calendar-content') {
+        // Re-render or resize FullCalendar if it was hidden, as it might not calculate its size correctly when initially hidden.
+        // Using a slight delay can sometimes help ensure the container is fully visible.
+        setTimeout(() => {
+          if (calendar) { // calendar is the FullCalendar instance
+            calendar.render(); // Or calendar.updateSize(); depending on FullCalendar version and needs.
+          }
+        }, 0);
+      }
+    });
+  });
+
+  // Function to fetch and display chores
+  async function fetchAndDisplayChores() {
+    try {
+      const response = await fetch('/api/chores');
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const chores = await response.json();
+      const choreChartContainer = document.getElementById('chore-chart'); // Assuming this ID will exist
+      
+      if (!choreChartContainer) {
+        console.error('Chore chart container not found!');
+        return;
+      }
+
+      choreChartContainer.innerHTML = ''; // Clear previous chores
+      const ul = document.createElement('ul');
+      ul.className = 'chore-list';
+
+      if (chores.length === 0) {
+        const li = document.createElement('li');
+        li.textContent = 'No chores today!';
+        ul.appendChild(li);
+      } else {
+        chores.forEach(chore => {
+          const li = document.createElement('li');
+          li.className = chore.completed ? 'chore-item completed' : 'chore-item';
+          li.dataset.choreId = chore.id;
+          
+          const choreName = document.createElement('span');
+          choreName.className = 'chore-name';
+          choreName.textContent = chore.name;
+          
+          const choreAssignee = document.createElement('span');
+          choreAssignee.className = 'chore-assignee';
+          choreAssignee.textContent = ` (${chore.assignee || 'Unassigned'})`;
+
+          const completionStatus = document.createElement('span');
+          completionStatus.className = 'chore-status';
+          completionStatus.textContent = chore.completed ? ' [Done]' : ' [Pending]';
+
+          li.appendChild(choreName);
+          li.appendChild(choreAssignee);
+          li.appendChild(completionStatus);
+          ul.appendChild(li);
+        });
+      }
+      choreChartContainer.appendChild(ul);
+
+    } catch (error) {
+      console.error('Error fetching or displaying chores:', error);
+      const choreChartContainer = document.getElementById('chore-chart');
+      if (choreChartContainer) {
+        choreChartContainer.innerHTML = '<p>Could not load chores.</p>';
+      }
+    }
+  }
 }); 

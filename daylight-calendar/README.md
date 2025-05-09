@@ -1,10 +1,12 @@
 # Daylight Calendar for Home Assistant
 
-A beautiful fullscreen calendar display for your Home Assistant touchscreen, inspired by Daylight Calendar.
+A beautiful fullscreen calendar display for your Home Assistant touchscreen, inspired by Daylight Calendar. Now featuring a tabbed interface for Calendar and Chores!
 
 ## Features
 
 - Beautiful fullscreen calendar with clean, modern design
+- **New:** Tabbed navigation for Calendar and Chores.
+- **New:** Basic Chore Chart display.
 - Automatically switches command line interface to calendar display
 - Shows upcoming events from your Home Assistant calendars
 - Optional weather integration

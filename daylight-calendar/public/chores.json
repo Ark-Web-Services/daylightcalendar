@@ -1,0 +1,26 @@
+[
+  {
+    "id": "c1",
+    "name": "Take out the trash",
+    "completed": false,
+    "assignee": "Alex"
+  },
+  {
+    "id": "c2",
+    "name": "Load the dishwasher",
+    "completed": true,
+    "assignee": "Jamie"
+  },
+  {
+    "id": "c3",
+    "name": "Walk the dog",
+    "completed": false,
+    "assignee": "Anyone"
+  },
+  {
+    "id": "c4",
+    "name": "Water the plants",
+    "completed": false,
+    "assignee": "Alex"
+  }
+] 

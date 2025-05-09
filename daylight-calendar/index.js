@@ -88,6 +88,23 @@ app.get('/api/weather', async (req, res) => {
   }
 });
 
+app.get('/api/chores', (req, res) => {
+  const choresFilePath = path.join(__dirname, 'public', 'chores.json');
+  fs.readFile(choresFilePath, 'utf8', (err, data) => {
+    if (err) {
+      console.error('Error reading chores.json:', err);
+      return res.status(500).json({ error: 'Failed to load chores data' });
+    }
+    try {
+      const chores = JSON.parse(data);
+      res.json(chores);
+    } catch (parseError) {
+      console.error('Error parsing chores.json:', parseError);
+      res.status(500).json({ error: 'Failed to parse chores data' });
+    }
+  });
+});
+
 // Socket.io for real-time updates
 io.on('connection', (socket) => {
   console.log('Client connected');

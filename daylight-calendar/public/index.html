@@ -10,27 +10,51 @@
 </head>
 <body>
   <div id="app" class="theme-light">
-    <header>
-      <div class="date-time">
-        <h1 id="current-time">--:--</h1>
-        <h2 id="current-date">Loading...</h2>
+    <div id="sidebar">
+      <div class="tab-item active-tab" data-tab-target="calendar-content">
+        <i class="fas fa-calendar-alt"></i><span>Calendar</span>
       </div>
-      <div class="weather" id="weather-container">
-        <div class="temp">--°</div>
-        <div class="condition"><i class="fas fa-cloud"></i></div>
+      <div class="tab-item" data-tab-target="chores-content">
+        <i class="fas fa-tasks"></i><span>Chores</span>
       </div>
-    </header>
+      <!-- Future tabs can go here -->
+    </div>
 
-    <main>
-      <div id="calendar"></div>
-    </main>
-
-    <footer>
-      <div class="next-event" id="next-event">
-        <h3>Next Event</h3>
-        <p id="next-event-info">No upcoming events</p>
+    <div id="main-content-area">
+      <div id="calendar-content" class="tab-content active-content">
+        <header>
+          <div class="date-time">
+            <h1 id="current-time">--:--</h1>
+            <h2 id="current-date">Loading...</h2>
+          </div>
+          <div class="weather" id="weather-container">
+            <div class="temp">--°</div>
+            <div class="condition"><i class="fas fa-cloud"></i></div>
+          </div>
+        </header>
+        <main>
+          <div id="calendar"></div>
+        </main>
+        <footer>
+          <div class="next-event" id="next-event">
+            <h3>Next Event</h3>
+            <p id="next-event-info">No upcoming events</p>
+          </div>
+        </footer>
       </div>
-    </footer>
+
+      <div id="chores-content" class="tab-content">
+        <section id="chore-chart-section">
+          <!-- Header for chore chart might be good here too -->
+          <header class="content-header">
+            <h1>Chore Chart</h1>
+          </header>
+          <div id="chore-chart" class="content-scrollable">
+            <!-- Chores will be loaded here by script.js -->
+          </div>
+        </section>
+      </div>
+    </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/moment@2.29.4/moment.min.js"></script>
