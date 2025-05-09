@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.3] - 2024-05-09
+
+### Fixed
+- Re-enabled `/api/calendar` and `/api/weather` endpoints in `index.js`.
+- Added more detailed error logging for these API calls.
+
+---
+
 ## [1.1.2] - 2024-05-09
 
 ### Fixed

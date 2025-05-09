@@ -70,31 +70,44 @@ app.get('/api/chores', (req, res) => {
   });
 });
 
-/* // Temporarily comment out other API routes that depend on hassApiUrl for startup
+// Re-enable API routes that depend on hassApiUrl
 app.get('/api/calendar', async (req, res) => {
   try {
+    // Ensure to use the correct hassApiUrl and hassHeaders defined earlier
     const response = await axios.get(`${hassApiUrl}/calendars`, { headers: hassHeaders });
     res.json(response.data);
   } catch (error) {
-    console.error('[DEBUG] Error fetching calendar data:', error.message);
+    console.error('[ERROR] Error fetching calendar data:', error.message);
+    // Add more detailed error logging if possible
+    if (error.response) {
+      console.error('[ERROR] Calendar API Response Status:', error.response.status);
+      console.error('[ERROR] Calendar API Response Data:', error.response.data);
+    }
     res.status(500).json({ error: 'Failed to fetch calendar data' });
   }
 });
 
 app.get('/api/weather', async (req, res) => {
-  if (!config || !config.show_weather) { // Added null check for config
+  if (!config || !config.show_weather) { // Null check for config is good
+    console.log('[INFO] Weather display is disabled in config.');
     return res.json({ enabled: false });
   }
   
   try {
-    const response = await axios.get(`${hassApiUrl}/states/weather.forecast`, { headers: hassHeaders });
+    // Ensure to use the correct hassApiUrl and hassHeaders
+    const weatherEntity = config.weather_entity || 'weather.forecast_home'; // Use configured entity or a sensible default
+    console.log(`[INFO] Fetching weather data for entity: ${weatherEntity}`);
+    const response = await axios.get(`${hassApiUrl}/states/${weatherEntity}`, { headers: hassHeaders });
     res.json(response.data);
   } catch (error) {
-    console.error('[DEBUG] Error fetching weather data:', error.message);
+    console.error('[ERROR] Error fetching weather data:', error.message);
+    if (error.response) {
+      console.error('[ERROR] Weather API Response Status:', error.response.status);
+      console.error('[ERROR] Weather API Response Data:', error.response.data);
+    }
     res.status(500).json({ error: 'Failed to fetch weather data' });
   }
 });
-*/
 
 io.on('connection', (socket) => {
   console.log('[DEBUG] Client connected (simplified for debugging)');
