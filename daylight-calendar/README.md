@@ -1,5 +1,9 @@
 # Daylight Calendar for Home Assistant
 
+<p align="center">
+  <img src="../daylightcalendar.png" alt="Daylight Calendar" width="500" style="border-radius: 10px; border: 1px solid #ddd; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
+</p>
+
 A beautiful fullscreen calendar display for your Home Assistant touchscreen, inspired by Daylight Calendar. Now featuring a tabbed interface for Calendar, Chores, Meals, and Games!
 
 ## Features
