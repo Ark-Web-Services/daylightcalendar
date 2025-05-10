@@ -4,34 +4,39 @@
     "name": "Take out the trash",
     "assigneeName": "Alex",
     "dueDate": "2024-05-15",
-    "completed": false
+    "completed": false,
+    "rewardPoints": 10
   },
   {
     "id": "1700000000003",
     "name": "Walk the dog",
     "assigneeName": "Casey",
     "dueDate": "2024-05-16",
-    "completed": false
+    "completed": false,
+    "rewardPoints": 15
   },
   {
     "id": "1700000000004",
     "name": "Clean the bathroom",
     "assigneeName": "Alex",
     "dueDate": "2024-05-18",
-    "completed": false
+    "completed": false,
+    "rewardPoints": 25
   },
   {
     "id": "1700000000005",
     "name": "Grocery shopping",
     "assigneeName": "Jordan",
     "dueDate": "2024-05-17",
-    "completed": true
+    "completed": true,
+    "rewardPoints": 20
   },
   {
     "id": "1746836591090",
     "name": "fd",
     "assigneeName": "",
     "dueDate": "",
-    "completed": false
+    "completed": false,
+    "rewardPoints": 5
   }
 ]

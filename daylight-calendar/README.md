@@ -15,12 +15,47 @@ A beautiful fullscreen calendar display for your Home Assistant touchscreen, ins
 - **New:** Recipe book with ingredient tracking and grocery list integration.
 - **New:** Grocery list management for meal planning.
 - **New:** Games tab with Geometry Dash integration in fullscreen mode.
+- **New:** Screen burn prevention that dims the display after inactivity
+- **New:** Night mode that automatically shifts to warmer colors during evening hours
+- **New:** Persistent clock display option
 - Automatically switches command line interface to calendar display
 - Shows upcoming events from your Home Assistant calendars
 - Optional weather integration
 - Light and dark themes available
 - Customizable appearance and settings
 - Kiosk mode for dedicated displays
+
+## Tech Stack
+
+<p align="center">
+  <img src="https://brands.home-assistant.io/homeassistant/icon.png" alt="Home Assistant" width="40" style="margin: 0 10px;">
+  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/nodejs/nodejs-original.svg" alt="Node.js" width="40" style="margin: 0 10px;">
+  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/javascript/javascript-original.svg" alt="JavaScript" width="40" style="margin: 0 10px;">
+  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/html5/html5-original.svg" alt="HTML5" width="40" style="margin: 0 10px;">
+  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/css3/css3-original.svg" alt="CSS3" width="40" style="margin: 0 10px;">
+  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/docker/docker-original.svg" alt="Docker" width="40" style="margin: 0 10px;">
+</p>
+
+Built as a Home Assistant add-on, running Node.js inside a Docker container with a modern web interface.
+
+## Recommended Hardware Setup
+
+For the best experience, we recommend setting up dedicated information displays around your home:
+
+### Option 1: Raspberry Pi with Touchscreen (Recommended)
+- **Hardware:** Raspberry Pi 4 (2GB+ RAM) with official 7" touchscreen or larger HDMI display
+- **Software:** Home Assistant OS or FullPageOS pointing to your Home Assistant instance
+- **Use Case:** Perfect for kitchen counters, entryways, or home offices
+
+### Option 2: Wall-Mounted Tablet
+- **Hardware:** Any Android tablet or iPad with wall mount
+- **Software:** Fully Kiosk Browser or Home Assistant Companion app in kiosk mode
+- **Use Case:** Elegant wall-mounted controls for living spaces
+
+### Option 3: Repurposed Monitor/TV
+- **Hardware:** Any HDMI display with a Raspberry Pi or small form-factor PC
+- **Software:** Home Assistant OS with Daylight Calendar in kiosk mode
+- **Use Case:** Family dashboard in common areas like living rooms or kitchens
 
 ## Installation
 
