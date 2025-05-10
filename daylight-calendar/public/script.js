@@ -198,6 +198,36 @@ document.addEventListener('DOMContentLoaded', function() {
       
       const eventInfo = `${event.title} ${timeStr ? '(' + timeStr + ')' : ''}`;
       document.getElementById('next-event-info').textContent = eventInfo;
+    },
+    dayCellDidMount: function(info) {
+      // Add weather icons to calendar days
+      const date = info.date;
+      const dateKey = moment(date).format('YYYY-MM-DD');
+      
+      // Get weather for this day (in a real implementation, this would come from an API or stored forecast)
+      const weatherForDay = getWeatherForDate(dateKey);
+      
+      if (weatherForDay) {
+        const weatherIcon = document.createElement('div');
+        weatherIcon.className = `day-weather-icon weather-${weatherForDay.condition}`;
+        
+        // Map condition to icon
+        const iconMap = {
+          'sunny': '<i class="fas fa-sun"></i>',
+          'cloudy': '<i class="fas fa-cloud"></i>',
+          'rainy': '<i class="fas fa-cloud-rain"></i>',
+          'stormy': '<i class="fas fa-bolt"></i>',
+          'snowy': '<i class="fas fa-snowflake"></i>'
+        };
+        
+        weatherIcon.innerHTML = iconMap[weatherForDay.condition] || iconMap['cloudy'];
+        
+        // Add to the day cell's top area
+        const dayTop = info.el.querySelector('.fc-daygrid-day-top');
+        if (dayTop) {
+          dayTop.appendChild(weatherIcon);
+        }
+      }
     }
   });
   
@@ -293,6 +323,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         const tempEl = document.querySelector('.weather .temp');
         const conditionEl = document.querySelector('.weather .condition i');
+        const weatherContainer = document.getElementById('weather-container');
         
         tempEl.textContent = `${temp}°`;
         
@@ -317,6 +348,31 @@ document.addEventListener('DOMContentLoaded', function() {
         
         const iconClass = iconMap[condition] || 'fa-cloud';
         conditionEl.className = `fas ${iconClass}`;
+        
+        // Add a text indicator for the condition
+        let conditionText = document.querySelector('.weather .condition-text');
+        if (!conditionText) {
+          conditionText = document.createElement('div');
+          conditionText.className = 'condition-text';
+          weatherContainer.appendChild(conditionText);
+        }
+        
+        // Format the condition name to be more readable
+        const readableCondition = condition
+          .replace(/-/g, ' ')
+          .replace(/\b\w/g, l => l.toUpperCase());
+        
+        conditionText.textContent = readableCondition;
+        
+        // Add a last updated indicator
+        let lastUpdated = document.querySelector('.weather .last-updated');
+        if (!lastUpdated) {
+          lastUpdated = document.createElement('div');
+          lastUpdated.className = 'last-updated';
+          weatherContainer.appendChild(lastUpdated);
+        }
+        
+        lastUpdated.textContent = `Updated: ${moment().format('h:mm A')}`;
       })
       .catch(error => {
         console.error('Error fetching weather data:', error);
@@ -1943,4 +1999,34 @@ document.addEventListener('DOMContentLoaded', function() {
   
   // Load categories on page load
   loadCategories();
-}); 
+});
+
+// Function to get weather for a specific date
+// This is a placeholder - in a real implementation this would fetch from an API or local storage
+function getWeatherForDate(dateKey) {
+  // For demo purposes, generate some random weather
+  const weather = {
+    'sunny': { temp: [60, 85], condition: 'sunny' },
+    'cloudy': { temp: [55, 75], condition: 'cloudy' },
+    'rainy': { temp: [50, 70], condition: 'rainy' },
+    'stormy': { temp: [45, 65], condition: 'stormy' },
+    'snowy': { temp: [25, 35], condition: 'snowy' }
+  };
+  
+  // Use hash of date to get consistent but "random-looking" weather
+  const hash = dateKey.split('').reduce((a, b) => {
+    a = ((a << 5) - a) + b.charCodeAt(0);
+    return a & a;
+  }, 0);
+  
+  const conditions = Object.keys(weather);
+  const condition = conditions[Math.abs(hash) % conditions.length];
+  
+  const tempRange = weather[condition].temp;
+  const temp = tempRange[0] + (Math.abs(hash) % (tempRange[1] - tempRange[0]));
+  
+  return {
+    temp: temp,
+    condition: weather[condition].condition
+  };
+} 

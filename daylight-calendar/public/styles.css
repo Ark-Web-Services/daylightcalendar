@@ -63,6 +63,78 @@ body, html {
   --sidebar-hover: #2c2c2c;
 }
 
+.theme-pastel {
+  --bg-color: #f5f5f5;
+  --text-color: #5d5c61;
+  --header-bg: #f8e9e9;
+  --event-bg: #b4b8c5;
+  --event-text: #333;
+  --today-bg: #e6e6fa;
+  --border-color: #d8d8d8;
+  --card-bg: #ffffff;
+  --success-color: #98cec2;
+  --warning-color: #ffca99;
+  --danger-color: #ffaaa5;
+  --primary-color: #a3a9b9;
+  --sidebar-bg: #e6e6fa;
+  --sidebar-text: #5d5c61;
+  --sidebar-hover: #d8d8e5;
+}
+
+.theme-forest {
+  --bg-color: #f3f6ed;
+  --text-color: #2c3e50;
+  --header-bg: #e5edd4;
+  --event-bg: #718355;
+  --event-text: #fff;
+  --today-bg: #d1d9c0;
+  --border-color: #c3d6a7;
+  --card-bg: #ffffff;
+  --success-color: #6b9080;
+  --warning-color: #a4ac86;
+  --danger-color: #b67162;
+  --primary-color: #718355;
+  --sidebar-bg: #4f6636;
+  --sidebar-text: #f3f6ed;
+  --sidebar-hover: #5d7a3f;
+}
+
+.theme-ocean {
+  --bg-color: #f5f9fc;
+  --text-color: #2e4052;
+  --header-bg: #e0f2fe;
+  --event-bg: #2982b9;
+  --event-text: #fff;
+  --today-bg: #cae9fb;
+  --border-color: #a5d8ff;
+  --card-bg: #ffffff;
+  --success-color: #33a6b8;
+  --warning-color: #5599ff;
+  --danger-color: #ff6584;
+  --primary-color: #2982b9;
+  --sidebar-bg: #1f5c8a;
+  --sidebar-text: #f5f9fc;
+  --sidebar-hover: #2673ac;
+}
+
+.theme-sunset {
+  --bg-color: #fdf5f3;
+  --text-color: #372b2e;
+  --header-bg: #fbe8e5;
+  --event-bg: #e85d5d;
+  --event-text: #fff;
+  --today-bg: #f8d0c9;
+  --border-color: #f5c4bb;
+  --card-bg: #ffffff;
+  --success-color: #ed7966;
+  --warning-color: #ffa06b;
+  --danger-color: #e64b4b;
+  --primary-color: #e85d5d;
+  --sidebar-bg: #c93434;
+  --sidebar-text: #fdf5f3;
+  --sidebar-hover: #e64b4b;
+}
+
 /* Card style component */
 .card-style {
   background-color: var(--card-bg);
@@ -183,13 +255,36 @@ header {
 
 .weather {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-end;
   font-size: 2rem;
 }
 
 .weather .temp {
   margin-right: 1rem;
   font-weight: 300;
+}
+
+.weather .condition {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.weather .condition-text {
+  font-size: 1rem;
+  margin-top: 0.25rem;
+  color: var(--text-color);
+  opacity: 0.7;
+}
+
+.weather .last-updated {
+  font-size: 0.75rem;
+  color: var(--text-color);
+  opacity: 0.5;
+  margin-top: 0.25rem;
 }
 
 main {
@@ -441,7 +536,7 @@ footer {
   position: relative;
   transition: width var(--transition-speed) ease;
   z-index: 10;
-  height: 100vh;
+  height: 100%;
 }
 
 .sidebar-spacer {
@@ -450,6 +545,8 @@ footer {
 
 .sidebar-footer {
   margin-bottom: 1rem;
+  border-top: 1px solid rgba(255,255,255,0.1);
+  padding-top: 0.5rem;
 }
 
 #app.sidebar-collapsed #sidebar {
@@ -1688,6 +1785,31 @@ footer {
   border-radius: 20px;
   background-color: var(--primary-color);
   color: white;
+  cursor: pointer;
+  position: relative;
+}
+
+.voice-command-help {
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  background-color: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 1rem;
+  border-radius: 8px;
+  width: 250px;
+  display: none;
+  z-index: 100;
+  font-size: 0.9rem;
+}
+
+.voice-command-indicator:hover .voice-command-help {
+  display: block;
+}
+
+.voice-command-help ul {
+  margin: 0.5rem 0 0 0;
+  padding-left: 1.5rem;
 }
 
 .voice-command-indicator.listening {
@@ -1796,4 +1918,48 @@ footer {
 .game-timer-user {
   font-size: 0.85rem;
   opacity: 0.8;
+}
+
+.fc-daygrid-day-top {
+  display: flex;
+  flex-direction: row-reverse;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 4px;
+}
+
+.day-weather-icon {
+  font-size: 1rem;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  margin-right: 4px;
+}
+
+.weather-sunny {
+  background-color: rgba(251, 192, 45, 0.2); 
+  color: #b07d04;
+}
+
+.weather-cloudy {
+  background-color: rgba(158, 158, 158, 0.2);
+  color: #616161;
+}
+
+.weather-rainy {
+  background-color: rgba(66, 133, 244, 0.2);
+  color: #1a73e8;
+}
+
+.weather-stormy {
+  background-color: rgba(97, 97, 97, 0.2);
+  color: #424242;
+}
+
+.weather-snowy {
+  background-color: rgba(189, 189, 189, 0.2);
+  color: #757575;
 } 

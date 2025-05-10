@@ -11,15 +11,24 @@ This document tracks the implementation status of all requested features for the
 | User management | ⚠️ Partial | Basic user profiles exist but need improved management UI |
 | Home Assistant integration | ❌ Not Started | Need to implement sync with HA accounts |
 | Profile picture from webcam | ❌ Not Started | Planned feature |
+| Multiple theme options | ✅ Implemented | Added pastel, forest, ocean, and sunset themes |
 
 ## Cooking Mode
 
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Recipe cooking mode | ✅ Implemented | Step-by-step interface with instructions |
-| Voice control | ✅ Implemented | Basic voice commands for navigating steps |
+| Voice control | ✅ Implemented | Enhanced with visible command list and hover help tooltip |
 | Cook time estimation | ⚠️ Partial | Basic cook time exists but not start time calculation |
-| Timer functionality | ✅ Implemented | Timer available during cooking mode |
+| Timer functionality | ✅ Implemented | Timer available during cooking mode with improved visibility |
+
+## Weather Integration
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Current weather in header | ✅ Implemented | Enhanced with condition text and last updated info |
+| Weather icons on calendar days | ✅ Implemented | Each day shows appropriate weather icon |
+| Home Assistant weather integration | ⚠️ Partial | Basic integration exists but needs reliability improvements |
 
 ## Meal Planning
 
@@ -43,6 +52,7 @@ This document tracks the implementation status of all requested features for the
 | Age-appropriate filtering | ⚠️ Partial | Age rating exists but filtering needs improvement |
 | Add games button | ✅ Implemented | UI for adding community games exists |
 | Game repository | ⚠️ Partial | Basic UI exists but needs backend integration |
+| Game options | ✅ Implemented | Updated with free-to-use HTML5 games (Hextris, Clumsy Bird) |
 
 ## Rewards System
 
@@ -68,8 +78,8 @@ This document tracks the implementation status of all requested features for the
 
 ## Next Steps
 
-1. Improve the chore system with repeating chores and the household chore bucket
-2. Implement proper drag-and-drop functionality for chore assignment
-3. Enhance reward tracking with a visual interface
-4. Implement user management in the settings tab
-5. Integrate community features for recipes and games with proper backend 
+1. Implement better integration with Home Assistant for weather and user accounts
+2. Improve the chore system with repeating chores and the household chore bucket
+3. Implement proper drag-and-drop functionality for chore assignment
+4. Enhance reward tracking with a visual interface
+5. Improve the meals page for better meal management 
