@@ -10,6 +10,16 @@
 </head>
 <body>
   <div id="app" class="theme-light">
+    <!-- Screen burn prevention overlay -->
+    <div class="screen-dimmer" id="screen-dimmer">
+      <div class="screen-dimmer-message">Screen dimmed to prevent burn-in</div>
+      <div class="screen-dimmer-timer">Auto-resume in <span id="dimmer-countdown">30</span> seconds</div>
+      <button class="screen-dimmer-dismiss" id="dimmer-dismiss">Tap to Wake Up</button>
+    </div>
+
+    <!-- Always visible clock display (when enabled) -->
+    <div class="clock-display" id="clock-display">10:25 PM</div>
+
     <div id="sidebar">
       <div id="sidebar-logo" class="sidebar-toggle">
         <i class="fas fa-calendar-alt"></i>
@@ -169,6 +179,12 @@
                     </div>
                     <input type="hidden" id="mealDate" name="mealDate">
                     <input type="hidden" id="recipeId" name="recipeId">
+                  </div>
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label for="mealCook">Who's Cooking (optional)</label>
+                      <input type="text" id="mealCook" name="mealCook" placeholder="Enter cook's name">
+                    </div>
                   </div>
                   <div class="form-actions">
                     <button type="button" class="btn btn-secondary modal-cancel">Cancel</button>
@@ -364,7 +380,9 @@
           <h1>Games</h1>
           <div class="header-actions">
             <button id="add-game-button" class="btn btn-primary"><i class="fas fa-plus"></i> Add Game</button>
+            <!-- Button temporarily disabled until repository system is built
             <button id="get-more-games-button" class="btn btn-secondary"><i class="fas fa-download"></i> Get More Games</button>
+            -->
           </div>
         </header>
         <div class="content-scrollable">
@@ -478,6 +496,61 @@
               </div>
             </div>
           </div>
+          
+          <!-- Add Game Modal -->
+          <div id="add-game-modal" class="modal">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h3>Add New Game</h3>
+                <button class="modal-close">&times;</button>
+              </div>
+              <div class="modal-body">
+                <form id="add-game-form">
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label for="gameTitle">Game Title</label>
+                      <input type="text" id="gameTitle" name="gameTitle" placeholder="Enter game title" required>
+                    </div>
+                  </div>
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label for="gameURL">Game URL</label>
+                      <input type="url" id="gameURL" name="gameURL" placeholder="https://example.com/game" required>
+                    </div>
+                  </div>
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label for="gameIconURL">Icon URL</label>
+                      <input type="url" id="gameIconURL" name="gameIconURL" placeholder="https://example.com/icon.png">
+                    </div>
+                    <div class="form-group">
+                      <label for="gameIconUpload">Or Upload Icon</label>
+                      <input type="file" id="gameIconUpload" name="gameIconUpload" accept="image/*">
+                    </div>
+                  </div>
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label for="gameAgeRating">Age Rating</label>
+                      <select id="gameAgeRating" name="gameAgeRating">
+                        <option value="all">All Ages</option>
+                        <option value="5+">5+</option>
+                        <option value="8+">8+</option>
+                        <option value="12+">12+</option>
+                      </select>
+                    </div>
+                    <div class="form-group">
+                      <label for="gamePlaytime">Default Playtime (minutes)</label>
+                      <input type="number" id="gamePlaytime" name="gamePlaytime" min="5" max="60" value="15">
+                    </div>
+                  </div>
+                  <div class="form-actions">
+                    <button type="button" class="btn btn-secondary modal-cancel">Cancel</button>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-plus-circle"></i> Add Game</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -536,6 +609,55 @@
                 <button class="theme-button" data-theme="sunset">
                   <i class="fas fa-fire"></i> Sunset
                 </button>
+              </div>
+            </div>
+            
+            <div class="settings-card">
+              <h3>Display</h3>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="auto-night-mode">
+                    <input type="checkbox" id="auto-night-mode" name="auto-night-mode">
+                    Auto Night Mode
+                  </label>
+                  <p class="setting-description">Automatically switch to night mode with reduced blue light between sunset and sunrise.</p>
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="night-mode-start">Night Mode Start</label>
+                  <input type="time" id="night-mode-start" name="night-mode-start" value="20:00">
+                </div>
+                <div class="form-group">
+                  <label for="night-mode-end">Night Mode End</label>
+                  <input type="time" id="night-mode-end" name="night-mode-end" value="07:00">
+                </div>
+              </div>
+            </div>
+            
+            <div class="settings-card">
+              <h3>Screen Protection</h3>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="screen-burn-protection">
+                    <input type="checkbox" id="screen-burn-protection" name="screen-burn-protection" checked>
+                    Screen Burn Protection
+                  </label>
+                  <p class="setting-description">Dims the screen after a period of inactivity to prevent burn-in on display.</p>
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="dim-after-minutes">Dim After (minutes)</label>
+                  <input type="number" id="dim-after-minutes" min="1" max="60" value="10">
+                </div>
+                <div class="form-group">
+                  <label for="display-clock">
+                    <input type="checkbox" id="display-clock" name="display-clock">
+                    Show Persistent Clock
+                  </label>
+                  <p class="setting-description">Always display clock in corner of screen.</p>
+                </div>
               </div>
             </div>
           </div>

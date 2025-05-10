@@ -1,0 +1,8 @@
+{
+  "autoNightMode": true,
+  "nightModeStart": "20:00",
+  "nightModeEnd": "07:00",
+  "screenBurnProtection": true,
+  "dimAfterMinutes": 10,
+  "displayClock": false
+}

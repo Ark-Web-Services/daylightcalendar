@@ -1,0 +1,10 @@
+[
+  {
+    "id": "dev-1",
+    "name": "Example Chore (Dev Only)",
+    "assigneeName": "Developer",
+    "dueDate": "2024-05-20",
+    "completed": false,
+    "rewardPoints": 10
+  }
+]

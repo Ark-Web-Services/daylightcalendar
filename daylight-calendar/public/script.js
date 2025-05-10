@@ -72,6 +72,57 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 
+  // Add meal button event listener
+  const addMealButton = document.getElementById('add-meal-button');
+  if (addMealButton) {
+    addMealButton.addEventListener('click', () => {
+      // Populate the meal type dropdown before opening modal
+      populateMealTypeDropdown();
+      openModal('add-meal-modal');
+    });
+  }
+
+  // Function to populate meal type dropdown
+  async function populateMealTypeDropdown() {
+    const mealTypeSelect = document.getElementById('mealType');
+    if (!mealTypeSelect) return;
+    
+    try {
+      // Clear existing options
+      mealTypeSelect.innerHTML = '';
+      
+      // Fetch categories from API
+      const response = await fetch('/api/meal-categories');
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const categories = await response.json();
+      
+      // Add options for each category
+      categories.forEach(category => {
+        const option = document.createElement('option');
+        option.value = category.name.toLowerCase();
+        option.textContent = category.name;
+        mealTypeSelect.appendChild(option);
+      });
+      
+      // Set a default selection if available
+      if (mealTypeSelect.options.length > 0) {
+        mealTypeSelect.selectedIndex = 0;
+      }
+    } catch (error) {
+      console.error('Error populating meal types:', error);
+      // Add default meal types as fallback
+      ['Breakfast', 'Lunch', 'Dinner'].forEach(type => {
+        const option = document.createElement('option');
+        option.value = type.toLowerCase();
+        option.textContent = type;
+        mealTypeSelect.appendChild(option);
+      });
+    }
+  }
+
   // Toggle completed chores button
   const toggleCompletedButton = document.getElementById('toggle-completed');
   let hideCompleted = false;
@@ -727,7 +778,7 @@ document.addEventListener('DOMContentLoaded', function() {
   async function fetchAndDisplayMeals() {
     try {
       // First, ensure meal type rows exist
-      createMealPlanRows();
+      await createMealPlanRows();
       
       const response = await fetch('/api/meals');
       if (!response.ok) {
@@ -803,12 +854,25 @@ document.addEventListener('DOMContentLoaded', function() {
   }
   
   // Function to create meal plan rows for each meal type
-  function createMealPlanRows() {
+  async function createMealPlanRows() {
     const mealPlanGrid = document.getElementById('meal-plan-grid');
     if (!mealPlanGrid) return;
     
-    // Get meal types - default to basic ones if API fails
-    const mealTypes = ['breakfast', 'lunch', 'dinner'];
+    let mealTypes = ['breakfast', 'lunch', 'dinner']; // Default fallback
+    
+    try {
+      // Fetch meal categories from API
+      const response = await fetch('/api/meal-categories');
+      if (response.ok) {
+        const categories = await response.json();
+        if (categories && categories.length > 0) {
+          mealTypes = categories.map(cat => cat.name.toLowerCase());
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching meal categories for rows:', error);
+      // Continue with default types
+    }
     
     // Remove existing meal rows (not the header)
     const existingRows = mealPlanGrid.querySelectorAll('.meal-plan-row');
@@ -904,12 +968,135 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   });
 
-  // Recipe book button
+  // Recipe Book Button
   const recipeBookButton = document.getElementById('recipe-book-button');
   if (recipeBookButton) {
     recipeBookButton.addEventListener('click', () => {
       loadRecipes(); // Load recipes when opening the modal
       openModal('recipe-book-modal');
+    });
+  }
+
+  // Add Recipe Button
+  const addRecipeButton = document.getElementById('add-recipe-button');
+  if (addRecipeButton) {
+    addRecipeButton.addEventListener('click', () => {
+      // Close the recipe book modal
+      closeModal('recipe-book-modal');
+      
+      // Open the add recipe modal
+      openModal('add-recipe-modal');
+    });
+  }
+
+  // Add event listener for recipe edit functionality
+  document.querySelectorAll('.edit-recipe-btn').forEach(button => {
+    button.addEventListener('click', (e) => {
+      e.stopPropagation(); // Prevent recipe selection
+      const recipeId = e.target.closest('.recipe-list-item').dataset.recipeId;
+      editRecipe(recipeId);
+    });
+  });
+
+  // Function to edit a recipe
+  function editRecipe(recipeId) {
+    // Find the recipe in the loaded recipes
+    const recipeItem = document.querySelector(`.recipe-list-item[data-recipe-id="${recipeId}"]`);
+    if (!recipeItem) return;
+    
+    // Get recipe details
+    const recipeName = recipeItem.querySelector('.recipe-list-item-name').textContent;
+    const recipeType = recipeItem.querySelector('.recipe-list-item-type').textContent;
+    
+    // Get full recipe details - this would typically fetch from the server
+    fetch(`/api/recipes/${recipeId}`)
+      .then(response => response.json())
+      .then(recipe => {
+        // Close the recipe book modal
+        closeModal('recipe-book-modal');
+        
+        // Open and populate the add/edit recipe modal
+        const editModal = document.getElementById('add-recipe-modal');
+        if (editModal) {
+          // Populate form with recipe data
+          const form = editModal.querySelector('form');
+          if (form) {
+            form.reset();
+            form.querySelector('#recipe-id').value = recipe.id;
+            form.querySelector('#recipe-name').value = recipe.name;
+            form.querySelector('#recipe-type').value = recipe.type;
+            form.querySelector('#recipe-description').value = recipe.description;
+            form.querySelector('#recipe-instructions').value = recipe.instructions;
+            
+            // Populate ingredients
+            const ingredientsList = form.querySelector('#recipe-ingredients-list');
+            if (ingredientsList) {
+              ingredientsList.innerHTML = '';
+              recipe.ingredients.forEach(ingredient => {
+                addIngredientInput(ingredient);
+              });
+            }
+            
+            // Change submit button text to "Update Recipe"
+            const submitButton = form.querySelector('button[type="submit"]');
+            if (submitButton) {
+              submitButton.innerHTML = '<i class="fas fa-save"></i> Update Recipe';
+            }
+            
+            // Change modal title
+            const modalTitle = editModal.querySelector('.modal-header h3');
+            if (modalTitle) {
+              modalTitle.textContent = 'Edit Recipe';
+            }
+          }
+          
+          openModal('add-recipe-modal');
+        }
+      })
+      .catch(error => {
+        console.error('Error loading recipe for editing:', error);
+        alert('Failed to load recipe details');
+      });
+  }
+
+  // Function to add ingredient input fields to the add/edit recipe form
+  function addIngredientInput(ingredient = { name: '', amount: '', available: false }) {
+    const ingredientsList = document.getElementById('recipe-ingredients-list');
+    if (!ingredientsList) return;
+    
+    const ingredientItem = document.createElement('div');
+    ingredientItem.className = 'ingredient-input-row';
+    
+    ingredientItem.innerHTML = `
+      <div class="form-row">
+        <div class="form-group">
+          <input type="text" class="ingredient-name" placeholder="Ingredient name" value="${ingredient.name}" required>
+        </div>
+        <div class="form-group">
+          <input type="text" class="ingredient-amount" placeholder="Amount" value="${ingredient.amount}">
+        </div>
+        <button type="button" class="btn btn-sm btn-danger remove-ingredient">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+    `;
+    
+    // Add event listener to remove button
+    const removeButton = ingredientItem.querySelector('.remove-ingredient');
+    if (removeButton) {
+      removeButton.addEventListener('click', () => {
+        ingredientItem.remove();
+      });
+    }
+    
+    ingredientsList.appendChild(ingredientItem);
+  }
+
+  // Add ingredient button event listener
+  const addIngredientButton = document.getElementById('add-ingredient-button');
+  if (addIngredientButton) {
+    addIngredientButton.addEventListener('click', () => {
+      addIngredientInput();
     });
   }
   
@@ -963,38 +1150,89 @@ document.addEventListener('DOMContentLoaded', function() {
   // Add grocery item form submission
   const addGroceryItemForm = document.getElementById('add-grocery-item-form');
   if (addGroceryItemForm) {
-    addGroceryItemForm.addEventListener('submit', async (event) => {
-      event.preventDefault();
+    addGroceryItemForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
       
-      const itemName = event.target.groceryItemName.value;
-      const itemQuantity = event.target.groceryItemQuantity.value;
+      const nameInput = document.getElementById('groceryItemName');
+      const quantityInput = document.getElementById('groceryItemQuantity');
       
-      if (!itemName) {
-        alert('Item name is required');
-        return;
-      }
+      const name = nameInput.value.trim();
+      const quantity = quantityInput.value.trim();
       
-      try {
-        const response = await fetch('/api/grocery-list', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ name: itemName, quantity: itemQuantity })
-        });
-        
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
+      if (name) {
+        try {
+          const response = await fetch('/api/grocery-list', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ name, quantity })
+          });
+          
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          
+          // Clear form inputs
+          nameInput.value = '';
+          quantityInput.value = '';
+          
+          // Reload the grocery list
+          loadGroceryList();
+          
+        } catch (error) {
+          console.error('Error adding grocery item:', error);
+          alert('Failed to add item to grocery list');
         }
-        
-        // Clear the form
-        event.target.reset();
-        
-        // Reload the grocery list
-        loadGroceryList();
-      } catch (error) {
-        console.error('Error adding grocery item:', error);
-        alert('Failed to add item to grocery list');
+      }
+    });
+  }
+  
+  // Add meal form submission
+  const addMealForm = document.getElementById('add-meal-form');
+  if (addMealForm) {
+    addMealForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const description = document.getElementById('mealDescription').value.trim();
+      const mealType = document.getElementById('mealType').value;
+      const mealDate = document.getElementById('mealDate').value;
+      const recipeId = document.getElementById('recipeId').value;
+      const cook = document.getElementById('mealCook')?.value.trim() || '';
+      
+      if (description && mealType && mealDate) {
+        try {
+          const response = await fetch('/api/meals', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              description,
+              type: mealType,
+              date: mealDate,
+              recipeId: recipeId || null,
+              cook
+            })
+          });
+          
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          
+          // Close the modal and refresh the meal plan
+          document.getElementById('mealDescription').value = '';
+          document.getElementById('recipeId').value = '';
+          document.getElementById('mealCook').value = '';
+          closeModal('add-meal-modal');
+          
+          // Refresh the meal plan
+          fetchAndDisplayMeals();
+          
+        } catch (error) {
+          console.error('Error adding meal:', error);
+          alert('Failed to add meal: ' + error.message);
+        }
       }
     });
   }
@@ -1697,6 +1935,46 @@ document.addEventListener('DOMContentLoaded', function() {
   document.querySelector('.tab-item[data-tab-target="settings-content"]').addEventListener('click', () => {
     loadProfilesForSettings();
   });
+
+  // Theme buttons
+  document.querySelectorAll('.theme-button').forEach(button => {
+    button.addEventListener('click', (e) => {
+      const theme = e.currentTarget.dataset.theme;
+      setTheme(theme);
+      
+      // Set active state on this button and remove from others
+      document.querySelectorAll('.theme-button').forEach(btn => {
+        btn.classList.remove('active');
+      });
+      e.currentTarget.classList.add('active');
+      
+      // Save theme preference
+      fetch('/api/settings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ theme })
+      }).catch(error => console.error('Error saving theme:', error));
+    });
+  });
+
+  // Mark active theme on page load
+  function markActiveTheme() {
+    const currentTheme = getComputedStyle(document.documentElement).getPropertyValue('--theme-name').trim().replace(/"/g, '');
+    const themeButton = document.querySelector(`.theme-button[data-theme="${currentTheme}"]`);
+    if (themeButton) {
+      document.querySelectorAll('.theme-button').forEach(btn => {
+        btn.classList.remove('active');
+      });
+      themeButton.classList.add('active');
+    }
+  }
+
+  // Call on document load
+  document.addEventListener('DOMContentLoaded', () => {
+    markActiveTheme();
+  });
 });
 
 // Settings Tab Functionality - Media Testing
@@ -2373,49 +2651,112 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   }
   
+  // Function to append a category to the UI
   function appendCategoryToUI(category) {
+    if (!categoriesContainer) return;
+    
     const categoryItem = document.createElement('div');
-    categoryItem.className = 'sortable-item';
+    categoryItem.className = 'category-item';
     categoryItem.dataset.id = category.id;
     
     categoryItem.innerHTML = `
-      <div class="sortable-handle">
-        <i class="fas fa-grip-lines"></i>
-      </div>
-      <div class="sortable-content">
-        <div class="category-icon" style="background-color: ${category.color}">
+      <div class="category-wrap">
+        <div class="sortable-handle">
+          <i class="fas fa-grip-lines"></i>
+        </div>
+        <div class="category-color" style="background-color: ${category.color}">
           <i class="fas ${category.icon}"></i>
         </div>
-        <div class="category-name">${category.name}</div>
-      </div>
-      <div class="sortable-actions">
-        <button class="btn btn-sm btn-icon edit-category"><i class="fas fa-edit"></i></button>
-        <button class="btn btn-sm btn-icon delete-category"><i class="fas fa-trash"></i></button>
+        <div class="category-name">
+          <span>${category.name}</span>
+        </div>
+        <div class="category-actions">
+          <button class="btn-icon category-edit" title="Edit Category">
+            <i class="fas fa-pencil-alt"></i>
+          </button>
+          <button class="btn-icon category-delete" title="Delete Category">
+            <i class="fas fa-trash-alt"></i>
+          </button>
+        </div>
       </div>
     `;
     
     categoriesContainer.appendChild(categoryItem);
     
-    // Add event listeners for edit/delete
-    const editButton = categoryItem.querySelector('.edit-category');
+    // Add event listeners to the new buttons
+    const editButton = categoryItem.querySelector('.category-edit');
     if (editButton) {
       editButton.addEventListener('click', () => {
-        const newName = prompt('Edit category name:', category.name);
-        if (newName && newName.trim()) {
-          categoryItem.querySelector('.category-name').textContent = newName.trim();
-          // TODO: Save to server
+        const categoryName = categoryItem.querySelector('.category-name span').textContent;
+        const newName = prompt('Edit category name:', categoryName);
+        if (newName && newName.trim() !== '' && newName !== categoryName) {
+          categoryItem.querySelector('.category-name span').textContent = newName;
+          
+          // Update category on server
+          updateCategory(category.id, { name: newName });
         }
       });
     }
     
-    const deleteButton = categoryItem.querySelector('.delete-category');
+    const deleteButton = categoryItem.querySelector('.category-delete');
     if (deleteButton) {
       deleteButton.addEventListener('click', () => {
-        if (confirm(`Are you sure you want to delete the "${category.name}" category?`)) {
+        if (confirm(`Delete the category "${category.name}"?`)) {
+          // Delete category from server
+          deleteCategory(category.id);
           categoryItem.remove();
-          // TODO: Save to server
         }
       });
+    }
+  }
+  
+  // Function to update a category
+  async function updateCategory(id, data) {
+    try {
+      const response = await fetch(`/api/meal-categories/${id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(data)
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      // Refresh the meal type dropdown
+      populateMealTypeDropdown();
+      
+      // Refresh the meal plan
+      fetchAndDisplayMeals();
+      
+    } catch (error) {
+      console.error('Error updating category:', error);
+      alert('Failed to update category');
+    }
+  }
+  
+  // Function to delete a category
+  async function deleteCategory(id) {
+    try {
+      const response = await fetch(`/api/meal-categories/${id}`, {
+        method: 'DELETE'
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      // Refresh the meal type dropdown
+      populateMealTypeDropdown();
+      
+      // Refresh the meal plan
+      fetchAndDisplayMeals();
+      
+    } catch (error) {
+      console.error('Error deleting category:', error);
+      alert('Failed to delete category');
     }
   }
   
@@ -2485,4 +2826,217 @@ function getWeatherForDate(dateKey) {
     temp: temp,
     condition: weather[condition].condition
   };
-} 
+}
+
+// ===== Screen Burn Protection & Night Mode =====
+let activityTimeout;
+let displaySettings = {
+  autoNightMode: true,
+  nightModeStart: "20:00",
+  nightModeEnd: "07:00",
+  screenBurnProtection: true,
+  dimAfterMinutes: 10,
+  displayClock: false
+};
+
+// Load display settings on startup
+function loadDisplaySettings() {
+  fetch('/api/display-settings')
+    .then(response => response.json())
+    .then(settings => {
+      displaySettings = settings;
+      
+      // Apply saved settings to UI controls
+      document.getElementById('auto-night-mode').checked = settings.autoNightMode;
+      document.getElementById('night-mode-start').value = settings.nightModeStart;
+      document.getElementById('night-mode-end').value = settings.nightModeEnd;
+      document.getElementById('screen-burn-protection').checked = settings.screenBurnProtection;
+      document.getElementById('dim-after-minutes').value = settings.dimAfterMinutes;
+      document.getElementById('display-clock').checked = settings.displayClock;
+      
+      // Apply settings immediately
+      applyNightModeIfNeeded();
+      resetActivityTimer();
+      updateClockDisplay();
+    })
+    .catch(error => console.error('Error loading display settings:', error));
+}
+
+// Save display settings when changed
+function saveDisplaySettings() {
+  const settings = {
+    autoNightMode: document.getElementById('auto-night-mode').checked,
+    nightModeStart: document.getElementById('night-mode-start').value,
+    nightModeEnd: document.getElementById('night-mode-end').value,
+    screenBurnProtection: document.getElementById('screen-burn-protection').checked,
+    dimAfterMinutes: parseInt(document.getElementById('dim-after-minutes').value),
+    displayClock: document.getElementById('display-clock').checked
+  };
+  
+  fetch('/api/display-settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings)
+  })
+    .then(response => response.json())
+    .then(updatedSettings => {
+      displaySettings = updatedSettings;
+      console.log('Display settings saved:', updatedSettings);
+      
+      // Apply new settings
+      applyNightModeIfNeeded();
+      resetActivityTimer();
+      updateClockDisplay();
+    })
+    .catch(error => console.error('Error saving display settings:', error));
+}
+
+// Track user activity to reset screen dimming timer
+function resetActivityTimer() {
+  clearTimeout(activityTimeout);
+  
+  // If screen is currently dimmed, wake it up
+  if (document.getElementById('screen-dimmer').classList.contains('active')) {
+    wakeScreen();
+  }
+  
+  // Only set a new timeout if screen burn protection is enabled
+  if (displaySettings.screenBurnProtection) {
+    const dimAfterMs = displaySettings.dimAfterMinutes * 60 * 1000;
+    activityTimeout = setTimeout(dimScreen, dimAfterMs);
+  }
+}
+
+// Dim the screen after inactivity
+function dimScreen() {
+  const dimmer = document.getElementById('screen-dimmer');
+  dimmer.classList.add('active');
+  
+  // Start countdown timer
+  let countdown = 30;
+  const countdownElement = document.getElementById('dimmer-countdown');
+  countdownElement.textContent = countdown;
+  
+  const countdownInterval = setInterval(() => {
+    countdown--;
+    countdownElement.textContent = countdown;
+    
+    if (countdown <= 0) {
+      clearInterval(countdownInterval);
+      wakeScreen();
+    }
+  }, 1000);
+  
+  // Store the interval ID on the dimmer element to clear it when waking up manually
+  dimmer.dataset.countdownInterval = countdownInterval;
+}
+
+// Wake up the screen
+function wakeScreen() {
+  const dimmer = document.getElementById('screen-dimmer');
+  dimmer.classList.remove('active');
+  
+  // Clear any running countdown
+  if (dimmer.dataset.countdownInterval) {
+    clearInterval(parseInt(dimmer.dataset.countdownInterval));
+  }
+  
+  // Reset the activity timer
+  resetActivityTimer();
+}
+
+// Check if night mode should be applied based on current time
+function applyNightModeIfNeeded() {
+  if (!displaySettings.autoNightMode) {
+    // Remove night mode if it was previously applied
+    document.getElementById('app').classList.remove('theme-night');
+    return;
+  }
+  
+  const now = new Date();
+  const currentTime = now.getHours() * 60 + now.getMinutes();
+  
+  // Parse start and end times to minutes
+  const [startHours, startMinutes] = displaySettings.nightModeStart.split(':').map(Number);
+  const [endHours, endMinutes] = displaySettings.nightModeEnd.split(':').map(Number);
+  
+  const nightModeStartMinutes = startHours * 60 + startMinutes;
+  const nightModeEndMinutes = endHours * 60 + endMinutes;
+  
+  // Determine if night mode should be active
+  let shouldApplyNightMode = false;
+  
+  // If night mode crosses midnight
+  if (nightModeStartMinutes > nightModeEndMinutes) {
+    shouldApplyNightMode = currentTime >= nightModeStartMinutes || currentTime < nightModeEndMinutes;
+  } else {
+    shouldApplyNightMode = currentTime >= nightModeStartMinutes && currentTime < nightModeEndMinutes;
+  }
+  
+  // Apply or remove night mode
+  if (shouldApplyNightMode) {
+    document.getElementById('app').classList.add('theme-night');
+  } else {
+    document.getElementById('app').classList.remove('theme-night');
+  }
+}
+
+// Update persistent clock display
+function updateClockDisplay() {
+  const clockDisplay = document.getElementById('clock-display');
+  
+  if (displaySettings.displayClock) {
+    clockDisplay.style.display = 'block';
+    updateClockTime();
+    
+    // Update clock every minute
+    setInterval(updateClockTime, 60000);
+  } else {
+    clockDisplay.style.display = 'none';
+  }
+}
+
+// Update the clock time
+function updateClockTime() {
+  const now = new Date();
+  const hours = now.getHours();
+  const minutes = now.getMinutes();
+  
+  // Format time as 12-hour with AM/PM
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  const displayHours = hours % 12 || 12; // Convert 0 to 12 for 12 AM
+  const displayMinutes = minutes < 10 ? '0' + minutes : minutes;
+  
+  document.getElementById('clock-display').textContent = `${displayHours}:${displayMinutes} ${ampm}`;
+}
+
+// Initialize screen burn protection and night mode
+document.addEventListener('DOMContentLoaded', () => {
+  // Load settings
+  loadDisplaySettings();
+  
+  // Set up event listeners for user activity
+  ['mousemove', 'mousedown', 'keypress', 'touchstart', 'scroll'].forEach(event => {
+    document.addEventListener(event, resetActivityTimer);
+  });
+  
+  // Set up Dimmer dismiss button
+  document.getElementById('dimmer-dismiss').addEventListener('click', wakeScreen);
+  
+  // Set up settings form event listeners
+  document.getElementById('auto-night-mode').addEventListener('change', saveDisplaySettings);
+  document.getElementById('night-mode-start').addEventListener('change', saveDisplaySettings);
+  document.getElementById('night-mode-end').addEventListener('change', saveDisplaySettings);
+  document.getElementById('screen-burn-protection').addEventListener('change', saveDisplaySettings);
+  document.getElementById('dim-after-minutes').addEventListener('change', saveDisplaySettings);
+  document.getElementById('display-clock').addEventListener('change', saveDisplaySettings);
+  
+  // Apply initial night mode if needed
+  applyNightModeIfNeeded();
+  
+  // Start a timer to check night mode every minute
+  setInterval(applyNightModeIfNeeded, 60000);
+  
+  // Initialize screen activity timer
+  resetActivityTimer();
+});

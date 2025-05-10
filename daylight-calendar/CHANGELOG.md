@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.7] - 2025-05-12
+
+### Added
+- Screen burn prevention feature that automatically dims the display after a period of inactivity
+- Auto night mode that shifts to warmer colors based on time to reduce blue light at night
+- Persistent clock display option for always visible time
+- Display settings in the Settings tab for configuring screen protection features
+- Countdown timer when screen is dimmed with tap-to-wake functionality
+
 ## [1.1.6] - 2025-05-09
 
 ### Added
