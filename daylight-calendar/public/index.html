@@ -390,14 +390,14 @@
             </div>
             <div class="game-item" data-game-url="https://hextris.io/" data-game-age="6+">
               <div class="game-icon">
-                <img src="https://hextris.io/images/icons/transparent/512.png" alt="Hextris" onerror="this.src='https://via.placeholder.com/64'">
+                <img src="https://github.com/Hextris/hextris/blob/gh-pages/images/twitter-opengraph.png?raw=true" alt="Hextris" onerror="this.src='https://via.placeholder.com/64'">
               </div>
               <div class="game-title">Hextris</div>
               <div class="playtime-indicator">10 min</div>
             </div>
             <div class="game-item" data-game-url="https://ellisonleao.github.io/clumsy-bird/" data-game-age="5+">
               <div class="game-icon">
-                <img src="https://ellisonleao.github.io/clumsy-bird/assets/logo.png" alt="Clumsy Bird" onerror="this.src='https://via.placeholder.com/64'">
+                <img src="https://nathanprinsley-games.prinsh.com/NathanPrinsleyGames/clumsybird/thumb_1.jpg" alt="Clumsy Bird" onerror="this.src='https://via.placeholder.com/64'">
               </div>
               <div class="game-title">Clumsy Bird</div>
               <div class="playtime-indicator">15 min</div>
@@ -538,6 +538,102 @@
                 </button>
               </div>
             </div>
+          </div>
+          
+          <div class="settings-section">
+            <h2>User Profiles</h2>
+            <div class="settings-card">
+              <div class="profile-management">
+                <div class="profile-list-settings" id="profile-list-settings">
+                  <!-- Profiles will be populated by JavaScript -->
+                </div>
+                <button id="add-profile-button" class="btn btn-primary"><i class="fas fa-user-plus"></i> Add Profile</button>
+              </div>
+            </div>
+          </div>
+          
+        </div>
+      </div>
+      
+      <!-- Profile Edit Modal -->
+      <div id="edit-profile-modal" class="modal">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3 id="profile-edit-title">Edit Profile</h3>
+            <button class="modal-close">&times;</button>
+          </div>
+          <div class="modal-body">
+            <form id="edit-profile-form">
+              <input type="hidden" id="profile-id">
+              
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="profile-name">Name</label>
+                  <input type="text" id="profile-name" required>
+                </div>
+              </div>
+              
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="profile-color">Profile Color</label>
+                  <div class="color-selector" id="profile-color-selector">
+                    <button type="button" class="color-option" data-color="#4285f4" style="background-color: #4285f4;"></button>
+                    <button type="button" class="color-option" data-color="#34a853" style="background-color: #34a853;"></button>
+                    <button type="button" class="color-option" data-color="#fbbc05" style="background-color: #fbbc05;"></button>
+                    <button type="button" class="color-option" data-color="#ea4335" style="background-color: #ea4335;"></button>
+                    <button type="button" class="color-option" data-color="#9c27b0" style="background-color: #9c27b0;"></button>
+                    <button type="button" class="color-option" data-color="#009688" style="background-color: #009688;"></button>
+                  </div>
+                  <input type="hidden" id="profile-color" required>
+                </div>
+                
+                <div class="form-group">
+                  <label for="profile-icon">Icon</label>
+                  <div class="icon-selector" id="profile-icon-selector">
+                    <button type="button" class="icon-option" data-icon="fa-user"><i class="fas fa-user"></i></button>
+                    <button type="button" class="icon-option" data-icon="fa-user-astronaut"><i class="fas fa-user-astronaut"></i></button>
+                    <button type="button" class="icon-option" data-icon="fa-user-ninja"><i class="fas fa-user-ninja"></i></button>
+                    <button type="button" class="icon-option" data-icon="fa-dog"><i class="fas fa-dog"></i></button>
+                    <button type="button" class="icon-option" data-icon="fa-cat"><i class="fas fa-cat"></i></button>
+                    <button type="button" class="icon-option" data-icon="fa-dragon"><i class="fas fa-dragon"></i></button>
+                  </div>
+                  <input type="hidden" id="profile-icon" required>
+                </div>
+              </div>
+              
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="profile-photo">Profile Photo</label>
+                  <div class="profile-photo-container">
+                    <div class="profile-photo-preview" id="profile-photo-preview">
+                      <i class="fas fa-user"></i>
+                    </div>
+                    <div class="profile-photo-actions">
+                      <button type="button" id="take-profile-photo" class="btn btn-sm btn-secondary">
+                        <i class="fas fa-camera"></i> Take Photo
+                      </button>
+                      <button type="button" id="upload-profile-photo" class="btn btn-sm btn-secondary">
+                        <i class="fas fa-upload"></i> Upload
+                      </button>
+                    </div>
+                    <input type="file" id="profile-photo-input" accept="image/*" style="display: none;">
+                    <input type="hidden" id="profile-photo-data">
+                  </div>
+                </div>
+              </div>
+              
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="profile-game-time-limit">Game Time Limit (minutes/day)</label>
+                  <input type="number" id="profile-game-time-limit" min="0" max="120" value="30">
+                </div>
+              </div>
+              
+              <div class="form-actions">
+                <button type="button" class="btn btn-danger" id="delete-profile-btn">Delete Profile</button>
+                <button type="submit" class="btn btn-primary">Save Profile</button>
+              </div>
+            </form>
           </div>
         </div>
       </div>

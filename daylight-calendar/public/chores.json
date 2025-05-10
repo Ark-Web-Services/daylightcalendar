@@ -7,13 +7,6 @@
     "completed": false
   },
   {
-    "id": "1700000000002",
-    "name": "Wash dishes",
-    "assigneeName": "Jordan",
-    "dueDate": "2024-05-15",
-    "completed": true
-  },
-  {
     "id": "1700000000003",
     "name": "Walk the dog",
     "assigneeName": "Casey",
@@ -33,5 +26,12 @@
     "assigneeName": "Jordan",
     "dueDate": "2024-05-17",
     "completed": true
+  },
+  {
+    "id": "1746836591090",
+    "name": "fd",
+    "assigneeName": "",
+    "dueDate": "",
+    "completed": false
   }
-] 
+]

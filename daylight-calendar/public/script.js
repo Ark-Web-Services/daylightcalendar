@@ -266,6 +266,46 @@ document.addEventListener('DOMContentLoaded', function() {
       });
   }
   
+  // Load user toggles in calendar toolbar
+  function loadUserToggles() {
+    const userToggles = document.getElementById('user-toggles');
+    if (!userToggles) return;
+    
+    fetch('/api/users')
+      .then(response => response.json())
+      .then(users => {
+        userToggles.innerHTML = '';
+        
+        users.forEach(user => {
+          const toggle = document.createElement('div');
+          toggle.className = 'user-toggle active';
+          toggle.dataset.user = user.name;
+          toggle.style.backgroundColor = user.color;
+          
+          if (user.icon) {
+            toggle.innerHTML = `<i class="fas ${user.icon}"></i>`;
+          } else {
+            toggle.textContent = user.name.charAt(0);
+          }
+          
+          toggle.addEventListener('click', () => {
+            toggle.classList.toggle('active');
+            toggle.classList.toggle('inactive');
+            
+            // In a real app, this would filter calendar events
+            // For now, we'll just show a message
+            console.log(`Toggle ${user.name}'s events: ${toggle.classList.contains('active') ? 'shown' : 'hidden'}`);
+          });
+          
+          userToggles.appendChild(toggle);
+        });
+      })
+      .catch(error => {
+        console.error('Error loading user toggles:', error);
+        userToggles.innerHTML = '<div class="error">Failed to load users</div>';
+      });
+  }
+  
   // Update next event in footer
   function updateNextEvent(events) {
     if (!events || events.length === 0) {
@@ -389,6 +429,7 @@ document.addEventListener('DOMContentLoaded', function() {
   fetchCalendarEvents();
   fetchAndDisplayChores();
   fetchAndDisplayMeals(); // Call to fetch meals
+  loadUserToggles(); // Load user toggles
   
   // Set up periodic refresh
   setInterval(fetchCalendarEvents, 5 * 60 * 1000); // Refresh every 5 minutes
@@ -685,6 +726,9 @@ document.addEventListener('DOMContentLoaded', function() {
   // Function to fetch and display meals in the weekly grid
   async function fetchAndDisplayMeals() {
     try {
+      // First, ensure meal type rows exist
+      createMealPlanRows();
+      
       const response = await fetch('/api/meals');
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -729,9 +773,26 @@ document.addEventListener('DOMContentLoaded', function() {
           const type = cell.dataset.type;
           const date = moment(currentWeekStart).add(day, 'days').format('YYYY-MM-DD');
           
-          // Here you would open a modal to add a meal
-          console.log(`Add meal for ${type} on ${date}`);
-          alert(`Feature coming soon: Add ${type} for ${moment(date).format('dddd, MMMM D')}`);
+          // Open the add meal modal
+          const addMealModal = document.getElementById('add-meal-modal');
+          if (addMealModal) {
+            // Set the meal date in the form
+            document.getElementById('mealDate').value = date;
+            
+            // Select the correct meal type
+            const mealTypeSelect = document.getElementById('mealType');
+            if (mealTypeSelect) {
+              for (let i = 0; i < mealTypeSelect.options.length; i++) {
+                if (mealTypeSelect.options[i].value.toLowerCase() === type) {
+                  mealTypeSelect.selectedIndex = i;
+                  break;
+                }
+              }
+            }
+            
+            // Open the modal
+            addMealModal.classList.add('show');
+          }
         });
       });
       
@@ -739,6 +800,53 @@ document.addEventListener('DOMContentLoaded', function() {
       console.error('Error fetching or displaying meal plan:', error);
       alert('Failed to load meal plan: ' + error.message);
     }
+  }
+  
+  // Function to create meal plan rows for each meal type
+  function createMealPlanRows() {
+    const mealPlanGrid = document.getElementById('meal-plan-grid');
+    if (!mealPlanGrid) return;
+    
+    // Get meal types - default to basic ones if API fails
+    const mealTypes = ['breakfast', 'lunch', 'dinner'];
+    
+    // Remove existing meal rows (not the header)
+    const existingRows = mealPlanGrid.querySelectorAll('.meal-plan-row');
+    existingRows.forEach(row => row.remove());
+    
+    // Create a row for each meal type
+    mealTypes.forEach(type => {
+      const row = document.createElement('div');
+      row.className = 'meal-plan-row';
+      row.dataset.mealType = type;
+      
+      // Add type header cell
+      const typeCell = document.createElement('div');
+      typeCell.className = 'meal-plan-cell meal-type-cell';
+      typeCell.innerHTML = `
+        <i class="fas fa-utensils"></i>
+        <span>${type.charAt(0).toUpperCase() + type.slice(1)}</span>
+      `;
+      row.appendChild(typeCell);
+      
+      // Add a cell for each day of the week
+      for (let day = 0; day < 7; day++) {
+        const dayCell = document.createElement('div');
+        dayCell.className = 'meal-plan-cell meal-cell';
+        dayCell.dataset.day = day;
+        dayCell.dataset.type = type;
+        
+        // Mark today's cell
+        const dayDate = moment(currentWeekStart).add(day, 'days');
+        if (dayDate.isSame(moment(), 'day')) {
+          dayCell.classList.add('today');
+        }
+        
+        row.appendChild(dayCell);
+      }
+      
+      mealPlanGrid.appendChild(row);
+    });
   }
   
   // Meal category management
@@ -1260,6 +1368,335 @@ document.addEventListener('DOMContentLoaded', function() {
   // Initialize the page
   fetchAndDisplayChores();
   updateMealWeekDates(); // This will also call fetchAndDisplayMeals
+
+  // Profile Management in Settings
+  const profileListSettings = document.getElementById('profile-list-settings');
+  const addProfileButton = document.getElementById('add-profile-button');
+  const editProfileModal = document.getElementById('edit-profile-modal');
+  const editProfileForm = document.getElementById('edit-profile-form');
+  const profileEditTitle = document.getElementById('profile-edit-title');
+  const deleteProfileBtn = document.getElementById('delete-profile-btn');
+  
+  // Color and icon selectors
+  const colorSelector = document.getElementById('profile-color-selector');
+  const iconSelector = document.getElementById('profile-icon-selector');
+  
+  // Profile photo
+  const profilePhotoPreview = document.getElementById('profile-photo-preview');
+  const takePhotoBtn = document.getElementById('take-profile-photo');
+  const uploadPhotoBtn = document.getElementById('upload-profile-photo');
+  const photoInput = document.getElementById('profile-photo-input');
+  
+  // Load user profiles to settings
+  async function loadProfilesForSettings() {
+    try {
+      const response = await fetch('/api/users');
+      const users = await response.json();
+      
+      if (profileListSettings) {
+        profileListSettings.innerHTML = '';
+        
+        users.forEach(user => {
+          const profileItem = document.createElement('div');
+          profileItem.className = 'profile-item-settings';
+          profileItem.dataset.userId = user.id;
+          
+          profileItem.innerHTML = `
+            <div class="profile-avatar-settings" style="background-color: ${user.color};">
+              <i class="fas ${user.icon}"></i>
+            </div>
+            <div class="profile-name-settings">${user.name}</div>
+            <div class="profile-meta">Game time: ${user.gameTimeLimit || 30} min/day</div>
+            <button class="profile-edit-btn"><i class="fas fa-pencil-alt"></i></button>
+          `;
+          
+          // Edit profile click
+          const editBtn = profileItem.querySelector('.profile-edit-btn');
+          editBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openProfileEdit(user);
+          });
+          
+          // Also allow editing by clicking the entire card
+          profileItem.addEventListener('click', () => {
+            openProfileEdit(user);
+          });
+          
+          profileListSettings.appendChild(profileItem);
+        });
+      }
+    } catch (error) {
+      console.error('Error loading profiles for settings:', error);
+    }
+  }
+  
+  // Open profile edit
+  function openProfileEdit(user) {
+    // Set form title
+    profileEditTitle.textContent = user ? 'Edit Profile' : 'Add New Profile';
+    
+    // Reset form
+    editProfileForm.reset();
+    
+    // Clear previous selections
+    document.querySelectorAll('.color-option.selected, .icon-option.selected').forEach(el => {
+      el.classList.remove('selected');
+    });
+    
+    // If editing an existing user, populate form
+    if (user) {
+      document.getElementById('profile-id').value = user.id;
+      document.getElementById('profile-name').value = user.name;
+      document.getElementById('profile-color').value = user.color;
+      document.getElementById('profile-icon').value = user.icon;
+      document.getElementById('profile-game-time-limit').value = user.gameTimeLimit || 30;
+      
+      // Select color
+      const colorOption = document.querySelector(`.color-option[data-color="${user.color}"]`);
+      if (colorOption) colorOption.classList.add('selected');
+      
+      // Select icon
+      const iconOption = document.querySelector(`.icon-option[data-icon="${user.icon}"]`);
+      if (iconOption) iconOption.classList.add('selected');
+      
+      // Set profile photo if exists
+      if (user.photo) {
+        profilePhotoPreview.innerHTML = `<img src="${user.photo}" alt="${user.name}">`;
+        document.getElementById('profile-photo-data').value = user.photo;
+      } else {
+        profilePhotoPreview.innerHTML = `<i class="fas ${user.icon}"></i>`;
+      }
+      
+      // Show delete button for existing profiles
+      deleteProfileBtn.style.display = 'block';
+    } else {
+      // New profile, set defaults
+      document.getElementById('profile-id').value = '';
+      document.getElementById('profile-color').value = '#4285f4';
+      document.getElementById('profile-icon').value = 'fa-user';
+      
+      // Select default color and icon
+      document.querySelector('.color-option[data-color="#4285f4"]').classList.add('selected');
+      document.querySelector('.icon-option[data-icon="fa-user"]').classList.add('selected');
+      
+      // Reset profile photo
+      profilePhotoPreview.innerHTML = '<i class="fas fa-user"></i>';
+      document.getElementById('profile-photo-data').value = '';
+      
+      // Hide delete button for new profiles
+      deleteProfileBtn.style.display = 'none';
+    }
+    
+    // Open modal
+    editProfileModal.classList.add('show');
+  }
+  
+  // Add new profile
+  if (addProfileButton) {
+    addProfileButton.addEventListener('click', () => {
+      openProfileEdit(null); // null indicates new profile
+    });
+  }
+  
+  // Color selector
+  if (colorSelector) {
+    colorSelector.querySelectorAll('.color-option').forEach(option => {
+      option.addEventListener('click', () => {
+        // Remove selected class from all options
+        colorSelector.querySelectorAll('.color-option').forEach(o => {
+          o.classList.remove('selected');
+        });
+        
+        // Add selected class to clicked option
+        option.classList.add('selected');
+        
+        // Update hidden input
+        document.getElementById('profile-color').value = option.dataset.color;
+        
+        // Update avatar preview background
+        profilePhotoPreview.style.backgroundColor = option.dataset.color;
+      });
+    });
+  }
+  
+  // Icon selector
+  if (iconSelector) {
+    iconSelector.querySelectorAll('.icon-option').forEach(option => {
+      option.addEventListener('click', () => {
+        // Remove selected class from all options
+        iconSelector.querySelectorAll('.icon-option').forEach(o => {
+          o.classList.remove('selected');
+        });
+        
+        // Add selected class to clicked option
+        option.classList.add('selected');
+        
+        // Update hidden input
+        document.getElementById('profile-icon').value = option.dataset.icon;
+        
+        // Update avatar preview icon if no photo
+        if (!document.getElementById('profile-photo-data').value) {
+          profilePhotoPreview.innerHTML = `<i class="fas ${option.dataset.icon}"></i>`;
+        }
+      });
+    });
+  }
+  
+  // Take profile photo
+  if (takePhotoBtn) {
+    takePhotoBtn.addEventListener('click', () => {
+      // Create camera modal
+      const cameraModal = document.createElement('div');
+      cameraModal.className = 'modal camera-modal';
+      cameraModal.innerHTML = `
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3>Take Profile Photo</h3>
+            <button class="modal-close">&times;</button>
+          </div>
+          <div class="modal-body">
+            <video id="camera-feed" autoplay playsinline></video>
+            <div class="camera-actions">
+              <button id="capture-photo" class="btn btn-primary"><i class="fas fa-camera"></i> Take Photo</button>
+            </div>
+          </div>
+        </div>
+      `;
+      
+      document.body.appendChild(cameraModal);
+      cameraModal.classList.add('show');
+      
+      // Get camera feed
+      const video = document.getElementById('camera-feed');
+      let stream = null;
+      
+      navigator.mediaDevices.getUserMedia({ video: true })
+        .then(cameraStream => {
+          stream = cameraStream;
+          video.srcObject = stream;
+        })
+        .catch(error => {
+          console.error('Error accessing camera:', error);
+          alert('Could not access the camera. Please check your permissions.');
+        });
+      
+      // Capture photo
+      document.getElementById('capture-photo').addEventListener('click', () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        canvas.getContext('2d').drawImage(video, 0, 0);
+        
+        // Convert to data URL
+        const photoData = canvas.toDataURL('image/jpeg');
+        
+        // Update preview and hidden input
+        profilePhotoPreview.innerHTML = `<img src="${photoData}" alt="Profile Photo">`;
+        document.getElementById('profile-photo-data').value = photoData;
+        
+        // Stop stream and close modal
+        if (stream) {
+          stream.getTracks().forEach(track => track.stop());
+        }
+        cameraModal.classList.remove('show');
+        setTimeout(() => {
+          cameraModal.remove();
+        }, 300);
+      });
+      
+      // Close button
+      cameraModal.querySelector('.modal-close').addEventListener('click', () => {
+        if (stream) {
+          stream.getTracks().forEach(track => track.stop());
+        }
+        cameraModal.classList.remove('show');
+        setTimeout(() => {
+          cameraModal.remove();
+        }, 300);
+      });
+    });
+  }
+  
+  // Upload profile photo
+  if (uploadPhotoBtn && photoInput) {
+    uploadPhotoBtn.addEventListener('click', () => {
+      photoInput.click();
+    });
+    
+    photoInput.addEventListener('change', () => {
+      if (photoInput.files && photoInput.files[0]) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const photoData = e.target.result;
+          
+          // Update preview and hidden input
+          profilePhotoPreview.innerHTML = `<img src="${photoData}" alt="Profile Photo">`;
+          document.getElementById('profile-photo-data').value = photoData;
+        };
+        reader.readAsDataURL(photoInput.files[0]);
+      }
+    });
+  }
+  
+  // Save profile
+  if (editProfileForm) {
+    editProfileForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const profileData = {
+        id: document.getElementById('profile-id').value,
+        name: document.getElementById('profile-name').value,
+        color: document.getElementById('profile-color').value,
+        icon: document.getElementById('profile-icon').value,
+        photo: document.getElementById('profile-photo-data').value,
+        gameTimeLimit: parseInt(document.getElementById('profile-game-time-limit').value, 10)
+      };
+      
+      try {
+        // Simulation - this would save to the server in a real app
+        console.log('Saving profile:', profileData);
+        
+        // Close modal
+        editProfileModal.classList.remove('show');
+        
+        // Reload profiles
+        loadProfilesForSettings();
+      } catch (error) {
+        console.error('Error saving profile:', error);
+        alert('Failed to save profile: ' + error.message);
+      }
+    });
+  }
+  
+  // Delete profile
+  if (deleteProfileBtn) {
+    deleteProfileBtn.addEventListener('click', async () => {
+      const profileId = document.getElementById('profile-id').value;
+      
+      if (!profileId) return;
+      
+      if (confirm('Are you sure you want to delete this profile? This cannot be undone.')) {
+        try {
+          // Simulation - this would delete from the server in a real app
+          console.log('Deleting profile:', profileId);
+          
+          // Close modal
+          editProfileModal.classList.remove('show');
+          
+          // Reload profiles
+          loadProfilesForSettings();
+        } catch (error) {
+          console.error('Error deleting profile:', error);
+          alert('Failed to delete profile: ' + error.message);
+        }
+      }
+    });
+  }
+  
+  // Load profiles when settings tab is active
+  document.querySelector('.tab-item[data-tab-target="settings-content"]').addEventListener('click', () => {
+    loadProfilesForSettings();
+  });
 });
 
 // Settings Tab Functionality - Media Testing
@@ -1362,7 +1799,10 @@ document.addEventListener('DOMContentLoaded', function() {
   themeButtons.forEach(button => {
     button.addEventListener('click', () => {
       const theme = button.dataset.theme;
-      updateTheme(theme);
+      
+      // Update the app's theme class directly
+      const app = document.getElementById('app');
+      app.className = `theme-${theme}`;
       
       // Update active state
       themeButtons.forEach(btn => btn.classList.remove('active'));
@@ -1624,6 +2064,11 @@ document.addEventListener('DOMContentLoaded', function() {
   let gameTimerInterval = null;
   let remainingGameTime = 0;
   
+  // Initially disable all game items until a profile is selected
+  gameItems.forEach(item => {
+    item.classList.add('disabled');
+  });
+  
   // Load user profiles
   async function loadUserProfiles() {
     try {
@@ -1698,6 +2143,11 @@ document.addEventListener('DOMContentLoaded', function() {
       playtimeMinutes.textContent = selectedProfile.playtime;
     }
     
+    // Enable game items now that a profile is selected
+    gameItems.forEach(item => {
+      item.classList.remove('disabled');
+    });
+    
     // Filter games based on profile
     filterGamesForProfile(selectedProfile);
   }
@@ -1719,6 +2169,12 @@ document.addEventListener('DOMContentLoaded', function() {
   // Initialize game play
   gameItems.forEach(item => {
     item.addEventListener('click', () => {
+      // Check if game is disabled (no profile selected)
+      if (item.classList.contains('disabled')) {
+        alert('Please select a profile first before playing games.');
+        return;
+      }
+      
       if (!selectedProfile) {
         alert('Please select a profile first!');
         return;
@@ -1762,7 +2218,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Update timer overlay
         if (gameTimerOverlay) {
-          gameTimerOverlay.style.display = 'block';
+          gameTimerOverlay.style.display = 'flex';
         }
         
         if (gameTimerUser) {
