@@ -7,7 +7,7 @@ This repository contains the Daylight Calendar add-on for Home Assistant, which 
 1. Navigate to the Home Assistant Supervisor panel
 2. Go to the Add-on Store tab
 3. Click the three dots in the upper right corner and select "Repositories"
-4. Add this repository URL: `https://github.com/yourusername/daylight-calendar`
+4. Add this repository URL: `https://github.com/Ark-Web-Services/daylightcalendar`
 5. Find the "Daylight Calendar" add-on in the store and click "Install"
 
 ## Features

@@ -16,7 +16,7 @@ This guide will help you install and set up the Daylight Calendar add-on for you
 2. Navigate to **Supervisor** > **Add-on Store**
 3. Click the menu icon (three dots) in the top right corner
 4. Select **Repositories**
-5. Add the following URL: `https://github.com/yourusername/daylight-calendar`
+5. Add the following URL: `https://github.com/Ark-Web-Services/daylightcalendar`
 6. Click **Add**
 
 ### 2. Install the Add-on
