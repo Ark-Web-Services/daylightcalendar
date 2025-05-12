@@ -1,4 +1,6 @@
 # Changelog
+## [1.1.7.1] - 2025-05-12
+- Correct build errors 
 
 ## [1.1.7] - 2025-05-12
 
