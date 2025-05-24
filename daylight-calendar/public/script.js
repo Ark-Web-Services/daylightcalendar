@@ -1,24 +1,33 @@
 document.addEventListener('DOMContentLoaded', function() {
-  // Connect to socket.io server
-  const socket = io();
-  
-  // Configuration
-  let appConfig = {
+  // Initialize appConfig with default values to avoid reference errors elsewhere
+  window.appConfig = window.appConfig || {
     theme: 'light',
     show_weather: true,
     locale: 'en-US',
-    time_format: '12h'
+    time_format: '12h',
+    allow_dummy_weather: false // Ensure dummy weather is off by default and VERY EARLY
   };
-  
+
+  // Global variable to store weather forecast data - MOVED EARLIER
+  let weatherForecastData = [];
+  // window.currentWeather is implicitly global or should be declared if not.
+  // It is currently assigned as window.currentWeather in fetchWeather, which is fine.
+
+  // Connect to socket.io server
+  const socket = io();
+
+  // Configuration
+  // Removed local appConfig variable, will use window.appConfig
+
   // Handle sidebar toggle
   const sidebar = document.getElementById('sidebar');
   const sidebarToggle = document.getElementById('sidebar-logo');
   const app = document.getElementById('app');
-  
+
   if (sidebarToggle) {
     sidebarToggle.addEventListener('click', function() {
       app.classList.toggle('sidebar-collapsed');
-      
+
       // If we have a calendar instance, update its size after sidebar animation completes
       setTimeout(() => {
         if (typeof calendar !== 'undefined' && calendar.updateSize) {
@@ -48,7 +57,7 @@ document.addEventListener('DOMContentLoaded', function() {
     button.addEventListener('click', () => {
       const modal = button.closest('.modal');
       modal.classList.remove('show');
-      
+
       // If this is the game modal, clear the iframe src when closing
       if (modal.id === 'game-focus-modal') {
         document.getElementById('game-iframe').src = '';
@@ -86,19 +95,19 @@ document.addEventListener('DOMContentLoaded', function() {
   async function populateMealTypeDropdown() {
     const mealTypeSelect = document.getElementById('mealType');
     if (!mealTypeSelect) return;
-    
+
     try {
       // Clear existing options
       mealTypeSelect.innerHTML = '';
-      
+
       // Fetch categories from API
       const response = await fetch('/api/meal-categories');
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
+
       const categories = await response.json();
-      
+
       // Add options for each category
       categories.forEach(category => {
         const option = document.createElement('option');
@@ -106,7 +115,7 @@ document.addEventListener('DOMContentLoaded', function() {
         option.textContent = category.name;
         mealTypeSelect.appendChild(option);
       });
-      
+
       // Set a default selection if available
       if (mealTypeSelect.options.length > 0) {
         mealTypeSelect.selectedIndex = 0;
@@ -130,7 +139,7 @@ document.addEventListener('DOMContentLoaded', function() {
     toggleCompletedButton.addEventListener('click', () => {
       hideCompleted = !hideCompleted;
       const icon = toggleCompletedButton.querySelector('i');
-      
+
       if (hideCompleted) {
         toggleCompletedButton.innerHTML = '<i class="fas fa-eye"></i> Show Completed';
         document.querySelectorAll('.kanban-item.completed').forEach(item => {
@@ -158,36 +167,36 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // Meal week navigation
   let currentWeekStart = moment().startOf('week');
-  
+
   const updateMealWeekDates = () => {
     const dayHeaders = document.querySelectorAll('.day-header');
     dayHeaders.forEach((header, index) => {
       const date = moment(currentWeekStart).add(index, 'days');
       header.textContent = date.format('ddd, MMM D');
-      
+
       if (date.isSame(moment(), 'day')) {
         header.classList.add('today');
       } else {
         header.classList.remove('today');
       }
     });
-    
+
     // Mark today's cells
     document.querySelectorAll('.meal-cell').forEach(cell => {
       const dayIndex = parseInt(cell.dataset.day);
       const date = moment(currentWeekStart).add(dayIndex, 'days');
-      
+
       if (date.isSame(moment(), 'day')) {
         cell.classList.add('today');
       } else {
         cell.classList.remove('today');
       }
     });
-    
+
     // Refresh meal data for the current week
     fetchAndDisplayMeals();
   };
-  
+
   const prevWeekButton = document.getElementById('prev-week');
   if (prevWeekButton) {
     prevWeekButton.addEventListener('click', () => {
@@ -195,7 +204,7 @@ document.addEventListener('DOMContentLoaded', function() {
       updateMealWeekDates();
     });
   }
-  
+
   const nextWeekButton = document.getElementById('next-week');
   if (nextWeekButton) {
     nextWeekButton.addEventListener('click', () => {
@@ -203,15 +212,16 @@ document.addEventListener('DOMContentLoaded', function() {
       updateMealWeekDates();
     });
   }
-  
+
   // Fetch configuration
   fetch('/api/config')
     .then(response => response.json())
     .then(config => {
-      appConfig = config;
-      updateTheme(appConfig.theme);
+      window.appConfig = { ...window.appConfig, ...config };
+      window.appConfig.allow_dummy_weather = false; // Force dummy weather off
+      updateTheme(window.appConfig.theme);
       updateTime();
-      if (appConfig.show_weather) {
+      if (window.appConfig.show_weather) {
         fetchWeather();
       } else {
         document.getElementById('weather-container').style.display = 'none';
@@ -219,8 +229,17 @@ document.addEventListener('DOMContentLoaded', function() {
     })
     .catch(error => {
       console.error('Error loading configuration:', error);
+      window.appConfig.allow_dummy_weather = false; // Ensure dummy weather is off on error
+      // Use defaults if config fails
+      updateTheme(window.appConfig.theme);
+      updateTime();
+      if (window.appConfig.show_weather) {
+        fetchWeather();
+      } else {
+        document.getElementById('weather-container').style.display = 'none';
+      }
     });
-  
+
   // Initialize calendar
   const calendarEl = document.getElementById('calendar');
   const calendar = new FullCalendar.Calendar(calendarEl, {
@@ -246,7 +265,7 @@ document.addEventListener('DOMContentLoaded', function() {
       if (endTime) {
         timeStr += ` - ${endTime}`;
       }
-      
+
       const eventInfo = `${event.title} ${timeStr ? '(' + timeStr + ')' : ''}`;
       document.getElementById('next-event-info').textContent = eventInfo;
     },
@@ -254,36 +273,66 @@ document.addEventListener('DOMContentLoaded', function() {
       // Add weather icons to calendar days
       const date = info.date;
       const dateKey = moment(date).format('YYYY-MM-DD');
-      
-      // Get weather for this day (in a real implementation, this would come from an API or stored forecast)
-      const weatherForDay = getWeatherForDate(dateKey);
-      
-      if (weatherForDay) {
-        const weatherIcon = document.createElement('div');
-        weatherIcon.className = `day-weather-icon weather-${weatherForDay.condition}`;
-        
-        // Map condition to icon
-        const iconMap = {
-          'sunny': '<i class="fas fa-sun"></i>',
-          'cloudy': '<i class="fas fa-cloud"></i>',
-          'rainy': '<i class="fas fa-cloud-rain"></i>',
-          'stormy': '<i class="fas fa-bolt"></i>',
-          'snowy': '<i class="fas fa-snowflake"></i>'
-        };
-        
-        weatherIcon.innerHTML = iconMap[weatherForDay.condition] || iconMap['cloudy'];
-        
-        // Add to the day cell's top area
-        const dayTop = info.el.querySelector('.fc-daygrid-day-top');
-        if (dayTop) {
-          dayTop.appendChild(weatherIcon);
+      const dayTop = info.el.querySelector('.fc-daygrid-day-top');
+
+      // 1. Immediately clear any existing weather icon from this cell
+      if (dayTop) {
+        const existingIcon = dayTop.querySelector('.day-weather-icon');
+        if (existingIcon) {
+          existingIcon.remove();
         }
+      }
+
+      // Get weather for this date using our global function
+      let weatherForDay = getWeatherForDate(dateKey);
+
+      // 2. Strictly enforce allow_dummy_weather if data is fallback AND allow_dummy_weather is false
+      if (weatherForDay && weatherForDay._isFallback === true && window.appConfig && window.appConfig.allow_dummy_weather === false) {
+        console.log(`[DEBUG] dayCellDidMount: Nullifying fallback weather for ${dateKey} because allow_dummy_weather is false.`);
+        weatherForDay = null;
+      }
+
+      // 3. Only continue if we have real (or explicitly allowed dummy) weather data
+      if (weatherForDay) {
+        // console.log(`[DEBUG] Adding weather to calendar cell: ${dateKey}`, weatherForDay); // Can be verbose
+
+        const weatherIconDiv = document.createElement('div');
+        weatherIconDiv.className = `day-weather-icon weather-${weatherForDay.condition}`;
+        weatherIconDiv.title = `${weatherForDay.temp}°${weatherForDay._isFallback ? ' (Estimated)' : ''}`;
+
+        const iconMap = {
+          'clear-night': '<i class="fas fa-moon"></i>',
+          'cloudy': '<i class="fas fa-cloud"></i>',
+          'fog': '<i class="fas fa-smog"></i>',
+          'hail': '<i class="fas fa-cloud-meatball"></i>',
+          'lightning': '<i class="fas fa-bolt"></i>',
+          'lightning-rainy': '<i class="fas fa-bolt"></i>',
+          'partlycloudy': '<i class="fas fa-cloud-sun"></i>',
+          'pouring': '<i class="fas fa-cloud-showers-heavy"></i>',
+          'rainy': '<i class="fas fa-cloud-rain"></i>',
+          'snowy': '<i class="fas fa-snowflake"></i>',
+          'snowy-rainy': '<i class="fas fa-cloud-sleet"></i>',
+          'sunny': '<i class="fas fa-sun"></i>',
+          'windy': '<i class="fas fa-wind"></i>',
+          'windy-variant': '<i class="fas fa-wind"></i>',
+          'exceptional': '<i class="fas fa-exclamation-triangle"></i>'
+        };
+
+        weatherIconDiv.innerHTML = iconMap[weatherForDay.condition] || iconMap['cloudy'];
+
+        if (dayTop) {
+          dayTop.appendChild(weatherIconDiv);
+        } else {
+          console.error(`[ERROR] Could not find .fc-daygrid-day-top for date ${dateKey} to append weather icon.`);
+        }
+      } else {
+        // console.log(`[INFO] No weather data available for calendar cell ${dateKey}`); // Can be verbose
       }
     }
   });
-  
+
   calendar.render();
-  
+
   // Fetch calendar events
   function fetchCalendarEvents() {
     fetch('/api/calendar')
@@ -291,7 +340,7 @@ document.addEventListener('DOMContentLoaded', function() {
       .then(calendars => {
         // Clear existing events
         calendar.removeAllEvents();
-        
+
         // Add events from all calendars
         let allEvents = [];
         calendars.forEach(cal => {
@@ -305,10 +354,10 @@ document.addEventListener('DOMContentLoaded', function() {
             })));
           }
         });
-        
+
         // Add events to calendar
         calendar.addEventSource(allEvents);
-        
+
         // Update next event
         updateNextEvent(allEvents);
       })
@@ -316,38 +365,38 @@ document.addEventListener('DOMContentLoaded', function() {
         console.error('Error fetching calendar events:', error);
       });
   }
-  
+
   // Load user toggles in calendar toolbar
   function loadUserToggles() {
     const userToggles = document.getElementById('user-toggles');
     if (!userToggles) return;
-    
+
     fetch('/api/users')
       .then(response => response.json())
       .then(users => {
         userToggles.innerHTML = '';
-        
+
         users.forEach(user => {
           const toggle = document.createElement('div');
           toggle.className = 'user-toggle active';
           toggle.dataset.user = user.name;
           toggle.style.backgroundColor = user.color;
-          
+
           if (user.icon) {
             toggle.innerHTML = `<i class="fas ${user.icon}"></i>`;
           } else {
             toggle.textContent = user.name.charAt(0);
           }
-          
+
           toggle.addEventListener('click', () => {
             toggle.classList.toggle('active');
             toggle.classList.toggle('inactive');
-            
+
             // In a real app, this would filter calendar events
             // For now, we'll just show a message
             console.log(`Toggle ${user.name}'s events: ${toggle.classList.contains('active') ? 'shown' : 'hidden'}`);
           });
-          
+
           userToggles.appendChild(toggle);
         });
       })
@@ -356,148 +405,456 @@ document.addEventListener('DOMContentLoaded', function() {
         userToggles.innerHTML = '<div class="error">Failed to load users</div>';
       });
   }
-  
+
   // Update next event in footer
   function updateNextEvent(events) {
     if (!events || events.length === 0) {
       document.getElementById('next-event-info').textContent = 'No upcoming events';
       return;
     }
-    
+
     const now = new Date();
-    
+
     // Find next event
     const upcomingEvents = events
       .filter(event => new Date(event.start) > now)
       .sort((a, b) => new Date(a.start) - new Date(b.start));
-    
+
     if (upcomingEvents.length === 0) {
       document.getElementById('next-event-info').textContent = 'No upcoming events';
       return;
     }
-    
+
     const nextEvent = upcomingEvents[0];
     const startTime = moment(nextEvent.start).format('ddd, MMM D, h:mm A');
     document.getElementById('next-event-info').textContent = `${nextEvent.title} (${startTime})`;
   }
-  
+
   // Update time display
   function updateTime() {
     const now = new Date();
-    
+
     // Format time based on configuration
     let timeFormat = 'h:mm A';
-    if (appConfig.time_format === '24h') {
+    if (window.appConfig.time_format === '24h') { // Use window.appConfig
       timeFormat = 'HH:mm';
     }
-    
+
     const timeStr = moment(now).format(timeFormat);
     const dateStr = moment(now).format('dddd, MMMM D, Y');
-    
+
     document.getElementById('current-time').textContent = timeStr;
     document.getElementById('current-date').textContent = dateStr;
-    
+
     setTimeout(updateTime, 1000);
   }
-  
+
   // Fetch weather data
   function fetchWeather() {
-    if (!appConfig.show_weather) return;
-    
+    if (!window.appConfig.show_weather) {
+      document.getElementById('weather-container').style.display = 'none';
+      return;
+    }
+    // Ensure weather container is potentially visible if weather is shown
+    const weatherContainerElement = document.getElementById('weather-container');
+    if (weatherContainerElement) {
+        weatherContainerElement.style.display = 'flex';
+    }
+
+
     fetch('/api/weather')
-      .then(response => response.json())
-      .then(data => {
-        if (data.enabled === false) return;
-        
-        const temp = Math.round(data.attributes.temperature);
-        const condition = data.attributes.condition;
-        
-        const tempEl = document.querySelector('.weather .temp');
-        const conditionEl = document.querySelector('.weather .condition i');
-        const weatherContainer = document.getElementById('weather-container');
-        
-        tempEl.textContent = `${temp}°`;
-        
-        // Map Home Assistant weather condition to Font Awesome icon
-        const iconMap = {
-          'clear-night': 'fa-moon',
-          'cloudy': 'fa-cloud',
-          'fog': 'fa-smog',
-          'hail': 'fa-cloud-meatball',
-          'lightning': 'fa-bolt',
-          'lightning-rainy': 'fa-bolt',
-          'partlycloudy': 'fa-cloud-sun',
-          'pouring': 'fa-cloud-showers-heavy',
-          'rainy': 'fa-cloud-rain',
-          'snowy': 'fa-snowflake',
-          'snowy-rainy': 'fa-cloud-sleet',
-          'sunny': 'fa-sun',
-          'windy': 'fa-wind',
-          'windy-variant': 'fa-wind',
-          'exceptional': 'fa-exclamation-triangle'
-        };
-        
-        const iconClass = iconMap[condition] || 'fa-cloud';
-        conditionEl.className = `fas ${iconClass}`;
-        
-        // Add a text indicator for the condition
-        let conditionText = document.querySelector('.weather .condition-text');
-        if (!conditionText) {
-          conditionText = document.createElement('div');
-          conditionText.className = 'condition-text';
-          weatherContainer.appendChild(conditionText);
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
         }
-        
-        // Format the condition name to be more readable
-        const readableCondition = condition
-          .replace(/-/g, ' ')
-          .replace(/\b\w/g, l => l.toUpperCase());
-        
-        conditionText.textContent = readableCondition;
-        
-        // Add a last updated indicator
-        let lastUpdated = document.querySelector('.weather .last-updated');
-        if (!lastUpdated) {
-          lastUpdated = document.createElement('div');
-          lastUpdated.className = 'last-updated';
-          weatherContainer.appendChild(lastUpdated);
+        return response.json();
+      })
+      .then(apiResponse => {
+        console.log('[DEBUG] Weather data received from /api/weather:', JSON.stringify(apiResponse, null, 2));
+
+        if (apiResponse.enabled === false) {
+          console.log('[INFO] Weather display is disabled by API.');
+          if (weatherContainerElement) {
+            weatherContainerElement.style.display = 'none';
+          }
+          // Clear weather data
+          weatherForecastData = [];
+          window.currentWeather = null;
+          updateCalendarWeather();
+          return;
         }
-        
-        lastUpdated.textContent = `Updated: ${moment().format('h:mm A')}`;
+
+        if (apiResponse.error) {
+            console.error('[ERROR] API returned an error for weather:', apiResponse.error);
+            displayWeatherError('API Error: ' + apiResponse.error);
+            return;
+        }
+
+        let haStateObject = null;
+        let forecastArrayFromAPI = [];
+
+        console.log('[DEBUG] Checking apiResponse.current:', apiResponse.current);
+        if (apiResponse.current && typeof apiResponse.current === 'object') {
+          haStateObject = apiResponse.current;
+          console.log('[DEBUG] Using apiResponse.current as haStateObject:', JSON.stringify(haStateObject, null, 2));
+          if (apiResponse.forecast && Array.isArray(apiResponse.forecast)) {
+            forecastArrayFromAPI = apiResponse.forecast;
+          } else if (haStateObject.attributes && haStateObject.attributes.forecast && Array.isArray(haStateObject.attributes.forecast)) {
+            forecastArrayFromAPI = haStateObject.attributes.forecast;
+          }
+        } else if (apiResponse.attributes && apiResponse.state) {
+          // Fallback for when apiResponse itself is the HA state object
+          console.warn('[WARN] Weather API returned HA state object directly (i.e., apiResponse is the state object).');
+          haStateObject = apiResponse;
+          console.log('[DEBUG] Using apiResponse itself as haStateObject:', JSON.stringify(haStateObject, null, 2));
+          if (haStateObject.attributes && haStateObject.attributes.forecast && Array.isArray(haStateObject.attributes.forecast)) {
+            forecastArrayFromAPI = haStateObject.attributes.forecast;
+          }
+        } else {
+          console.error('[ERROR] Could not determine the Home Assistant state object from the API response structure.', JSON.stringify(apiResponse, null, 2));
+          displayWeatherError('Unexpected weather data format.');
+          return;
+        }
+
+        if (!haStateObject || typeof haStateObject.attributes !== 'object') {
+          console.error('[ERROR] haStateObject is invalid or missing attributes. haStateObject:', JSON.stringify(haStateObject, null, 2));
+          displayWeatherError('Weather data format error (no attributes).');
+          return;
+        }
+
+        const attributes = haStateObject.attributes || {};
+
+        const temp = Math.round(
+          attributes.temperature !== undefined ? attributes.temperature : 0
+        );
+        const condition = attributes.condition || haStateObject.state || 'unknown';
+
+        console.log('[DEBUG] Current weather interpreted:', { temp, condition });
+
+        window.currentWeather = { temp, condition };
+
+        if (forecastArrayFromAPI.length === 0 && attributes.forecast && Array.isArray(attributes.forecast)) {
+             forecastArrayFromAPI = attributes.forecast;
+        }
+
+        weatherForecastData = preprocessWeatherData(forecastArrayFromAPI || []);
+        console.log('[DEBUG] Processed weather forecast data:', weatherForecastData);
+
+        updateCurrentWeatherDisplay(temp, condition);
+        updateCalendarWeather();
       })
       .catch(error => {
-        console.error('Error fetching weather data:', error);
+        console.error('[ERROR] Error fetching or processing weather data:', error.message, error.stack);
+        displayWeatherError('Failed to load weather.');
       });
   }
-  
+
+  // Helper function to display errors in the weather container
+  function displayWeatherError(message) {
+    const weatherContainer = document.getElementById('weather-container');
+    if (weatherContainer) {
+      // Clear any previous content (like loading indicators or old data)
+      weatherContainer.innerHTML = `<div class="error" style="padding:10px; font-size:0.9em; color: red;">${message}</div>`;
+      weatherContainer.style.display = 'flex'; // Ensure it's visible
+    }
+    // Clear any existing weather icons from calendar and global stores
+    weatherForecastData = [];
+    window.currentWeather = null;
+    updateCalendarWeather(); // This will remove icons if data is cleared
+  }
+
+  // Process weather data to ensure consistent format
+  function preprocessWeatherData(forecastData) {
+    if (!forecastData || !Array.isArray(forecastData) || forecastData.length === 0) {
+      console.log('[DEBUG] No forecast data to process');
+      return [];
+    }
+
+    console.log('[DEBUG] Processing forecast data:', forecastData);
+
+    return forecastData.map(entry => {
+      if (!entry) return null;
+
+      // Create a standardized forecast entry
+      return {
+        datetime: entry.datetime || entry.date || null,
+        condition: entry.condition || entry.state || 'unknown',
+        temperature: entry.temperature || entry.temp || 0,
+        templow: entry.templow || entry.min_temp || 0,
+        humidity: entry.humidity || 0,
+        precipitation: entry.precipitation || 0
+      };
+    }).filter(entry => entry && entry.datetime); // Filter out invalid entries
+  }
+
+  // Update the current weather display in the top-right corner
+  function updateCurrentWeatherDisplay(temp, condition) {
+    console.log('[DEBUG] Updating current weather display:', temp, condition);
+
+    const tempEl = document.querySelector('.weather .temp');
+    const conditionEl = document.querySelector('.weather .condition i');
+    const weatherContainer = document.getElementById('weather-container');
+
+    if (!weatherContainer) {
+      console.error('[ERROR] Weather container not found in DOM');
+      return;
+    }
+
+    // Update temperature
+    if (tempEl) {
+      tempEl.textContent = `${temp}°`;
+      console.log('[DEBUG] Updated temperature display to:', `${temp}°`);
+    } else {
+      console.error('[ERROR] Temperature element not found in DOM');
+    }
+
+    // Map Home Assistant weather condition to Font Awesome icon
+    const iconMap = {
+      'clear-night': 'fa-moon',
+      'cloudy': 'fa-cloud',
+      'fog': 'fa-smog',
+      'hail': 'fa-cloud-meatball',
+      'lightning': 'fa-bolt',
+      'lightning-rainy': 'fa-bolt',
+      'partlycloudy': 'fa-cloud-sun',
+      'pouring': 'fa-cloud-showers-heavy',
+      'rainy': 'fa-cloud-rain',
+      'snowy': 'fa-snowflake',
+      'snowy-rainy': 'fa-cloud-sleet',
+      'sunny': 'fa-sun',
+      'windy': 'fa-wind',
+      'windy-variant': 'fa-wind',
+      'exceptional': 'fa-exclamation-triangle'
+    };
+
+    // Update weather icon
+    const iconClass = iconMap[condition] || 'fa-cloud';
+    if (conditionEl) {
+      conditionEl.className = `fas ${iconClass}`;
+      console.log('[DEBUG] Updated weather icon to:', iconClass);
+    } else {
+      console.error('[ERROR] Weather condition element not found in DOM');
+    }
+
+    // Add or update condition text
+    let conditionText = document.querySelector('.weather .condition-text');
+    if (!conditionText) {
+      conditionText = document.createElement('div');
+      conditionText.className = 'condition-text';
+      weatherContainer.appendChild(conditionText);
+      console.log('[DEBUG] Created new condition text element');
+    }
+
+    // Format the condition name to be more readable
+    const readableCondition = condition.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    conditionText.textContent = readableCondition;
+    console.log('[DEBUG] Updated condition text to:', readableCondition);
+
+    // Add or update last updated timestamp
+    let lastUpdated = document.querySelector('.weather .last-updated');
+    if (!lastUpdated) {
+      lastUpdated = document.createElement('div');
+      lastUpdated.className = 'last-updated';
+      weatherContainer.appendChild(lastUpdated);
+      console.log('[DEBUG] Created new last-updated element');
+    }
+
+    const updateTime = moment().format('h:mm A');
+    lastUpdated.textContent = `Updated: ${updateTime}`;
+    console.log('[DEBUG] Updated timestamp to:', updateTime);
+  }
+
+  // Update weather icons on the calendar
+  function updateCalendarWeather() {
+    console.log('[DEBUG] Updating calendar weather icons. First, removing all existing day-weather-icons globally.');
+
+    // Force removal of all existing weather icons first
+    document.querySelectorAll('.fc-daygrid-day .day-weather-icon').forEach(icon => icon.remove());
+
+    console.log('[DEBUG] Attempting to refetch events and re-render calendar.');
+    if (calendar) {
+        try {
+            // calendar.refetchEvents(); // Not using events for weather, but can sometimes help refresh things.
+            calendar.render(); // Re-render the calendar view
+            console.log('[DEBUG] Calendar.render() called.');
+        } catch (e) {
+            console.error('[ERROR] Error during calendar.render in updateCalendarWeather:', e);
+        }
+    } else {
+        console.warn('[WARN] Calendar object not found in updateCalendarWeather.');
+    }
+  }
+
+  // Function to update weather icons on calendar days through direct DOM manipulation
+  function updateCalendarDayWeather() {
+    console.log('[DEBUG] Updating calendar day weather via DOM');
+
+    // Find all day cells in the calendar
+    const dayCells = document.querySelectorAll('.fc-daygrid-day');
+
+    if (dayCells.length === 0) {
+      console.log('[DEBUG] No day cells found in calendar');
+      return;
+    }
+
+    console.log(`[DEBUG] Found ${dayCells.length} day cells`);
+
+    dayCells.forEach(cell => {
+      // Get the date for this cell from its data-date attribute
+      const dateAttr = cell.getAttribute('data-date');
+      if (!dateAttr) return;
+
+      // ALWAYS remove any existing weather icon first from this specific cell
+      let existingIcon = cell.querySelector('.day-weather-icon');
+      if (existingIcon) {
+        existingIcon.remove();
+        console.log(`[DEBUG] Removed existing weather icon from cell ${dateAttr}`);
+      }
+
+      console.log(`[DEBUG] Processing cell for date: ${dateAttr}`);
+
+      // Get weather for this date
+      const weatherForDay = getWeatherForDate(dateAttr);
+
+      // Find any existing weather icon
+      let weatherIcon = cell.querySelector('.day-weather-icon');
+
+      // If we have real weather data
+      if (weatherForDay) {
+        console.log(`[DEBUG] Weather for ${dateAttr}:`, weatherForDay);
+
+        // Create weather icon if it doesn't exist
+        if (!weatherIcon) {
+          weatherIcon = document.createElement('div');
+          weatherIcon.className = 'day-weather-icon';
+          const dayTop = cell.querySelector('.fc-daygrid-day-top');
+          if (dayTop) {
+            dayTop.appendChild(weatherIcon);
+          }
+        }
+
+        // Update the weather icon class
+        weatherIcon.className = `day-weather-icon weather-${weatherForDay.condition}`;
+
+        // Map Home Assistant weather condition to Font Awesome icon HTML
+        const iconMap = {
+          'clear-night': '<i class="fas fa-moon"></i>',
+          'cloudy': '<i class="fas fa-cloud"></i>',
+          'fog': '<i class="fas fa-smog"></i>',
+          'hail': '<i class="fas fa-cloud-meatball"></i>',
+          'lightning': '<i class="fas fa-bolt"></i>',
+          'lightning-rainy': '<i class="fas fa-bolt"></i>',
+          'partlycloudy': '<i class="fas fa-cloud-sun"></i>',
+          'pouring': '<i class="fas fa-cloud-showers-heavy"></i>',
+          'rainy': '<i class="fas fa-cloud-rain"></i>',
+          'snowy': '<i class="fas fa-snowflake"></i>',
+          'snowy-rainy': '<i class="fas fa-cloud-sleet"></i>',
+          'sunny': '<i class="fas fa-sun"></i>',
+          'windy': '<i class="fas fa-wind"></i>',
+          'windy-variant': '<i class="fas fa-wind"></i>',
+          'exceptional': '<i class="fas fa-exclamation-triangle"></i>'
+        };
+
+        // Set the icon HTML and temperature tooltip
+        weatherIcon.innerHTML = iconMap[weatherForDay.condition] || iconMap['cloudy'];
+        weatherIcon.title = `${weatherForDay.temp}°`;
+      } else {
+        // If we don't have real data, remove any existing weather icon
+        if (weatherIcon) {
+          weatherIcon.remove();
+        }
+      }
+    });
+  }
+
+  // Function to get weather for a specific date
+  function getWeatherForDate(dateKey) {
+    // Check if it's today's date and we have current weather data
+    const today = new Date().toISOString().split('T')[0];
+    const targetDateString = new Date(dateKey).toISOString().split('T')[0];
+
+    if (targetDateString === today && window.currentWeather) {
+      console.log(`[DEBUG] Using current weather for today (${today})`);
+      return {
+        temp: window.currentWeather.temp,
+        condition: window.currentWeather.condition
+      };
+    }
+
+    // Try to find a matching forecast entry for this date
+    if (weatherForecastData && weatherForecastData.length > 0) {
+      // Convert dateKey (YYYY-MM-DD) to match datetime format in forecast
+      console.log(`[DEBUG] Looking for weather forecast for date: ${targetDateString}`);
+      console.log(`[DEBUG] Available forecast dates: ${JSON.stringify(weatherForecastData.map(f => {
+        if (!f || !f.datetime) return 'invalid';
+        return new Date(f.datetime).toISOString().split('T')[0];
+      }))}`);
+
+      // Find forecast entry for this date
+      const forecastEntry = weatherForecastData.find(entry => {
+        if (!entry || !entry.datetime) {
+          console.log(`[DEBUG] Skipping invalid forecast entry: ${JSON.stringify(entry)}`);
+          return false;
+        }
+
+        const forecastDate = new Date(entry.datetime);
+        const forecastDateString = forecastDate.toISOString().split('T')[0];
+
+        console.log(`[DEBUG] Comparing target date ${targetDateString} with forecast date: ${forecastDateString}`);
+        return forecastDateString === targetDateString;
+      });
+
+      if (forecastEntry) {
+        console.log(`[DEBUG] Found forecast for ${targetDateString}:`, forecastEntry);
+        return {
+          temp: forecastEntry.temperature,
+          condition: forecastEntry.condition
+        };
+      }
+
+      console.log(`[DEBUG] No forecast found for ${targetDateString}`);
+    } else {
+      console.log(`[DEBUG] No forecast data available: ${JSON.stringify(weatherForecastData)}`);
+    }
+
+
+    // Return null if we don't have data and dummy data is not allowed
+    return null;
+  }
+
   // Update theme
   function updateTheme(theme) {
     const app = document.getElementById('app');
     app.className = `theme-${theme}`;
   }
-  
+
   // Initial data load
   fetchCalendarEvents();
   fetchAndDisplayChores();
   fetchAndDisplayMeals(); // Call to fetch meals
   loadUserToggles(); // Load user toggles
-  
+
   // Set up periodic refresh
   setInterval(fetchCalendarEvents, 5 * 60 * 1000); // Refresh every 5 minutes
   setInterval(fetchWeather, 15 * 60 * 1000); // Refresh weather every 15 minutes
-  
+
   // Listen for socket events
   socket.on('calendar_update', () => {
     fetchCalendarEvents();
   });
-  
+
+  socket.on('weather_update', () => {
+    fetchWeather();
+  });
+
   socket.on('config_update', () => {
     fetch('/api/config')
       .then(response => response.json())
       .then(config => {
-        appConfig = config;
-        updateTheme(appConfig.theme);
-        if (appConfig.show_weather) {
+        window.appConfig = { ...window.appConfig, ...config };
+        window.appConfig.allow_dummy_weather = false; // Force dummy weather off
+        updateTheme(window.appConfig.theme);
+        if (window.appConfig.show_weather) {
           fetchWeather();
           document.getElementById('weather-container').style.display = 'flex';
         } else {
@@ -505,7 +862,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
       });
   });
-  
+
   // Handle keyboard shortcut to exit kiosk mode (ESC key)
   document.addEventListener('keydown', function(event) {
     if (event.key === 'Escape') {
@@ -531,7 +888,7 @@ document.addEventListener('DOMContentLoaded', function() {
       if (targetContent) {
         targetContent.classList.add('active-content');
       }
-      
+
       // Special handling for calendar rendering when its tab becomes active
       if (targetId === 'calendar-content') {
         // Re-render or resize FullCalendar if it was hidden, as it might not calculate its size correctly when initially hidden.
@@ -554,81 +911,81 @@ document.addEventListener('DOMContentLoaded', function() {
       }
       const chores = await response.json();
       const choreBoard = document.getElementById('chore-board');
-      
+
       if (!choreBoard) {
         console.error('Chore board container not found!');
         return;
       }
 
       choreBoard.innerHTML = ''; // Clear previous content
-      
+
       // Group chores by assignee
       const choresByAssignee = {};
-      
+
       // First, collect all unique assignees
-      const assignees = [...new Set(chores.map(chore => 
+      const assignees = [...new Set(chores.map(chore =>
         chore.assigneeName ? chore.assigneeName : 'Unassigned'))];
-        
+
       // Create a lane for each assignee
       assignees.forEach(assignee => {
-        const assigneeChores = chores.filter(chore => 
+        const assigneeChores = chores.filter(chore =>
           (chore.assigneeName ? chore.assigneeName : 'Unassigned') === assignee);
-          
+
         const laneId = assignee.toLowerCase().replace(/\s+/g, '-');
         const lane = document.createElement('div');
         lane.className = `kanban-lane lane-${laneId}`;
-        
+
         const laneHeader = document.createElement('div');
         laneHeader.className = 'kanban-lane-header';
-        
+
         const laneTitle = document.createElement('div');
         laneTitle.className = 'lane-title';
-        
+
         // Determine icon based on assignee
         let icon = 'fa-user';
         if (assignee === 'Unassigned') {
           icon = 'fa-user-slash';
         }
-        
+
         laneTitle.innerHTML = `
           <i class="fas ${icon}"></i>
           <span>${assignee}</span>
         `;
-        
+
         const laneCount = document.createElement('div');
         laneCount.className = 'lane-count';
         laneCount.textContent = assigneeChores.length;
-        
+
         laneHeader.appendChild(laneTitle);
         laneHeader.appendChild(laneCount);
-        
+
         const items = document.createElement('div');
         items.className = 'kanban-items';
-        
+
         // Add chores to this lane
         assigneeChores.forEach(chore => {
           const item = document.createElement('div');
           item.className = chore.completed ? 'kanban-item completed' : 'kanban-item';
           item.dataset.id = chore.id;
-          
+
           // If we want to hide completed items
           if (hideCompleted && chore.completed) {
             item.style.display = 'none';
           }
-          
+
           const title = document.createElement('div');
           title.className = 'item-title';
           title.textContent = chore.name;
-          
+
           const itemMeta = document.createElement('div');
           itemMeta.className = 'item-meta';
-          
+
           let dueHtml = '';
           if (chore.dueDate) {
             const dueDate = moment(chore.dueDate);
             const isOverdue = !chore.completed && dueDate.isBefore(moment(), 'day');
             const dueClass = isOverdue ? 'overdue' : '';
-            
+
             dueHtml = `
               <div class="item-due ${dueClass}">
                 <i class="fas fa-calendar-day"></i>
@@ -636,20 +993,20 @@ document.addEventListener('DOMContentLoaded', function() {
               </div>
             `;
           }
-          
+
           const statusHtml = `
             <div class="item-status">
-              ${chore.completed ? 
-                '<span class="status-badge done">Done</span>' : 
+              ${chore.completed ?
+                '<span class="status-badge done">Done</span>' :
                 '<span class="status-badge pending">Pending</span>'}
             </div>
           `;
-          
+
           itemMeta.innerHTML = dueHtml + statusHtml;
-          
+
           const itemActions = document.createElement('div');
           itemActions.className = 'item-actions';
-          
+
           itemActions.innerHTML = `
             <button class="toggle-status-btn" data-id="${chore.id}">
               <i class="fas ${chore.completed ? 'fa-undo' : 'fa-check'}"></i>
@@ -658,18 +1015,18 @@ document.addEventListener('DOMContentLoaded', function() {
               <i class="fas fa-trash-alt"></i>
             </button>
           `;
-          
+
           item.appendChild(title);
           item.appendChild(itemMeta);
           item.appendChild(itemActions);
           items.appendChild(item);
         });
-        
+
         lane.appendChild(laneHeader);
         lane.appendChild(items);
         choreBoard.appendChild(lane);
       });
-      
+
       // Add event listeners for chore actions
       document.querySelectorAll('.toggle-status-btn').forEach(button => {
         button.addEventListener('click', (e) => {
@@ -677,7 +1034,7 @@ document.addEventListener('DOMContentLoaded', function() {
           const choreId = button.dataset.id;
           const choreItem = button.closest('.kanban-item');
           const isCompleted = choreItem.classList.contains('completed');
-          
+
           // In a real app, you'd update the status on the server
           // For now, we just toggle the UI
           if (isCompleted) {
@@ -690,29 +1047,29 @@ document.addEventListener('DOMContentLoaded', function() {
             button.innerHTML = '<i class="fas fa-undo"></i>';
             choreItem.querySelector('.status-badge').textContent = 'Done';
             choreItem.querySelector('.status-badge').className = 'status-badge done';
-            
+
             if (hideCompleted) {
               choreItem.style.display = 'none';
             }
           }
         });
       });
-      
+
       document.querySelectorAll('.delete-btn').forEach(button => {
         button.addEventListener('click', async (e) => {
           e.stopPropagation();
           const choreId = button.dataset.id;
-          
+
           if (confirm('Are you sure you want to delete this chore?')) {
             try {
               const response = await fetch(`/api/chores/${choreId}`, {
                 method: 'DELETE',
               });
-              
+
               if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
               }
-              
+
               // Refresh the board
               fetchAndDisplayChores();
             } catch (error) {
@@ -758,13 +1115,13 @@ document.addEventListener('DOMContentLoaded', function() {
           const errorData = await response.json();
           throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
         }
-        
+
         // Close the modal
         closeModal('add-chore-modal');
-        
+
         // Refresh the chore board
         fetchAndDisplayChores();
-        
+
         // Clear the form
         event.target.reset();
       } catch (error) {
@@ -779,34 +1136,34 @@ document.addEventListener('DOMContentLoaded', function() {
     try {
       // First, ensure meal type rows exist
       await createMealPlanRows();
-      
+
       const response = await fetch('/api/meals');
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       const mealDays = await response.json();
-      
+
       // Clear all meal cells
       document.querySelectorAll('.meal-cell').forEach(cell => {
         cell.innerHTML = '';
         cell.classList.remove('has-meal');
       });
-      
+
       // Fill in meals for the current week
       mealDays.forEach(day => {
         const mealDate = moment(day.date);
-        
+
         // Check if this meal is in the current week we're viewing
         if (mealDate.isBetween(currentWeekStart, moment(currentWeekStart).add(6, 'days'), null, '[]')) {
           // Calculate which day of the week this is (0-6)
           const dayOfWeek = mealDate.day() - 1; // -1 because our grid starts with Monday(0)
           const adjustedDay = dayOfWeek < 0 ? 6 : dayOfWeek; // Adjust for Sunday
-          
+
           // Add each meal to the appropriate cell
           day.meals.forEach(meal => {
             const mealType = meal.type.toLowerCase();
             const cell = document.querySelector(`.meal-cell[data-day="${adjustedDay}"][data-type="${mealType}"]`);
-            
+
             if (cell) {
               cell.innerHTML = `
                 <div class="meal-name">${meal.description}</div>
@@ -816,20 +1173,20 @@ document.addEventListener('DOMContentLoaded', function() {
           });
         }
       });
-      
+
       // Add click handler for meal cells to add new meals
       document.querySelectorAll('.meal-cell').forEach(cell => {
         cell.addEventListener('click', () => {
           const day = parseInt(cell.dataset.day);
           const type = cell.dataset.type;
           const date = moment(currentWeekStart).add(day, 'days').format('YYYY-MM-DD');
-          
+
           // Open the add meal modal
           const addMealModal = document.getElementById('add-meal-modal');
           if (addMealModal) {
             // Set the meal date in the form
             document.getElementById('mealDate').value = date;
-            
+
             // Select the correct meal type
             const mealTypeSelect = document.getElementById('mealType');
             if (mealTypeSelect) {
@@ -840,26 +1197,26 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
               }
             }
-            
+
             // Open the modal
             addMealModal.classList.add('show');
           }
         });
       });
-      
+
     } catch (error) {
       console.error('Error fetching or displaying meal plan:', error);
       alert('Failed to load meal plan: ' + error.message);
     }
   }
-  
+
   // Function to create meal plan rows for each meal type
   async function createMealPlanRows() {
     const mealPlanGrid = document.getElementById('meal-plan-grid');
     if (!mealPlanGrid) return;
-    
+
     let mealTypes = ['breakfast', 'lunch', 'dinner']; // Default fallback
-    
+
     try {
       // Fetch meal categories from API
       const response = await fetch('/api/meal-categories');
@@ -873,17 +1230,17 @@ document.addEventListener('DOMContentLoaded', function() {
       console.error('Error fetching meal categories for rows:', error);
       // Continue with default types
     }
-    
+
     // Remove existing meal rows (not the header)
     const existingRows = mealPlanGrid.querySelectorAll('.meal-plan-row');
     existingRows.forEach(row => row.remove());
-    
+
     // Create a row for each meal type
     mealTypes.forEach(type => {
       const row = document.createElement('div');
       row.className = 'meal-plan-row';
       row.dataset.mealType = type;
-      
+
       // Add type header cell
       const typeCell = document.createElement('div');
       typeCell.className = 'meal-plan-cell meal-type-cell';
@@ -892,33 +1249,33 @@ document.addEventListener('DOMContentLoaded', function() {
         <span>${type.charAt(0).toUpperCase() + type.slice(1)}</span>
       `;
       row.appendChild(typeCell);
-      
+
       // Add a cell for each day of the week
       for (let day = 0; day < 7; day++) {
         const dayCell = document.createElement('div');
         dayCell.className = 'meal-plan-cell meal-cell';
         dayCell.dataset.day = day;
         dayCell.dataset.type = type;
-        
+
         // Mark today's cell
         const dayDate = moment(currentWeekStart).add(day, 'days');
         if (dayDate.isSame(moment(), 'day')) {
           dayCell.classList.add('today');
         }
-        
+
         row.appendChild(dayCell);
       }
-      
+
       mealPlanGrid.appendChild(row);
     });
   }
-  
+
   // Meal category management
   document.querySelectorAll('.category-edit').forEach(button => {
     button.addEventListener('click', () => {
       const categoryItem = button.closest('.category-item');
       const categoryName = categoryItem.querySelector('.category-name span').textContent;
-      
+
       const newName = prompt('Edit category name:', categoryName);
       if (newName && newName !== categoryName) {
         categoryItem.querySelector('.category-name span').textContent = newName;
@@ -926,7 +1283,7 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     });
   });
-  
+
   document.getElementById('add-category')?.addEventListener('click', () => {
     const newName = prompt('Enter new category name:');
     if (newName) {
@@ -939,9 +1296,9 @@ document.addEventListener('DOMContentLoaded', function() {
           <button class="category-edit"><i class="fas fa-pencil-alt"></i></button>
         </div>
       `;
-      
+
       categoriesContainer.appendChild(newCategory);
-      
+
       // Add event listener to the new edit button
       newCategory.querySelector('.category-edit').addEventListener('click', () => {
         const categoryName = newCategory.querySelector('.category-name span').textContent;
@@ -958,11 +1315,11 @@ document.addEventListener('DOMContentLoaded', function() {
     gameItem.addEventListener('click', () => {
       const gameUrl = gameItem.dataset.gameUrl;
       const gameTitle = gameItem.querySelector('.game-title').textContent;
-      
+
       // Set the iframe source and modal title
       document.getElementById('game-iframe').src = gameUrl;
       document.getElementById('game-modal-title').textContent = gameTitle;
-      
+
       // Open the modal
       openModal('game-focus-modal');
     });
@@ -983,7 +1340,7 @@ document.addEventListener('DOMContentLoaded', function() {
     addRecipeButton.addEventListener('click', () => {
       // Close the recipe book modal
       closeModal('recipe-book-modal');
-      
+
       // Open the add recipe modal
       openModal('add-recipe-modal');
     });
@@ -1003,18 +1360,18 @@ document.addEventListener('DOMContentLoaded', function() {
     // Find the recipe in the loaded recipes
     const recipeItem = document.querySelector(`.recipe-list-item[data-recipe-id="${recipeId}"]`);
     if (!recipeItem) return;
-    
+
     // Get recipe details
     const recipeName = recipeItem.querySelector('.recipe-list-item-name').textContent;
     const recipeType = recipeItem.querySelector('.recipe-list-item-type').textContent;
-    
+
     // Get full recipe details - this would typically fetch from the server
     fetch(`/api/recipes/${recipeId}`)
       .then(response => response.json())
       .then(recipe => {
         // Close the recipe book modal
         closeModal('recipe-book-modal');
-        
+
         // Open and populate the add/edit recipe modal
         const editModal = document.getElementById('add-recipe-modal');
         if (editModal) {
@@ -1027,7 +1384,7 @@ document.addEventListener('DOMContentLoaded', function() {
             form.querySelector('#recipe-type').value = recipe.type;
             form.querySelector('#recipe-description').value = recipe.description;
             form.querySelector('#recipe-instructions').value = recipe.instructions;
-            
+
             // Populate ingredients
             const ingredientsList = form.querySelector('#recipe-ingredients-list');
             if (ingredientsList) {
@@ -1036,20 +1393,20 @@ document.addEventListener('DOMContentLoaded', function() {
                 addIngredientInput(ingredient);
               });
             }
-            
+
             // Change submit button text to "Update Recipe"
             const submitButton = form.querySelector('button[type="submit"]');
             if (submitButton) {
               submitButton.innerHTML = '<i class="fas fa-save"></i> Update Recipe';
             }
-            
+
             // Change modal title
             const modalTitle = editModal.querySelector('.modal-header h3');
             if (modalTitle) {
               modalTitle.textContent = 'Edit Recipe';
             }
           }
-          
+
           openModal('add-recipe-modal');
         }
       })
@@ -1063,10 +1420,10 @@ document.addEventListener('DOMContentLoaded', function() {
   function addIngredientInput(ingredient = { name: '', amount: '', available: false }) {
     const ingredientsList = document.getElementById('recipe-ingredients-list');
     if (!ingredientsList) return;
-    
+
     const ingredientItem = document.createElement('div');
     ingredientItem.className = 'ingredient-input-row';
-    
+
     ingredientItem.innerHTML = `
       <div class="form-row">
         <div class="form-group">
@@ -1080,7 +1437,7 @@ document.addEventListener('DOMContentLoaded', function() {
         </button>
       </div>
     `;
-    
+
     // Add event listener to remove button
     const removeButton = ingredientItem.querySelector('.remove-ingredient');
     if (removeButton) {
@@ -1088,7 +1445,7 @@ document.addEventListener('DOMContentLoaded', function() {
         ingredientItem.remove();
       });
     }
-    
+
     ingredientsList.appendChild(ingredientItem);
   }
 
@@ -1099,7 +1456,7 @@ document.addEventListener('DOMContentLoaded', function() {
       addIngredientInput();
     });
   }
-  
+
   // Grocery list button
   const groceryListButton = document.getElementById('grocery-list-button');
   if (groceryListButton) {
@@ -1108,19 +1465,19 @@ document.addEventListener('DOMContentLoaded', function() {
       openModal('grocery-list-modal');
     });
   }
-  
+
   // Select recipe button in add meal form
   const selectRecipeBtn = document.getElementById('select-recipe-btn');
   if (selectRecipeBtn) {
     selectRecipeBtn.addEventListener('click', () => {
       loadRecipes(); // Load recipes when opening the modal
       openModal('recipe-book-modal');
-      
+
       // Set a flag to indicate we're selecting a recipe for the meal plan
       document.body.dataset.selectingForMeal = 'true';
     });
   }
-  
+
   // Handle "Add to Meal Plan" button in recipe detail
   const addToMealPlanBtn = document.getElementById('add-to-meal-plan');
   if (addToMealPlanBtn) {
@@ -1128,7 +1485,7 @@ document.addEventListener('DOMContentLoaded', function() {
       // Get the selected recipe
       const recipeId = addToMealPlanBtn.dataset.recipeId;
       const recipeName = document.getElementById('recipe-name').textContent;
-      
+
       // If we're selecting for the meal form, fill in the form and close the recipe book
       if (document.body.dataset.selectingForMeal === 'true') {
         document.getElementById('mealDescription').value = recipeName;
@@ -1140,25 +1497,25 @@ document.addEventListener('DOMContentLoaded', function() {
         const today = new Date();
         const formattedDate = today.toISOString().split('T')[0];
         const mealType = document.querySelector('.recipe-list-item.active .recipe-list-item-type').textContent;
-        
+
         // Here you would save the meal to the server
         alert(`Added ${recipeName} to ${mealType} for today (${formattedDate})`);
       }
     });
   }
-  
+
   // Add grocery item form submission
   const addGroceryItemForm = document.getElementById('add-grocery-item-form');
   if (addGroceryItemForm) {
     addGroceryItemForm.addEventListener('submit', async (e) => {
       e.preventDefault();
-      
+
       const nameInput = document.getElementById('groceryItemName');
       const quantityInput = document.getElementById('groceryItemQuantity');
-      
+
       const name = nameInput.value.trim();
       const quantity = quantityInput.value.trim();
-      
+
       if (name) {
         try {
           const response = await fetch('/api/grocery-list', {
@@ -1168,18 +1525,18 @@ document.addEventListener('DOMContentLoaded', function() {
             },
             body: JSON.stringify({ name, quantity })
           });
-          
+
           if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
           }
-          
+
           // Clear form inputs
           nameInput.value = '';
           quantityInput.value = '';
-          
+
           // Reload the grocery list
           loadGroceryList();
-          
+
         } catch (error) {
           console.error('Error adding grocery item:', error);
           alert('Failed to add item to grocery list');
@@ -1187,19 +1544,19 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     });
   }
-  
+
   // Add meal form submission
   const addMealForm = document.getElementById('add-meal-form');
   if (addMealForm) {
     addMealForm.addEventListener('submit', async (e) => {
       e.preventDefault();
-      
+
       const description = document.getElementById('mealDescription').value.trim();
       const mealType = document.getElementById('mealType').value;
       const mealDate = document.getElementById('mealDate').value;
       const recipeId = document.getElementById('recipeId').value;
       const cook = document.getElementById('mealCook')?.value.trim() || '';
-      
+
       if (description && mealType && mealDate) {
         try {
           const response = await fetch('/api/meals', {
@@ -1215,20 +1572,20 @@ document.addEventListener('DOMContentLoaded', function() {
               cook
             })
           });
-          
+
           if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
           }
-          
+
           // Close the modal and refresh the meal plan
           document.getElementById('mealDescription').value = '';
           document.getElementById('recipeId').value = '';
           document.getElementById('mealCook').value = '';
           closeModal('add-meal-modal');
-          
+
           // Refresh the meal plan
           fetchAndDisplayMeals();
-          
+
         } catch (error) {
           console.error('Error adding meal:', error);
           alert('Failed to add meal: ' + error.message);
@@ -1236,12 +1593,12 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     });
   }
-  
+
   // Function to load recipes into the recipe book
   async function loadRecipes() {
     const recipeList = document.querySelector('.recipe-list');
     if (!recipeList) return;
-    
+
     // Show loading placeholder
     recipeList.innerHTML = `
       <div class="recipe-list-placeholder">
@@ -1249,45 +1606,45 @@ document.addEventListener('DOMContentLoaded', function() {
         <p>Loading recipes...</p>
       </div>
     `;
-    
+
     try {
       const response = await fetch('/api/recipes');
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
+
       const recipes = await response.json();
-      
+
       // Clear the recipe list
       recipeList.innerHTML = '';
-      
+
       // Populate recipe list
       recipes.forEach(recipe => {
         const recipeItem = document.createElement('div');
         recipeItem.className = 'recipe-list-item';
         recipeItem.dataset.recipeId = recipe.id;
-        
+
         recipeItem.innerHTML = `
           <div class="recipe-list-item-name">${recipe.name}</div>
           <div class="recipe-list-item-type">${recipe.type}</div>
         `;
-        
+
         recipeItem.addEventListener('click', () => {
           // Remove active class from all recipes
           document.querySelectorAll('.recipe-list-item').forEach(item => {
             item.classList.remove('active');
           });
-          
+
           // Add active class to clicked recipe
           recipeItem.classList.add('active');
-          
+
           // Load recipe details
           loadRecipeDetails(recipe.id);
         });
-        
+
         recipeList.appendChild(recipeItem);
       });
-      
+
       // If we have recipes, select the first one by default
       if (recipes.length > 0) {
         const firstRecipe = recipeList.querySelector('.recipe-list-item');
@@ -1314,15 +1671,15 @@ document.addEventListener('DOMContentLoaded', function() {
       `;
     }
   }
-  
+
   // Function to load recipe details
   async function loadRecipeDetails(recipeId) {
     const recipeDetail = document.querySelector('.recipe-detail');
     const recipeDetailContent = document.querySelector('.recipe-detail-content');
     const recipePlaceholder = document.querySelector('.recipe-detail-placeholder');
-    
+
     if (!recipeDetail || !recipeDetailContent || !recipePlaceholder) return;
-    
+
     // Hide content, show placeholder with loading
     recipeDetailContent.style.display = 'none';
     recipePlaceholder.innerHTML = `
@@ -1330,40 +1687,40 @@ document.addEventListener('DOMContentLoaded', function() {
       <p>Loading recipe details...</p>
     `;
     recipePlaceholder.style.display = 'flex';
-    
+
     try {
       const response = await fetch(`/api/recipes/${recipeId}`);
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
+
       const recipe = await response.json();
-      
+
       // Update recipe image
       document.getElementById('recipe-image').src = recipe.image;
       document.getElementById('recipe-image').alt = recipe.name;
-      
+
       // Update recipe info
       document.getElementById('recipe-name').textContent = recipe.name;
       document.getElementById('recipe-description').textContent = recipe.description;
-      
+
       // Set recipe ID for "Add to Meal Plan" button
       document.getElementById('add-to-meal-plan').dataset.recipeId = recipe.id;
-      
+
       // Update ingredients list
       const ingredientsList = document.getElementById('recipe-ingredients-list');
       ingredientsList.innerHTML = '';
-      
+
       recipe.ingredients.forEach(ingredient => {
         const li = document.createElement('li');
         li.className = 'recipe-ingredient-item';
-        
+
         const availableClass = ingredient.available ? 'available' : '';
         const availableIcon = ingredient.available ? '<i class="fas fa-check"></i>' : '';
-        const purchasedDate = ingredient.lastPurchased 
-          ? `<span class="ingredient-purchased-date">Purchased: ${formatDate(ingredient.lastPurchased)}</span>` 
+        const purchasedDate = ingredient.lastPurchased
+          ? `<span class="ingredient-purchased-date">Purchased: ${formatDate(ingredient.lastPurchased)}</span>`
           : '';
-        
+
         li.innerHTML = `
           <div class="ingredient-check">
             <div class="ingredient-status ${availableClass}" data-ingredient="${ingredient.name}">${availableIcon}</div>
@@ -1374,20 +1731,20 @@ document.addEventListener('DOMContentLoaded', function() {
             <i class="fas fa-cart-plus"></i>
           </button>
         `;
-        
+
         ingredientsList.appendChild(li);
       });
-      
+
       // Update instructions
       document.getElementById('recipe-instructions-text').textContent = recipe.instructions;
-      
+
       // Show recipe details
       recipePlaceholder.style.display = 'none';
       recipeDetailContent.style.display = 'block';
-      
+
       // Add event listeners for ingredient actions
       addIngredientEventListeners();
-      
+
     } catch (error) {
       console.error('Error loading recipe details:', error);
       recipePlaceholder.innerHTML = `
@@ -1396,17 +1753,17 @@ document.addEventListener('DOMContentLoaded', function() {
       `;
     }
   }
-  
+
   // Function to add event listeners to ingredient actions
   function addIngredientEventListeners() {
     // Ingredient status toggle
     document.querySelectorAll('.ingredient-status').forEach(status => {
       status.addEventListener('click', () => {
         status.classList.toggle('available');
-        
+
         if (status.classList.contains('available')) {
           status.innerHTML = '<i class="fas fa-check"></i>';
-          
+
           // Create purchased date element if it doesn't exist
           let purchasedDate = status.closest('.recipe-ingredient-item').querySelector('.ingredient-purchased-date');
           if (!purchasedDate) {
@@ -1414,40 +1771,40 @@ document.addEventListener('DOMContentLoaded', function() {
             purchasedDate.className = 'ingredient-purchased-date';
             status.closest('.recipe-ingredient-item').querySelector('.ingredient-name').appendChild(purchasedDate);
           }
-          
+
           // Update purchased date
           const today = new Date();
           purchasedDate.textContent = `Purchased: ${formatDate(today.toISOString().split('T')[0])}`;
         } else {
           status.innerHTML = '';
         }
-        
+
         // In a real app, you would save this change to the server
       });
     });
-    
+
     // Add to grocery list
     document.querySelectorAll('.add-to-grocery').forEach(button => {
       button.addEventListener('click', async () => {
         const ingredientName = button.dataset.ingredient;
         const ingredientAmount = button.dataset.amount;
-        
+
         try {
           const response = await fetch('/api/grocery-list', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ 
-              name: ingredientName, 
-              quantity: ingredientAmount 
+            body: JSON.stringify({
+              name: ingredientName,
+              quantity: ingredientAmount
             })
           });
-          
+
           if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
           }
-          
+
           alert(`Added ${ingredientName} to grocery list`);
         } catch (error) {
           console.error('Error adding to grocery list:', error);
@@ -1456,30 +1813,30 @@ document.addEventListener('DOMContentLoaded', function() {
       });
     });
   }
-  
+
   // Function to load grocery list
   async function loadGroceryList() {
     const groceryList = document.getElementById('grocery-items-list');
     if (!groceryList) return;
-    
+
     // Show loading placeholder
     groceryList.innerHTML = `
       <li class="loading-items">
         <i class="fas fa-spinner fa-spin"></i> Loading items...
       </li>
     `;
-    
+
     try {
       const response = await fetch('/api/grocery-list');
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
+
       const groceryData = await response.json();
-      
+
       // Clear the grocery list
       groceryList.innerHTML = '';
-      
+
       if (groceryData.items.length === 0) {
         groceryList.innerHTML = `
           <li class="empty-list-message">
@@ -1488,13 +1845,13 @@ document.addEventListener('DOMContentLoaded', function() {
         `;
         return;
       }
-      
+
       // Populate grocery list
       groceryData.items.forEach(item => {
         const li = document.createElement('li');
         li.className = `grocery-item ${item.checked ? 'checked' : ''}`;
         li.dataset.id = item.id;
-        
+
         li.innerHTML = `
           <div class="grocery-item-check">
             <input type="checkbox" ${item.checked ? 'checked' : ''}>
@@ -1505,13 +1862,13 @@ document.addEventListener('DOMContentLoaded', function() {
             <i class="fas fa-trash-alt"></i>
           </button>
         `;
-        
+
         groceryList.appendChild(li);
       });
-      
+
       // Add event listeners for grocery item actions
       addGroceryItemEventListeners();
-      
+
     } catch (error) {
       console.error('Error loading grocery list:', error);
       groceryList.innerHTML = `
@@ -1521,7 +1878,7 @@ document.addEventListener('DOMContentLoaded', function() {
       `;
     }
   }
-  
+
   // Function to add event listeners to grocery item actions
   function addGroceryItemEventListeners() {
     // Checkbox toggle
@@ -1530,7 +1887,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const item = checkbox.closest('.grocery-item');
         const itemId = item.dataset.id;
         const checked = checkbox.checked;
-        
+
         try {
           const response = await fetch(`/api/grocery-list/${itemId}`, {
             method: 'PATCH',
@@ -1539,11 +1896,11 @@ document.addEventListener('DOMContentLoaded', function() {
             },
             body: JSON.stringify({ checked })
           });
-          
+
           if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
           }
-          
+
           // Update UI
           if (checked) {
             item.classList.add('checked');
@@ -1557,26 +1914,26 @@ document.addEventListener('DOMContentLoaded', function() {
         }
       });
     });
-    
+
     // Delete button
     document.querySelectorAll('.grocery-item-delete').forEach(button => {
       button.addEventListener('click', async () => {
         const item = button.closest('.grocery-item');
         const itemId = item.dataset.id;
-        
+
         if (confirm('Are you sure you want to remove this item?')) {
           try {
             const response = await fetch(`/api/grocery-list/${itemId}`, {
               method: 'DELETE'
             });
-            
+
             if (!response.ok) {
               throw new Error(`HTTP error! status: ${response.status}`);
             }
-            
+
             // Remove item from UI
             item.remove();
-            
+
             // If list is now empty, show message
             if (document.querySelectorAll('.grocery-item').length === 0) {
               document.getElementById('grocery-items-list').innerHTML = `
@@ -1593,16 +1950,16 @@ document.addEventListener('DOMContentLoaded', function() {
       });
     });
   }
-  
+
   // Helper function to format dates
   function formatDate(dateString) {
-    return new Date(dateString).toLocaleDateString(appConfig.locale, {
-      year: 'numeric', 
-      month: 'short', 
+    return new Date(dateString).toLocaleDateString(window.appConfig.locale, { // Use window.appConfig
+      year: 'numeric',
+      month: 'short',
       day: 'numeric'
     });
   }
-  
+
   // Initialize the page
   fetchAndDisplayChores();
   updateMealWeekDates(); // This will also call fetchAndDisplayMeals
@@ -1614,31 +1971,31 @@ document.addEventListener('DOMContentLoaded', function() {
   const editProfileForm = document.getElementById('edit-profile-form');
   const profileEditTitle = document.getElementById('profile-edit-title');
   const deleteProfileBtn = document.getElementById('delete-profile-btn');
-  
+
   // Color and icon selectors
   const colorSelector = document.getElementById('profile-color-selector');
   const iconSelector = document.getElementById('profile-icon-selector');
-  
+
   // Profile photo
   const profilePhotoPreview = document.getElementById('profile-photo-preview');
   const takePhotoBtn = document.getElementById('take-profile-photo');
   const uploadPhotoBtn = document.getElementById('upload-profile-photo');
   const photoInput = document.getElementById('profile-photo-input');
-  
+
   // Load user profiles to settings
   async function loadProfilesForSettings() {
     try {
       const response = await fetch('/api/users');
       const users = await response.json();
-      
+
       if (profileListSettings) {
         profileListSettings.innerHTML = '';
-        
+
         users.forEach(user => {
           const profileItem = document.createElement('div');
           profileItem.className = 'profile-item-settings';
           profileItem.dataset.userId = user.id;
-          
+
           profileItem.innerHTML = `
             <div class="profile-avatar-settings" style="background-color: ${user.color};">
               <i class="fas ${user.icon}"></i>
@@ -1647,19 +2004,19 @@ document.addEventListener('DOMContentLoaded', function() {
             <div class="profile-meta">Game time: ${user.gameTimeLimit || 30} min/day</div>
             <button class="profile-edit-btn"><i class="fas fa-pencil-alt"></i></button>
           `;
-          
+
           // Edit profile click
           const editBtn = profileItem.querySelector('.profile-edit-btn');
           editBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             openProfileEdit(user);
           });
-          
+
           // Also allow editing by clicking the entire card
           profileItem.addEventListener('click', () => {
             openProfileEdit(user);
           });
-          
+
           profileListSettings.appendChild(profileItem);
         });
       }
@@ -1667,20 +2024,20 @@ document.addEventListener('DOMContentLoaded', function() {
       console.error('Error loading profiles for settings:', error);
     }
   }
-  
+
   // Open profile edit
   function openProfileEdit(user) {
     // Set form title
     profileEditTitle.textContent = user ? 'Edit Profile' : 'Add New Profile';
-    
+
     // Reset form
     editProfileForm.reset();
-    
+
     // Clear previous selections
     document.querySelectorAll('.color-option.selected, .icon-option.selected').forEach(el => {
       el.classList.remove('selected');
     });
-    
+
     // If editing an existing user, populate form
     if (user) {
       document.getElementById('profile-id').value = user.id;
@@ -1688,15 +2045,15 @@ document.addEventListener('DOMContentLoaded', function() {
       document.getElementById('profile-color').value = user.color;
       document.getElementById('profile-icon').value = user.icon;
       document.getElementById('profile-game-time-limit').value = user.gameTimeLimit || 30;
-      
+
       // Select color
       const colorOption = document.querySelector(`.color-option[data-color="${user.color}"]`);
       if (colorOption) colorOption.classList.add('selected');
-      
+
       // Select icon
       const iconOption = document.querySelector(`.icon-option[data-icon="${user.icon}"]`);
       if (iconOption) iconOption.classList.add('selected');
-      
+
       // Set profile photo if exists
       if (user.photo) {
         profilePhotoPreview.innerHTML = `<img src="${user.photo}" alt="${user.name}">`;
@@ -1704,7 +2061,7 @@ document.addEventListener('DOMContentLoaded', function() {
       } else {
         profilePhotoPreview.innerHTML = `<i class="fas ${user.icon}"></i>`;
       }
-      
+
       // Show delete button for existing profiles
       deleteProfileBtn.style.display = 'block';
     } else {
@@ -1712,30 +2069,30 @@ document.addEventListener('DOMContentLoaded', function() {
       document.getElementById('profile-id').value = '';
       document.getElementById('profile-color').value = '#4285f4';
       document.getElementById('profile-icon').value = 'fa-user';
-      
+
       // Select default color and icon
       document.querySelector('.color-option[data-color="#4285f4"]').classList.add('selected');
       document.querySelector('.icon-option[data-icon="fa-user"]').classList.add('selected');
-      
+
       // Reset profile photo
       profilePhotoPreview.innerHTML = '<i class="fas fa-user"></i>';
       document.getElementById('profile-photo-data').value = '';
-      
+
       // Hide delete button for new profiles
       deleteProfileBtn.style.display = 'none';
     }
-    
+
     // Open modal
     editProfileModal.classList.add('show');
   }
-  
+
   // Add new profile
   if (addProfileButton) {
     addProfileButton.addEventListener('click', () => {
       openProfileEdit(null); // null indicates new profile
     });
   }
-  
+
   // Color selector
   if (colorSelector) {
     colorSelector.querySelectorAll('.color-option').forEach(option => {
@@ -1744,19 +2101,19 @@ document.addEventListener('DOMContentLoaded', function() {
         colorSelector.querySelectorAll('.color-option').forEach(o => {
           o.classList.remove('selected');
         });
-        
+
         // Add selected class to clicked option
         option.classList.add('selected');
-        
+
         // Update hidden input
         document.getElementById('profile-color').value = option.dataset.color;
-        
+
         // Update avatar preview background
         profilePhotoPreview.style.backgroundColor = option.dataset.color;
       });
     });
   }
-  
+
   // Icon selector
   if (iconSelector) {
     iconSelector.querySelectorAll('.icon-option').forEach(option => {
@@ -1765,13 +2122,13 @@ document.addEventListener('DOMContentLoaded', function() {
         iconSelector.querySelectorAll('.icon-option').forEach(o => {
           o.classList.remove('selected');
         });
-        
+
         // Add selected class to clicked option
         option.classList.add('selected');
-        
+
         // Update hidden input
         document.getElementById('profile-icon').value = option.dataset.icon;
-        
+
         // Update avatar preview icon if no photo
         if (!document.getElementById('profile-photo-data').value) {
           profilePhotoPreview.innerHTML = `<i class="fas ${option.dataset.icon}"></i>`;
@@ -1779,7 +2136,7 @@ document.addEventListener('DOMContentLoaded', function() {
       });
     });
   }
-  
+
   // Take profile photo
   if (takePhotoBtn) {
     takePhotoBtn.addEventListener('click', () => {
@@ -1800,14 +2157,14 @@ document.addEventListener('DOMContentLoaded', function() {
           </div>
         </div>
       `;
-      
+
       document.body.appendChild(cameraModal);
       cameraModal.classList.add('show');
-      
+
       // Get camera feed
       const video = document.getElementById('camera-feed');
       let stream = null;
-      
+
       navigator.mediaDevices.getUserMedia({ video: true })
         .then(cameraStream => {
           stream = cameraStream;
@@ -1817,21 +2174,21 @@ document.addEventListener('DOMContentLoaded', function() {
           console.error('Error accessing camera:', error);
           alert('Could not access the camera. Please check your permissions.');
         });
-      
+
       // Capture photo
       document.getElementById('capture-photo').addEventListener('click', () => {
         const canvas = document.createElement('canvas');
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         canvas.getContext('2d').drawImage(video, 0, 0);
-        
+
         // Convert to data URL
         const photoData = canvas.toDataURL('image/jpeg');
-        
+
         // Update preview and hidden input
         profilePhotoPreview.innerHTML = `<img src="${photoData}" alt="Profile Photo">`;
         document.getElementById('profile-photo-data').value = photoData;
-        
+
         // Stop stream and close modal
         if (stream) {
           stream.getTracks().forEach(track => track.stop());
@@ -1841,7 +2198,7 @@ document.addEventListener('DOMContentLoaded', function() {
           cameraModal.remove();
         }, 300);
       });
-      
+
       // Close button
       cameraModal.querySelector('.modal-close').addEventListener('click', () => {
         if (stream) {
@@ -1854,19 +2211,19 @@ document.addEventListener('DOMContentLoaded', function() {
       });
     });
   }
-  
+
   // Upload profile photo
   if (uploadPhotoBtn && photoInput) {
     uploadPhotoBtn.addEventListener('click', () => {
       photoInput.click();
     });
-    
+
     photoInput.addEventListener('change', () => {
       if (photoInput.files && photoInput.files[0]) {
         const reader = new FileReader();
         reader.onload = (e) => {
           const photoData = e.target.result;
-          
+
           // Update preview and hidden input
           profilePhotoPreview.innerHTML = `<img src="${photoData}" alt="Profile Photo">`;
           document.getElementById('profile-photo-data').value = photoData;
@@ -1875,12 +2232,12 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     });
   }
-  
+
   // Save profile
   if (editProfileForm) {
     editProfileForm.addEventListener('submit', async (e) => {
       e.preventDefault();
-      
+
       const profileData = {
         id: document.getElementById('profile-id').value,
         name: document.getElementById('profile-name').value,
@@ -1889,14 +2246,14 @@ document.addEventListener('DOMContentLoaded', function() {
         photo: document.getElementById('profile-photo-data').value,
         gameTimeLimit: parseInt(document.getElementById('profile-game-time-limit').value, 10)
       };
-      
+
       try {
         // Simulation - this would save to the server in a real app
         console.log('Saving profile:', profileData);
-        
+
         // Close modal
         editProfileModal.classList.remove('show');
-        
+
         // Reload profiles
         loadProfilesForSettings();
       } catch (error) {
@@ -1905,22 +2262,22 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     });
   }
-  
+
   // Delete profile
   if (deleteProfileBtn) {
     deleteProfileBtn.addEventListener('click', async () => {
       const profileId = document.getElementById('profile-id').value;
-      
+
       if (!profileId) return;
-      
+
       if (confirm('Are you sure you want to delete this profile? This cannot be undone.')) {
         try {
           // Simulation - this would delete from the server in a real app
           console.log('Deleting profile:', profileId);
-          
+
           // Close modal
           editProfileModal.classList.remove('show');
-          
+
           // Reload profiles
           loadProfilesForSettings();
         } catch (error) {
@@ -1930,7 +2287,7 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     });
   }
-  
+
   // Load profiles when settings tab is active
   document.querySelector('.tab-item[data-tab-target="settings-content"]').addEventListener('click', () => {
     loadProfilesForSettings();
@@ -1940,14 +2297,14 @@ document.addEventListener('DOMContentLoaded', function() {
   document.querySelectorAll('.theme-button').forEach(button => {
     button.addEventListener('click', (e) => {
       const theme = e.currentTarget.dataset.theme;
-      setTheme(theme);
-      
+      updateTheme(theme); // Corrected from setTheme(theme)
+
       // Set active state on this button and remove from others
       document.querySelectorAll('.theme-button').forEach(btn => {
         btn.classList.remove('active');
       });
       e.currentTarget.classList.add('active');
-      
+
       // Save theme preference
       fetch('/api/settings', {
         method: 'POST',
@@ -1959,22 +2316,12 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   });
 
-  // Mark active theme on page load
-  function markActiveTheme() {
-    const currentTheme = getComputedStyle(document.documentElement).getPropertyValue('--theme-name').trim().replace(/"/g, '');
-    const themeButton = document.querySelector(`.theme-button[data-theme="${currentTheme}"]`);
-    if (themeButton) {
-      document.querySelectorAll('.theme-button').forEach(btn => {
-        btn.classList.remove('active');
-      });
-      themeButton.classList.add('active');
-    }
+  // Initialize theme button state
+  const currentTheme = window.appConfig.theme || 'light'; // Use window.appConfig
+  const activeThemeButton = document.querySelector(`.theme-button[data-theme="${currentTheme}"]`);
+  if (activeThemeButton) {
+    activeThemeButton.classList.add('active');
   }
-
-  // Call on document load
-  document.addEventListener('DOMContentLoaded', () => {
-    markActiveTheme();
-  });
 });
 
 // Settings Tab Functionality - Media Testing
@@ -2073,19 +2420,19 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // Theme Selection
   const themeButtons = document.querySelectorAll('.theme-button');
-  
+
   themeButtons.forEach(button => {
     button.addEventListener('click', () => {
       const theme = button.dataset.theme;
-      
+
       // Update the app's theme class directly
       const app = document.getElementById('app');
       app.className = `theme-${theme}`;
-      
+
       // Update active state
       themeButtons.forEach(btn => btn.classList.remove('active'));
       button.classList.add('active');
-      
+
       // Save preference
       fetch('/api/config', {
         method: 'POST',
@@ -2098,9 +2445,9 @@ document.addEventListener('DOMContentLoaded', function() {
       });
     });
   });
-  
+
   // Initialize theme button state
-  const currentTheme = appConfig.theme || 'light';
+  const currentTheme = window.appConfig.theme || 'light'; // Use window.appConfig
   const activeThemeButton = document.querySelector(`.theme-button[data-theme="${currentTheme}"]`);
   if (activeThemeButton) {
     activeThemeButton.classList.add('active');
@@ -2121,14 +2468,14 @@ document.addEventListener('DOMContentLoaded', function() {
   const startTimerButton = document.getElementById('start-timer');
   const timerDisplay = document.getElementById('timer-display');
   const voiceCommandIndicator = document.getElementById('voice-command-indicator');
-  
+
   let currentRecipe = null;
   let currentStepIndex = 0;
   let cookingSteps = [];
   let timerInterval = null;
   let timerSeconds = 0;
   let recognition = null;
-  
+
   if (startCookingButton) {
     startCookingButton.addEventListener('click', () => {
       const recipeId = document.getElementById('recipe-detail-content').dataset.recipeId;
@@ -2137,20 +2484,20 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     });
   }
-  
+
   async function initCookingMode(recipeId) {
     try {
       const response = await fetch('/api/recipes');
       const recipes = await response.json();
       currentRecipe = recipes.find(recipe => recipe.id === recipeId);
-      
+
       if (currentRecipe) {
         cookingRecipeName.textContent = currentRecipe.name;
         cookingRecipeImage.src = currentRecipe.image;
-        
+
         // Parse cooking steps from instructions
         cookingSteps = currentRecipe.instructions.split('\n').filter(step => step.trim() !== '');
-        
+
         // Populate steps list
         cookingStepsList.innerHTML = '';
         cookingSteps.forEach((step, index) => {
@@ -2164,14 +2511,14 @@ document.addEventListener('DOMContentLoaded', function() {
           });
           cookingStepsList.appendChild(li);
         });
-        
+
         // Set initial step
         currentStepIndex = 0;
         updateCurrentStep();
-        
+
         // Initialize voice recognition if available
         initVoiceRecognition();
-        
+
         // Show the modal
         cookingModeModal.classList.add('show');
       }
@@ -2179,7 +2526,7 @@ document.addEventListener('DOMContentLoaded', function() {
       console.error('Error initializing cooking mode:', error);
     }
   }
-  
+
   function updateCurrentStep() {
     const steps = cookingStepsList.querySelectorAll('.step-item');
     steps.forEach((step, index) => {
@@ -2190,18 +2537,18 @@ document.addEventListener('DOMContentLoaded', function() {
         step.classList.remove('active');
       }
     });
-    
+
     currentStepNumber.textContent = currentStepIndex + 1;
     currentStepInstructions.textContent = cookingSteps[currentStepIndex].replace(/^\d+\.\s*/, '');
   }
-  
+
   function goToStep(index) {
     if (index >= 0 && index < cookingSteps.length) {
       currentStepIndex = index;
       updateCurrentStep();
     }
   }
-  
+
   if (prevStepButton) {
     prevStepButton.addEventListener('click', () => {
       if (currentStepIndex > 0) {
@@ -2210,7 +2557,7 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     });
   }
-  
+
   if (nextStepButton) {
     nextStepButton.addEventListener('click', () => {
       if (currentStepIndex < cookingSteps.length - 1) {
@@ -2219,7 +2566,7 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     });
   }
-  
+
   if (startTimerButton) {
     startTimerButton.addEventListener('click', () => {
       if (timerInterval) {
@@ -2239,24 +2586,24 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     });
   }
-  
+
   function updateTimerDisplay() {
     const minutes = Math.floor(timerSeconds / 60);
     const seconds = timerSeconds % 60;
     timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
   }
-  
+
   function initVoiceRecognition() {
     if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       recognition = new SpeechRecognition();
       recognition.continuous = true;
       recognition.interimResults = false;
-      
+
       recognition.onstart = () => {
         voiceCommandIndicator.classList.add('listening');
       };
-      
+
       recognition.onend = () => {
         voiceCommandIndicator.classList.remove('listening');
         // Restart recognition
@@ -2264,10 +2611,10 @@ document.addEventListener('DOMContentLoaded', function() {
           recognition.start();
         }
       };
-      
+
       recognition.onresult = (event) => {
         const transcript = event.results[event.results.length - 1][0].transcript.toLowerCase().trim();
-        
+
         // Process voice commands
         if (transcript.includes('next') || transcript.includes('next step')) {
           if (currentStepIndex < cookingSteps.length - 1) {
@@ -2297,19 +2644,19 @@ document.addEventListener('DOMContentLoaded', function() {
           }
         }
       };
-      
+
       recognition.onerror = (event) => {
         console.error('Speech recognition error:', event.error);
         voiceCommandIndicator.classList.remove('listening');
       };
-      
+
       // Start recognition
       try {
         recognition.start();
       } catch (e) {
         console.error('Error starting speech recognition:', e);
       }
-      
+
       // Add event listener to stop recognition when modal is closed
       document.querySelector('#cooking-mode-modal .modal-close').addEventListener('click', () => {
         if (recognition) {
@@ -2337,48 +2684,48 @@ document.addEventListener('DOMContentLoaded', function() {
   const gameTimerUser = document.getElementById('game-timer-user');
   const gameTimerOverlay = document.getElementById('game-timer-overlay');
   const getModeGamesButton = document.getElementById('get-more-games-button');
-  
+
   let selectedProfile = null;
   let gameTimerInterval = null;
   let remainingGameTime = 0;
-  
+
   // Initially disable all game items until a profile is selected
   gameItems.forEach(item => {
     item.classList.add('disabled');
   });
-  
+
   // Load user profiles
   async function loadUserProfiles() {
     try {
       const response = await fetch('/api/users');
       const users = await response.json();
-      
+
       if (profileList) {
         profileList.innerHTML = '';
-        
+
         users.forEach(user => {
           const profileItem = document.createElement('div');
           profileItem.className = 'profile-item';
           profileItem.dataset.userId = user.id;
           profileItem.dataset.userName = user.name;
-          
+
           // Get reward points for the user
           const rewardPoints = getRewardPointsForUser(user.name);
           // Calculate available playtime (5 minutes per 50 points)
           const availablePlaytime = Math.floor((rewardPoints / 50) * 5);
           profileItem.dataset.playtime = availablePlaytime;
-          
+
           profileItem.innerHTML = `
             <div class="profile-avatar" style="background-color: ${user.color};">
               <i class="fas ${user.icon}"></i>
             </div>
             <div class="profile-name">${user.name}</div>
           `;
-          
+
           profileItem.addEventListener('click', () => {
             selectProfile(profileItem);
           });
-          
+
           profileList.appendChild(profileItem);
         });
       }
@@ -2386,7 +2733,7 @@ document.addEventListener('DOMContentLoaded', function() {
       console.error('Error loading user profiles:', error);
     }
   }
-  
+
   // Get reward points for a user from the rewards.json data
   function getRewardPointsForUser(userName) {
     // This would typically fetch from the server, but for now we'll use hardcoded values
@@ -2396,44 +2743,44 @@ document.addEventListener('DOMContentLoaded', function() {
       'Casey': 60,
       'Taylor': 45
     };
-    
+
     return rewardPoints[userName] || 0;
   }
-  
+
   // Select a profile
   function selectProfile(profileItem) {
     // Remove active class from all profiles
     const profiles = profileList.querySelectorAll('.profile-item');
     profiles.forEach(p => p.classList.remove('active'));
-    
+
     // Add active class to selected profile
     profileItem.classList.add('active');
-    
+
     // Update selected profile
     selectedProfile = {
       id: profileItem.dataset.userId,
       name: profileItem.dataset.userName,
       playtime: parseInt(profileItem.dataset.playtime || 0, 10)
     };
-    
+
     // Update playtime display
     if (playtimeMinutes) {
       playtimeMinutes.textContent = selectedProfile.playtime;
     }
-    
+
     // Enable game items now that a profile is selected
     gameItems.forEach(item => {
       item.classList.remove('disabled');
     });
-    
+
     // Filter games based on profile
     filterGamesForProfile(selectedProfile);
   }
-  
+
   // Filter games based on profile age/interests
   function filterGamesForProfile(profile) {
     if (!profile) return;
-    
+
     // In a real implementation, this would filter based on age restrictions
     // or user preferences. For now, we'll just show/hide the play time.
     gameItems.forEach(item => {
@@ -2443,7 +2790,7 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     });
   }
-  
+
   // Initialize game play
   gameItems.forEach(item => {
     item.addEventListener('click', () => {
@@ -2452,62 +2799,62 @@ document.addEventListener('DOMContentLoaded', function() {
         alert('Please select a profile first before playing games.');
         return;
       }
-      
+
       if (!selectedProfile) {
         alert('Please select a profile first!');
         return;
       }
-      
+
       const gameUrl = item.dataset.gameUrl;
       const gameTitle = item.querySelector('.game-title').textContent;
       const playTimeText = item.querySelector('.playtime-indicator').textContent;
       const playTimeMinutes = parseInt(playTimeText.replace(/[^0-9]/g, ''), 10);
-      
+
       // Check if user has enough playtime
       if (selectedProfile.playtime < playTimeMinutes) {
         alert(`Not enough playtime available. ${selectedProfile.name} has ${selectedProfile.playtime} minutes, but this game requires ${playTimeMinutes} minutes.`);
         return;
       }
-      
+
       // Set up the game iframe
       const gameIframe = document.getElementById('game-iframe');
       const gameModalTitle = document.getElementById('game-modal-title');
-      
+
       if (gameIframe && gameModalTitle) {
         gameIframe.src = gameUrl;
         gameModalTitle.textContent = gameTitle;
-        
+
         // Set up timer
         remainingGameTime = playTimeMinutes * 60; // Convert to seconds
         updateGameTimer();
-        
+
         if (gameTimerInterval) {
           clearInterval(gameTimerInterval);
         }
-        
+
         gameTimerInterval = setInterval(() => {
           remainingGameTime--;
           updateGameTimer();
-          
+
           if (remainingGameTime <= 0) {
             endGame();
           }
         }, 1000);
-        
+
         // Update timer overlay
         if (gameTimerOverlay) {
           gameTimerOverlay.style.display = 'flex';
         }
-        
+
         if (gameTimerUser) {
           gameTimerUser.textContent = selectedProfile.name;
         }
-        
+
         // Show game modal
         const gameModal = document.getElementById('game-focus-modal');
         if (gameModal) {
           gameModal.classList.add('show');
-          
+
           // Add event listener to stop the timer when modal is closed
           const closeButton = gameModal.querySelector('.modal-close');
           if (closeButton) {
@@ -2519,14 +2866,14 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     });
   });
-  
+
   // Update game timer display
   function updateGameTimer() {
     if (gameTimerDisplay) {
       const minutes = Math.floor(remainingGameTime / 60);
       const seconds = remainingGameTime % 60;
       gameTimerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-      
+
       // Add visual indication when time is running low
       if (remainingGameTime <= 60) { // Last minute
         gameTimerDisplay.style.color = '#ff3860';
@@ -2535,45 +2882,45 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     }
   }
-  
+
   // End game session
   function endGame() {
     if (gameTimerInterval) {
       clearInterval(gameTimerInterval);
       gameTimerInterval = null;
     }
-    
+
     // Update user's remaining playtime
     if (selectedProfile) {
       const playedMinutes = Math.ceil((playTimeMinutes * 60 - remainingGameTime) / 60);
       selectedProfile.playtime -= playedMinutes;
       if (selectedProfile.playtime < 0) selectedProfile.playtime = 0;
-      
+
       // Update display
       if (playtimeMinutes) {
         playtimeMinutes.textContent = selectedProfile.playtime;
       }
-      
+
       // Update the profile item
       const profileItem = profileList.querySelector(`.profile-item[data-user-id="${selectedProfile.id}"]`);
       if (profileItem) {
         profileItem.dataset.playtime = selectedProfile.playtime;
       }
     }
-    
+
     // Clear game iframe
     const gameIframe = document.getElementById('game-iframe');
     if (gameIframe) {
       gameIframe.src = '';
     }
-    
+
     // Hide game modal (if it's not already being closed)
     const gameModal = document.getElementById('game-focus-modal');
     if (gameModal && gameModal.classList.contains('show')) {
       gameModal.classList.remove('show');
     }
   }
-  
+
   // Initialize Community Games Modal
   if (getModeGamesButton) {
     getModeGamesButton.addEventListener('click', () => {
@@ -2583,26 +2930,26 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     });
   }
-  
+
   // Handle community game installation
   const installButtons = document.querySelectorAll('.install-game-btn');
   installButtons.forEach(button => {
     button.addEventListener('click', () => {
       const gameItem = button.closest('.community-game-item');
       const gameTitle = gameItem.querySelector('h4').textContent;
-      
+
       // Simulate installation
       button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Installing...';
-      
+
       setTimeout(() => {
         button.innerHTML = '<i class="fas fa-check"></i> Installed';
         button.disabled = true;
-        
+
         alert(`${gameTitle} has been installed and added to your games library!`);
       }, 2000);
     });
   });
-  
+
   // Initialize profiles on load
   loadUserProfiles();
 });
@@ -2611,7 +2958,7 @@ document.addEventListener('DOMContentLoaded', function() {
 document.addEventListener('DOMContentLoaded', function() {
   const addCategoryButton = document.getElementById('add-category');
   const categoriesContainer = document.getElementById('meal-categories-container');
-  
+
   if (addCategoryButton && categoriesContainer) {
     addCategoryButton.addEventListener('click', () => {
       const categoryName = prompt('Enter new category name:');
@@ -2620,7 +2967,7 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     });
   }
-  
+
   async function addNewCategory(categoryName) {
     try {
       // In a real implementation, this would call an API endpoint
@@ -2631,10 +2978,10 @@ document.addEventListener('DOMContentLoaded', function() {
         color: getRandomColor(),
         icon: 'fa-utensils'
       };
-      
+
       // Add to UI
       appendCategoryToUI(newCategory);
-      
+
       // Refresh the meal type dropdown
       const mealTypeSelect = document.getElementById('mealType');
       if (mealTypeSelect) {
@@ -2643,22 +2990,22 @@ document.addEventListener('DOMContentLoaded', function() {
         option.textContent = newCategory.name;
         mealTypeSelect.appendChild(option);
       }
-      
+
       // Simulate saving to server
       console.log('New category added:', newCategory);
     } catch (error) {
       console.error('Error adding category:', error);
     }
   }
-  
+
   // Function to append a category to the UI
   function appendCategoryToUI(category) {
     if (!categoriesContainer) return;
-    
+
     const categoryItem = document.createElement('div');
     categoryItem.className = 'category-item';
     categoryItem.dataset.id = category.id;
-    
+
     categoryItem.innerHTML = `
       <div class="category-wrap">
         <div class="sortable-handle">
@@ -2680,9 +3027,9 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>
       </div>
     `;
-    
+
     categoriesContainer.appendChild(categoryItem);
-    
+
     // Add event listeners to the new buttons
     const editButton = categoryItem.querySelector('.category-edit');
     if (editButton) {
@@ -2691,13 +3038,13 @@ document.addEventListener('DOMContentLoaded', function() {
         const newName = prompt('Edit category name:', categoryName);
         if (newName && newName.trim() !== '' && newName !== categoryName) {
           categoryItem.querySelector('.category-name span').textContent = newName;
-          
+
           // Update category on server
           updateCategory(category.id, { name: newName });
         }
       });
     }
-    
+
     const deleteButton = categoryItem.querySelector('.category-delete');
     if (deleteButton) {
       deleteButton.addEventListener('click', () => {
@@ -2709,7 +3056,7 @@ document.addEventListener('DOMContentLoaded', function() {
       });
     }
   }
-  
+
   // Function to update a category
   async function updateCategory(id, data) {
     try {
@@ -2720,57 +3067,57 @@ document.addEventListener('DOMContentLoaded', function() {
         },
         body: JSON.stringify(data)
       });
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
+
       // Refresh the meal type dropdown
       populateMealTypeDropdown();
-      
+
       // Refresh the meal plan
       fetchAndDisplayMeals();
-      
+
     } catch (error) {
       console.error('Error updating category:', error);
       alert('Failed to update category');
     }
   }
-  
+
   // Function to delete a category
   async function deleteCategory(id) {
     try {
       const response = await fetch(`/api/meal-categories/${id}`, {
         method: 'DELETE'
       });
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
+
       // Refresh the meal type dropdown
       populateMealTypeDropdown();
-      
+
       // Refresh the meal plan
       fetchAndDisplayMeals();
-      
+
     } catch (error) {
       console.error('Error deleting category:', error);
       alert('Failed to delete category');
     }
   }
-  
+
   function getRandomColor() {
     const colors = ['#4285f4', '#34a853', '#fbbc05', '#ea4335', '#9c27b0', '#009688'];
     return colors[Math.floor(Math.random() * colors.length)];
   }
-  
+
   // Load existing categories
   async function loadCategories() {
     try {
       const response = await fetch('/api/meal-categories');
       const categories = await response.json();
-      
+
       if (categoriesContainer) {
         categoriesContainer.innerHTML = '';
         categories.forEach(category => {
@@ -2781,7 +3128,7 @@ document.addEventListener('DOMContentLoaded', function() {
       console.error('Error loading meal categories:', error);
     }
   }
-  
+
   // Initialize Sortable.js for drag-and-drop reordering
   if (categoriesContainer) {
     new Sortable(categoriesContainer, {
@@ -2793,40 +3140,10 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     });
   }
-  
+
   // Load categories on page load
   loadCategories();
 });
-
-// Function to get weather for a specific date
-// This is a placeholder - in a real implementation this would fetch from an API or local storage
-function getWeatherForDate(dateKey) {
-  // For demo purposes, generate some random weather
-  const weather = {
-    'sunny': { temp: [60, 85], condition: 'sunny' },
-    'cloudy': { temp: [55, 75], condition: 'cloudy' },
-    'rainy': { temp: [50, 70], condition: 'rainy' },
-    'stormy': { temp: [45, 65], condition: 'stormy' },
-    'snowy': { temp: [25, 35], condition: 'snowy' }
-  };
-  
-  // Use hash of date to get consistent but "random-looking" weather
-  const hash = dateKey.split('').reduce((a, b) => {
-    a = ((a << 5) - a) + b.charCodeAt(0);
-    return a & a;
-  }, 0);
-  
-  const conditions = Object.keys(weather);
-  const condition = conditions[Math.abs(hash) % conditions.length];
-  
-  const tempRange = weather[condition].temp;
-  const temp = tempRange[0] + (Math.abs(hash) % (tempRange[1] - tempRange[0]));
-  
-  return {
-    temp: temp,
-    condition: weather[condition].condition
-  };
-}
 
 // ===== Screen Burn Protection & Night Mode =====
 let activityTimeout;
@@ -2845,7 +3162,7 @@ function loadDisplaySettings() {
     .then(response => response.json())
     .then(settings => {
       displaySettings = settings;
-      
+
       // Apply saved settings to UI controls
       document.getElementById('auto-night-mode').checked = settings.autoNightMode;
       document.getElementById('night-mode-start').value = settings.nightModeStart;
@@ -2853,7 +3170,7 @@ function loadDisplaySettings() {
       document.getElementById('screen-burn-protection').checked = settings.screenBurnProtection;
       document.getElementById('dim-after-minutes').value = settings.dimAfterMinutes;
       document.getElementById('display-clock').checked = settings.displayClock;
-      
+
       // Apply settings immediately
       applyNightModeIfNeeded();
       resetActivityTimer();
@@ -2872,7 +3189,7 @@ function saveDisplaySettings() {
     dimAfterMinutes: parseInt(document.getElementById('dim-after-minutes').value),
     displayClock: document.getElementById('display-clock').checked
   };
-  
+
   fetch('/api/display-settings', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -2882,7 +3199,7 @@ function saveDisplaySettings() {
     .then(updatedSettings => {
       displaySettings = updatedSettings;
       console.log('Display settings saved:', updatedSettings);
-      
+
       // Apply new settings
       applyNightModeIfNeeded();
       resetActivityTimer();
@@ -2894,12 +3211,12 @@ function saveDisplaySettings() {
 // Track user activity to reset screen dimming timer
 function resetActivityTimer() {
   clearTimeout(activityTimeout);
-  
+
   // If screen is currently dimmed, wake it up
   if (document.getElementById('screen-dimmer').classList.contains('active')) {
     wakeScreen();
   }
-  
+
   // Only set a new timeout if screen burn protection is enabled
   if (displaySettings.screenBurnProtection) {
     const dimAfterMs = displaySettings.dimAfterMinutes * 60 * 1000;
@@ -2911,22 +3228,22 @@ function resetActivityTimer() {
 function dimScreen() {
   const dimmer = document.getElementById('screen-dimmer');
   dimmer.classList.add('active');
-  
+
   // Start countdown timer
   let countdown = 30;
   const countdownElement = document.getElementById('dimmer-countdown');
   countdownElement.textContent = countdown;
-  
+
   const countdownInterval = setInterval(() => {
     countdown--;
     countdownElement.textContent = countdown;
-    
+
     if (countdown <= 0) {
       clearInterval(countdownInterval);
       wakeScreen();
     }
   }, 1000);
-  
+
   // Store the interval ID on the dimmer element to clear it when waking up manually
   dimmer.dataset.countdownInterval = countdownInterval;
 }
@@ -2935,12 +3252,12 @@ function dimScreen() {
 function wakeScreen() {
   const dimmer = document.getElementById('screen-dimmer');
   dimmer.classList.remove('active');
-  
+
   // Clear any running countdown
   if (dimmer.dataset.countdownInterval) {
     clearInterval(parseInt(dimmer.dataset.countdownInterval));
   }
-  
+
   // Reset the activity timer
   resetActivityTimer();
 }
@@ -2952,27 +3269,27 @@ function applyNightModeIfNeeded() {
     document.getElementById('app').classList.remove('theme-night');
     return;
   }
-  
+
   const now = new Date();
   const currentTime = now.getHours() * 60 + now.getMinutes();
-  
+
   // Parse start and end times to minutes
   const [startHours, startMinutes] = displaySettings.nightModeStart.split(':').map(Number);
   const [endHours, endMinutes] = displaySettings.nightModeEnd.split(':').map(Number);
-  
+
   const nightModeStartMinutes = startHours * 60 + startMinutes;
   const nightModeEndMinutes = endHours * 60 + endMinutes;
-  
+
   // Determine if night mode should be active
   let shouldApplyNightMode = false;
-  
+
   // If night mode crosses midnight
   if (nightModeStartMinutes > nightModeEndMinutes) {
     shouldApplyNightMode = currentTime >= nightModeStartMinutes || currentTime < nightModeEndMinutes;
   } else {
     shouldApplyNightMode = currentTime >= nightModeStartMinutes && currentTime < nightModeEndMinutes;
   }
-  
+
   // Apply or remove night mode
   if (shouldApplyNightMode) {
     document.getElementById('app').classList.add('theme-night');
@@ -2984,11 +3301,11 @@ function applyNightModeIfNeeded() {
 // Update persistent clock display
 function updateClockDisplay() {
   const clockDisplay = document.getElementById('clock-display');
-  
+
   if (displaySettings.displayClock) {
     clockDisplay.style.display = 'block';
     updateClockTime();
-    
+
     // Update clock every minute
     setInterval(updateClockTime, 60000);
   } else {
@@ -3001,12 +3318,12 @@ function updateClockTime() {
   const now = new Date();
   const hours = now.getHours();
   const minutes = now.getMinutes();
-  
+
   // Format time as 12-hour with AM/PM
   const ampm = hours >= 12 ? 'PM' : 'AM';
   const displayHours = hours % 12 || 12; // Convert 0 to 12 for 12 AM
   const displayMinutes = minutes < 10 ? '0' + minutes : minutes;
-  
+
   document.getElementById('clock-display').textContent = `${displayHours}:${displayMinutes} ${ampm}`;
 }
 
@@ -3014,15 +3331,15 @@ function updateClockTime() {
 document.addEventListener('DOMContentLoaded', () => {
   // Load settings
   loadDisplaySettings();
-  
+
   // Set up event listeners for user activity
   ['mousemove', 'mousedown', 'keypress', 'touchstart', 'scroll'].forEach(event => {
     document.addEventListener(event, resetActivityTimer);
   });
-  
+
   // Set up Dimmer dismiss button
   document.getElementById('dimmer-dismiss').addEventListener('click', wakeScreen);
-  
+
   // Set up settings form event listeners
   document.getElementById('auto-night-mode').addEventListener('change', saveDisplaySettings);
   document.getElementById('night-mode-start').addEventListener('change', saveDisplaySettings);
@@ -3030,13 +3347,13 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('screen-burn-protection').addEventListener('change', saveDisplaySettings);
   document.getElementById('dim-after-minutes').addEventListener('change', saveDisplaySettings);
   document.getElementById('display-clock').addEventListener('change', saveDisplaySettings);
-  
+
   // Apply initial night mode if needed
   applyNightModeIfNeeded();
-  
+
   // Start a timer to check night mode every minute
   setInterval(applyNightModeIfNeeded, 60000);
-  
+
   // Initialize screen activity timer
   resetActivityTimer();
 });

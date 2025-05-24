@@ -2,6 +2,16 @@
 // A beautiful fullscreen calendar display for Home Assistant
 // Copyright (c) 2024
 
+// Load environment variables from .env.local if not in production (SUPERVISOR_TOKEN is undefined)
+if (process.env.SUPERVISOR_TOKEN === undefined) {
+  try {
+    require('dotenv').config({ path: require('path').join(__dirname, '.env.local') });
+    console.log("Loaded .env.local for development.");
+  } catch (e) {
+    console.warn("Could not load .env.local. Proceeding without it for development if SUPERVISOR_TOKEN is also missing.");
+  }
+}
+
 const express = require('express');
 const http = require('http');
 const path = require('path');
@@ -9,6 +19,7 @@ const { Server } = require('socket.io');
 const axios = require('axios');
 const fs = require('fs');
 const { exec } = require('child_process');
+const fetch = require('node-fetch');
 
 // Configuration
 let config;
@@ -31,7 +42,10 @@ try {
   }
 }
 
-const PORT = process.env.PORT || 8099;
+const DEV_PORT = 3001; // Port for backend during local development when using webpack-dev-server
+const PROD_PORT = process.env.PORT || 8099; // Original port logic for production/addon
+
+const PORT = isProduction ? PROD_PORT : DEV_PORT;
 
 const app = express();
 const server = http.createServer(app);
@@ -41,14 +55,28 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Home Assistant API connection setup
-const hassApiUrl = isProduction 
-  ? 'http://supervisor/core/api' 
-  : process.env.HASS_API_URL || 'http://localhost:8123/api';
+const hassApiUrl = isProduction
+  ? 'http://supervisor/core/api'
+  : process.env.HASS_API_URL || 'http://localhost:7123/api'; // Ensure 7123 is default for dev if not set
 
-const hassHeaders = {
-  Authorization: `Bearer ${process.env.SUPERVISOR_TOKEN || process.env.HASS_TOKEN}`,
-  'Content-Type': 'application/json',
+// Recreate hassHeaders each time to ensure it has the latest token
+const getHassHeaders = () => {
+  console.log(`[DEBUG] SUPERVISOR_TOKEN exists: ${!!process.env.SUPERVISOR_TOKEN}`);
+  console.log(`[DEBUG] HASS_TOKEN exists: ${!!process.env.HASS_TOKEN}`);
+  console.log(`[DEBUG] HASS_TOKEN value length: ${process.env.HASS_TOKEN ? process.env.HASS_TOKEN.length : 0}`);
+  console.log(`[DEBUG] HASS_TOKEN first characters: ${process.env.HASS_TOKEN ? process.env.HASS_TOKEN.substring(0, 20) : 'N/A'}`);
+
+  const token = process.env.SUPERVISOR_TOKEN || process.env.HASS_TOKEN;
+  console.log(`[DEBUG] Final token chosen: ${token ? (token.substring(0, 20) + '...') : 'MISSING TOKEN'}`);
+
+  return {
+    Authorization: `Bearer ${token}`,
+    'Content-Type': 'application/json',
+  };
 };
+
+// For backward compatibility with existing code
+const hassHeaders = getHassHeaders();
 
 // Data directories setup
 const dataDir = isProduction ? '/data' : path.join(__dirname, 'data');
@@ -86,7 +114,7 @@ if (!isProduction) {
       rewardPoints: 10
     }
   ]);
-  
+
   // Default users (dev only)
   initializeDataFile('users.json', [
     {
@@ -96,7 +124,7 @@ if (!isProduction) {
       icon: "fa-user"
     }
   ]);
-  
+
   // Default meal categories (dev only)
   initializeDataFile('meal-categories.json', [
     {
@@ -113,12 +141,12 @@ if (!isProduction) {
     },
     {
       id: "dev-3",
-      name: "Dinner", 
+      name: "Dinner",
       color: "#fbbc05",
       icon: "fa-utensils"
     }
   ]);
-  
+
   // Initialize display settings with defaults
   initializeDataFile('display-settings.json', {
     autoNightMode: true,
@@ -144,12 +172,12 @@ const handleDataFile = (filename, fallbackFile) => {
   return (req, res) => {
     const filePath = getDataPath(filename);
     const fallbackPath = path.join(__dirname, 'public', fallbackFile || filename);
-    
+
     // In production, always use the data directory file
     // In development, fallback to the public directory file if needed
-    const resolvedPath = fs.existsSync(filePath) ? filePath : 
+    const resolvedPath = fs.existsSync(filePath) ? filePath :
                         (!isProduction && fs.existsSync(fallbackPath)) ? fallbackPath : filePath;
-    
+
     fs.readFile(resolvedPath, 'utf8', (err, data) => {
       if (err) {
         console.error(`[ERROR] Error reading ${filename}:`, err);
@@ -193,7 +221,7 @@ app.post('/api/chores', (req, res) => {
       console.error('[ERROR] Error reading chores.json for POST:', err);
       return res.status(500).json({ error: 'Failed to read chores data' });
     }
-    
+
     try {
       const chores = err ? [] : JSON.parse(data);
       const newChore = {
@@ -205,7 +233,7 @@ app.post('/api/chores', (req, res) => {
         rewardPoints: req.body.rewardPoints || 10 // Default to 10 points if not specified
       };
       chores.push(newChore);
-      
+
       writeDataFile('chores.json', chores, res, () => {
         res.status(201).json(newChore);
       });
@@ -228,11 +256,11 @@ app.delete('/api/chores/:id', (req, res) => {
       let chores = JSON.parse(data);
       const originalLength = chores.length;
       chores = chores.filter(chore => chore.id !== req.params.id);
-      
+
       if (chores.length === originalLength) {
         return res.status(404).json({ error: 'Chore not found' });
       }
-      
+
       writeDataFile('chores.json', chores, res, () => {
         res.status(200).json({ message: 'Chore deleted successfully' });
       });
@@ -254,14 +282,14 @@ app.patch('/api/chores/:id', (req, res) => {
     try {
       let chores = JSON.parse(data);
       const choreIndex = chores.findIndex(chore => chore.id === req.params.id);
-      
+
       if (choreIndex === -1) {
         return res.status(404).json({ error: 'Chore not found' });
       }
-      
+
       // Update the chore with the provided fields
       chores[choreIndex] = { ...chores[choreIndex], ...req.body };
-      
+
       writeDataFile('chores.json', chores, res, () => {
         res.status(200).json(chores[choreIndex]);
       });
@@ -288,24 +316,24 @@ app.get('/api/recipes', handleDataFile('recipes.json'));
 app.get('/api/recipes/:id', (req, res) => {
   const filePath = getDataPath('recipes.json');
   const fallbackPath = path.join(__dirname, 'public', 'recipes.json');
-  
-  const resolvedPath = fs.existsSync(filePath) ? filePath : 
+
+  const resolvedPath = fs.existsSync(filePath) ? filePath :
                       (!isProduction && fs.existsSync(fallbackPath)) ? fallbackPath : filePath;
-  
+
   fs.readFile(resolvedPath, 'utf8', (err, data) => {
     if (err) {
       console.error(`[ERROR] Error reading recipes.json:`, err);
       return res.status(500).json({ error: 'Failed to load recipe data' });
     }
-    
+
     try {
       const recipes = JSON.parse(data);
       const recipe = recipes.find(r => r.id === req.params.id);
-      
+
       if (!recipe) {
         return res.status(404).json({ error: 'Recipe not found' });
       }
-      
+
       res.json(recipe);
     } catch (parseError) {
       console.error(`[ERROR] Error parsing recipes.json:`, parseError);
@@ -320,7 +348,7 @@ app.get('/api/grocery-list', handleDataFile('grocery-list.json'));
 // GET endpoint for display settings
 app.get('/api/display-settings', (req, res) => {
   const filePath = getDataPath('display-settings.json');
-  
+
   try {
     if (fs.existsSync(filePath)) {
       const data = fs.readFileSync(filePath, 'utf8');
@@ -335,12 +363,12 @@ app.get('/api/display-settings', (req, res) => {
         dimAfterMinutes: 10,
         displayClock: false
       };
-      
+
       // Create directory if it doesn't exist
       if (!fs.existsSync(path.dirname(filePath))) {
         fs.mkdirSync(path.dirname(filePath), { recursive: true });
       }
-      
+
       // Write default settings to file
       fs.writeFileSync(filePath, JSON.stringify(defaultSettings, null, 2));
       res.json(defaultSettings);
@@ -354,13 +382,13 @@ app.get('/api/display-settings', (req, res) => {
 // Update display settings
 app.post('/api/display-settings', (req, res) => {
   const filePath = getDataPath('display-settings.json');
-  
+
   try {
     // Create directory if it doesn't exist
     if (!fs.existsSync(path.dirname(filePath))) {
       fs.mkdirSync(path.dirname(filePath), { recursive: true });
     }
-    
+
     // Validate and sanitize settings
     const settings = {
       autoNightMode: !!req.body.autoNightMode,
@@ -370,13 +398,13 @@ app.post('/api/display-settings', (req, res) => {
       dimAfterMinutes: Math.max(1, Math.min(60, parseInt(req.body.dimAfterMinutes) || 10)),
       displayClock: !!req.body.displayClock
     };
-    
+
     // Write settings to file
     fs.writeFileSync(filePath, JSON.stringify(settings, null, 2));
-    
+
     // Broadcast settings update to all clients
     io.emit('display_settings_update', settings);
-    
+
     res.json(settings);
   } catch (error) {
     console.error('[ERROR] Error saving display settings:', error);
@@ -387,168 +415,227 @@ app.post('/api/display-settings', (req, res) => {
 // Re-enable API routes with proper error handling that depend on Home Assistant
 app.get('/api/calendar', async (req, res) => {
   try {
-    console.log(`[INFO] Fetching calendar data from: ${hassApiUrl}/calendars`);
-    const response = await axios.get(`${hassApiUrl}/calendars`, { 
-      headers: hassHeaders,
-      timeout: 10000 // 10 second timeout
-    });
-    
-    if (response.status === 200) {
-      res.json(response.data);
+    // Use the existing fetchCalendarData function which uses callHaApi
+    const calendarData = await fetchCalendarData();
+    if (calendarData) {
+      res.json(calendarData);
     } else {
-      console.error(`[ERROR] Calendar API returned status: ${response.status}`);
-      res.status(response.status).json({ 
-        error: 'Failed to fetch calendar data', 
-        statusCode: response.status
+      // fetchCalendarData already logs errors and returns [] or null on failure.
+      // Send a generic error if it still comes back as null/undefined here.
+      res.status(500).json({
+        error: 'Failed to fetch calendar data using fetchCalendarData function',
+        details: 'Check server logs for specific errors from callHaApi or fetchCalendarData.'
       });
     }
   } catch (error) {
-    console.error('[ERROR] Error fetching calendar data:', error.message);
-    
-    if (error.response) {
-      console.error('[ERROR] Calendar API Response Status:', error.response.status);
-      console.error('[ERROR] Calendar API Response Data:', error.response.data);
-      
-      res.status(error.response.status).json({ 
-        error: 'Failed to fetch calendar data', 
-        details: error.response.data,
-        statusCode: error.response.status
-      });
-    } else if (error.request) {
-      console.error('[ERROR] No response received from calendar API');
-      res.status(500).json({ 
-        error: 'No response received from Home Assistant calendar API', 
-        details: 'Request was made but no response was received'
-      });
-    } else {
-      res.status(500).json({ 
-        error: 'Failed to fetch calendar data', 
-        details: error.message
-      });
-    }
+    // This catch block is for unexpected errors specifically within this route handler itself.
+    console.error('[ERROR] Unexpected error in /api/calendar route handler:', error.message);
+    res.status(500).json({
+      error: 'Unexpected internal server error in /api/calendar route',
+      details: error.message
+    });
   }
 });
 
 app.get('/api/weather', async (req, res) => {
   if (!config || !config.show_weather) {
     console.log('[INFO] Weather display is disabled in config.');
-    return res.json({ enabled: false });
+    return res.json({ enabled: false, note: "Weather display disabled in configuration." });
   }
-  
+
   try {
-    // Use configured entity or default to weather.forecast_home
-    const weatherEntity = config.weather_entity || 'weather.forecast_home';
-    console.log(`[INFO] Fetching weather data for entity: ${weatherEntity}`);
-    
-    const response = await axios.get(`${hassApiUrl}/states/${weatherEntity}`, { 
-      headers: hassHeaders,
-      timeout: 10000 // 10 second timeout
-    });
-    
-    if (response.status === 200 && response.data) {
-      // Ensure weather data has the expected structure
-      const weatherData = response.data;
-      
+    // Use the existing fetchWeatherData function which uses callHaApi
+    const weatherData = await fetchWeatherData();
+
+    if (weatherData && weatherData.current) { // Check if current weather data is present
       // Log the weather data structure to help with debugging
-      console.log('[DEBUG] Weather data structure:', JSON.stringify(weatherData, null, 2));
-      
-      // Check if we have valid temperature data
-      if (weatherData.attributes && 
-          typeof weatherData.attributes.temperature === 'number') {
-        
-        console.log(`[INFO] Weather temperature: ${weatherData.attributes.temperature}`);
-        
+      console.log('[DEBUG] Weather data structure from fetchWeatherData:', JSON.stringify(weatherData, null, 2));
+
+      // Ensure current weather data has the expected structure for temperature
+      if (weatherData.current.attributes &&
+          typeof weatherData.current.attributes.temperature === 'number') {
+        console.log("[INFO] Weather temperature from fetchWeatherData: " + weatherData.current.attributes.temperature);
         // Format temperature with appropriate units
-        const tempUnit = weatherData.attributes.temperature_unit || '°C';
-        weatherData.formatted_temperature = `${Math.round(weatherData.attributes.temperature)}${tempUnit}`;
-        
-        res.json(weatherData);
+        const tempUnit = weatherData.current.attributes.temperature_unit || '°C';
+        // Add formatted_temperature to the current object if desired, or handle in frontend
+        weatherData.current.formatted_temperature = Math.round(weatherData.current.attributes.temperature) + tempUnit;
+        res.json(weatherData); // Send the whole object { current: ..., forecast: ... }
       } else {
-        console.warn('[WARN] Weather data missing temperature attribute');
+        console.warn('[WARN] Weather data (current) missing temperature attribute from fetchWeatherData');
         res.json({
-          ...weatherData,
-          formatted_temperature: 'N/A',
-          _warning: 'Temperature data is missing or invalid'
+          ...(weatherData || {}), // Send what we have
+          current: {
+            ...(weatherData ? weatherData.current : {}),
+            formatted_temperature: 'N/A',
+            _warning: 'Temperature data is missing or invalid in current conditions'
+          }
         });
       }
     } else {
-      console.error(`[ERROR] Weather API returned unexpected status: ${response.status}`);
-      res.status(response.status || 500).json({ 
-        error: 'Failed to fetch weather data', 
-        details: 'Received unexpected response'
+      console.error('[ERROR] Failed to fetch weather data using fetchWeatherData function or data was incomplete.');
+      res.status(500).json({
+        error: 'Failed to fetch weather data',
+        details: 'fetchWeatherData function returned null or incomplete data. Check server logs.'
       });
     }
   } catch (error) {
-    console.error('[ERROR] Error fetching weather data:', error.message);
-    
-    if (error.response) {
-      console.error('[ERROR] Weather API Response Status:', error.response.status);
-      console.error('[ERROR] Weather API Response Data:', error.response.data);
-      
-      // If entity not found, provide more helpful message
-      if (error.response.status === 404) {
-        return res.status(404).json({ 
-          error: 'Weather entity not found', 
-          details: `The configured weather entity was not found. Check your Home Assistant configuration.`,
-          statusCode: 404
-        });
-      }
-      
-      res.status(error.response.status).json({ 
-        error: 'Failed to fetch weather data', 
-        details: error.response.data,
-        statusCode: error.response.status
-      });
-    } else if (error.request) {
-      console.error('[ERROR] No response received from weather API');
-      res.status(500).json({ 
-        error: 'No response received from Home Assistant weather API', 
-        details: 'Request was made but no response was received'
-      });
-    } else {
-      res.status(500).json({ 
-        error: 'Failed to fetch weather data', 
-        details: error.message
-      });
-    }
+    // This catch block is for unexpected errors specifically within this route handler itself.
+    console.error('[ERROR] Unexpected error in /api/weather route handler:', error.message);
+    res.status(500).json({
+      error: 'Unexpected internal server error in /api/weather route',
+      details: error.message
+    });
   }
 });
 
 // Start the server
 server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`Environment: ${isProduction ? 'Production' : 'Development'}`);
-  console.log(`Data directory: ${dataDir}`);
-  
+  console.log("[INFO] Server running on port " + PORT);
+  console.log("[INFO] Environment: " + (isProduction ? 'Production' : 'Development'));
+  if (!isProduction) {
+    console.log(`[INFO] webpack-dev-server is expected to be running on http://localhost:8099 and proxying to this backend on ${PORT}`);
+  }
+  console.log("[INFO] Data directory: " + dataDir);
+
   // In production mode with kiosk_mode enabled, start the web browser
   if (isProduction && config.kiosk_mode) {
-    console.log('Starting kiosk mode...');
+    console.log('[INFO] Starting kiosk mode...');
     try {
       // Insert your browser startup code here if needed
     } catch (error) {
-      console.error('Failed to start kiosk mode:', error);
+      console.error('[ERROR] Failed to start kiosk mode:', error);
     }
   }
 });
 
-io.on('connection', (socket) => {
-  console.log('[DEBUG] Client connected (simplified for debugging)');
-  // Temporarily comment out exec for kiosk mode
-  /*
-  socket.on('exit_kiosk', () => {
-    console.log('[DEBUG] Received request to exit kiosk mode');
-    if (config.kiosk_mode && process.env.DISPLAY) {
-      exec('/usr/bin/exit-kiosk', (error) => {
-        if (error) {
-          console.error('[DEBUG] Failed to exit kiosk mode:', error);
-        } else {
-          console.log('[DEBUG] Kiosk mode exited successfully');
-        }
-      });
+/**
+ * Helper function to make HA API calls using axios
+ * @param {string} apiPath The API path (e.g., '/calendars', '/states/entity.id').
+ * @param {object} fetchOptions Standard fetch options (method, body, etc.).
+ * @returns {Promise<any>} The JSON response from the API.
+ */
+async function callHaApi(apiPath, fetchOptions = {}) {
+  const url = hassApiUrl + apiPath; // apiPath should start with a slash
+  const method = fetchOptions.method || 'GET';
+
+  // Create axios config
+  const axiosConfig = {
+    method: method,
+    url: url,
+    headers: {
+      ...getHassHeaders(), // Get fresh headers with token
+      ...(fetchOptions.headers || {}),
     }
-  });
-  */
-  socket.on('disconnect', () => {
-    console.log('[DEBUG] Client disconnected (simplified for debugging)');
-  });
-}); 
+  };
+
+  // Add data if present (axios uses 'data' instead of 'body')
+  if (fetchOptions.body) {
+    axiosConfig.data = typeof fetchOptions.body === 'string'
+      ? fetchOptions.body
+      : fetchOptions.body;
+  }
+
+  console.log(`[INFO] Fetching from HA API: ${method} ${url}`);
+  if (axiosConfig.data) {
+    console.log(`[DEBUG] Request data: ${typeof axiosConfig.data === 'string' ? axiosConfig.data : JSON.stringify(axiosConfig.data)}`);
+  }
+
+  try {
+    const response = await axios(axiosConfig);
+
+    // Return the data directly (axios already parses JSON)
+    return response.data;
+  } catch (error) {
+    console.error(`[ERROR] Home Assistant API request to ${apiPath} failed:`, error.message);
+    if (error.response) {
+      console.error(`[ERROR] Status: ${error.response.status} ${error.response.statusText}`);
+      console.error(`[ERROR] Response data:`, error.response.data);
+    }
+    throw error;
+  }
+}
+
+// Function to fetch calendar data
+async function fetchCalendarData() {
+  if (!config.calendar_entity_id) {
+    console.log('[INFO] No calendar_entity_id configured, skipping calendar data fetch.');
+    return [];
+  }
+  try {
+    const now = new Date();
+    const start_time = now.toISOString();
+    const end_time = new Date(now.getTime() + (config.calendar_days_to_show || 7) * 24 * 60 * 60 * 1000).toISOString();
+    const apiPath = "/calendars/" + config.calendar_entity_id + "?start=" + start_time + "&end=" + end_time;
+
+    console.log("[INFO] Fetching calendar data from: " + hassApiUrl + apiPath);
+    console.log("[DEBUG] Using headers for calendar: " + JSON.stringify(getHassHeaders()));
+
+    const data = await callHaApi(apiPath);
+    console.log('[INFO] Successfully fetched calendar data.');
+    return data || []; // Return empty array if data is null/undefined
+  } catch (error) {
+    console.error('[ERROR] Error fetching calendar data:', error.message);
+    console.error("[ERROR] Calendar API Response Status: " + (error.status || 'N/A'));
+    console.error("[ERROR] Calendar API Response Data: " + (error.data || 'N/A'));
+    return []; // Return empty array on error
+  }
+}
+
+// Function to fetch weather data
+async function fetchWeatherData() {
+  if (!config.show_weather) {
+    console.log('[INFO] Weather display is disabled in configuration.');
+    return null;
+  }
+
+  // IMPORTANT: Use the configured weather entity ID or fall back to "weather.home"
+  const weatherEntityId = config.weather_entity_id || "weather.home";
+
+  if (!weatherEntityId) {
+    console.log('[INFO] No weather_entity_id configured, skipping weather data fetch.');
+    return null;
+  }
+
+  try {
+    console.log(`[INFO] Fetching weather data for entity: ${weatherEntityId}`);
+
+    // First, try to get the current weather state
+    const currentState = await callHaApi("/states/" + weatherEntityId);
+
+    if (!currentState) {
+      console.error(`[ERROR] Failed to fetch weather state for ${weatherEntityId}`);
+      return null;
+    }
+
+    console.log(`[INFO] Successfully fetched weather state for ${weatherEntityId}`);
+
+    // Extract forecast from the entity's attributes
+    const forecast = currentState.attributes.forecast || [];
+
+    // Return both current state and forecast
+    return {
+      current: currentState,
+      forecast: forecast
+    };
+  } catch (error) {
+    console.error('[ERROR] Error fetching weather data:', error.message);
+    return null;
+  }
+}
+
+// Function to send initial data to a newly connected client
+// ... existing code ...
+
+app.get('/api/combined-data', async (req, res) => {
+  try {
+    const calendarData = await fetchCalendarData();
+    const weatherData = await fetchWeatherData();
+    res.json({
+      calendarData: calendarData || { error: "Could not fetch calendar data"}, // Provide some fallback
+      weatherData: weatherData || { error: "Could not fetch weather data or entity not configured"} // Provide some fallback
+    });
+  } catch (error) { // This catch might be redundant if sub-functions handle errors and return null
+    console.error('[ERROR] Error in /api/combined-data endpoint:', error.message);
+    res.status(500).json({ error: 'Failed to fetch combined data from Home Assistant' });
+  }
+});

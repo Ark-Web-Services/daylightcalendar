@@ -1,7 +1,7 @@
 {
   "theme": "light",
   "show_weather": true,
-  "weather_entity": "weather.forecast_home",
+  "weather_entity_id": "weather.forecast_home",
   "locale": "en-US",
   "time_format": "12h",
   "kiosk_mode": false,
@@ -13,4 +13,4 @@
     "dimAfterMinutes": 10,
     "displayClock": false
   }
-} 
+}

@@ -20,13 +20,13 @@
   --card-bg: #ffffff;
   --card-hover-bg: #f1f3f4;
   --theme-name: "light";
-  
+
   /* User colors */
   --color-alex: #4285f4;
   --color-jordan: #34a853;
   --color-casey: #fbbc05;
   --color-taylor: #ea4335;
-  
+
   /* Meal type colors */
   --breakfast-color: #4285f4;
   --lunch-color: #34a853;
@@ -300,6 +300,7 @@ header {
   opacity: 0.8;
 }
 
+/* Weather Styles */
 .weather {
   display: flex;
   flex-direction: column;
@@ -332,6 +333,26 @@ header {
   color: var(--text-color);
   opacity: 0.5;
   margin-top: 0.25rem;
+}
+
+/* Calendar day weather icon styles */
+.day-weather-icon {
+  font-size: 0.9rem;
+  color: var(--text-color);
+  margin-left: 5px;
+}
+
+/* Style for fallback/estimated weather data */
+.weather-fallback .day-weather-icon {
+  opacity: 0.6;
+  font-style: italic;
+}
+
+.weather-fallback .day-weather-icon::after {
+  content: "*";
+  font-size: 0.7em;
+  vertical-align: super;
+  color: var(--text-muted);
 }
 
 main {
@@ -465,27 +486,27 @@ footer {
   header {
     padding: 0.5rem 1rem;
   }
-  
+
   .date-time h1 {
     font-size: 2rem;
   }
-  
+
   .date-time h2 {
     font-size: 1rem;
   }
-  
+
   .weather {
     font-size: 1.5rem;
   }
-  
+
   main {
     padding: 0.5rem 1rem;
   }
-  
+
   footer {
     padding: 0.5rem 1rem;
   }
-  
+
   .next-event p {
     font-size: 1.2rem;
   }
@@ -1314,7 +1335,7 @@ footer {
   #meal-plan-grid {
     font-size: 0.85rem;
   }
-  
+
   .meal-plan-cell {
     padding: 0.5rem;
     min-height: 60px;
@@ -1797,7 +1818,7 @@ footer {
   .recipe-book {
     flex-direction: column;
   }
-  
+
   .recipe-list {
     width: 100%;
     height: auto;
@@ -1805,11 +1826,11 @@ footer {
     border-right: none;
     border-bottom: 1px solid var(--border-color);
   }
-  
+
   .recipe-header {
     flex-direction: column;
   }
-  
+
   .recipe-image-container {
     width: 100%;
     height: 180px;
@@ -2180,7 +2201,7 @@ footer {
 }
 
 .weather-sunny {
-  background-color: rgba(251, 192, 45, 0.2); 
+  background-color: rgba(251, 192, 45, 0.2);
   color: #b07d04;
 }
 
@@ -2466,7 +2487,7 @@ footer {
   --background-color: #202124;
   --card-hover-bg: #3c4043;
   --theme-name: "dark";
-  
+
   /* Apply night shift (reducing blue light) */
   filter: sepia(20%) brightness(90%) hue-rotate(320deg);
 }
@@ -2495,4 +2516,4 @@ footer {
   color: #666;
   margin-top: 0.25rem;
   margin-bottom: 0.5rem;
-} 
+}
