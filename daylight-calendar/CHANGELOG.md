@@ -1,4 +1,16 @@
 # Changelog
+## [1.1.9.0] - 2025-05-28
+
+### Changed
+- Complete redesign of the theming system to implement Material Design 3 principles
+- Converted all UI components to follow Material Design guidelines
+- Added improved color system with primary, secondary, and tertiary colors
+- Enhanced accessibility with better color contrast ratios
+- Implemented Material elevation system with consistent shadows
+- Refined component shapes with consistent border radius values
+- Improved typography with Material Design type scale
+- Standardized spacing system with Material Design spacing units
+
 ## [1.1.8.7] - 2025-05-27
 
 ### Changed
