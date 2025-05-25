@@ -1,6 +1,6 @@
 {
   "name": "daylight-calendar",
-  "version": "1.1.7.1",
+  "version": "1.1.8",
   "description": "A beautiful fullscreen calendar display for your Home Assistant touchscreen",
   "main": "index.js",
   "scripts": {

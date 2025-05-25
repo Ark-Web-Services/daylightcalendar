@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Daylight Calendar</title>
-  <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@5.15.4/css/all.min.css" rel="stylesheet">
-  <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.9/main.min.css" rel="stylesheet">
+  <link href="fontawesome.min.css" rel="stylesheet">
+  <link href="fullcalendar.min.css" rel="stylesheet">
   <link href="styles.css" rel="stylesheet">
 </head>
 <body>
@@ -39,6 +39,9 @@
         </div>
         <div class="tab-item" data-tab-target="games-content">
           <i class="fas fa-gamepad"></i><span>Games</span>
+        </div>
+        <div class="tab-item dev-only-tab" data-tab-target="api-test-content" id="debug-tab">
+          <i class="fas fa-bug"></i><span>Debug</span>
         </div>
         <!-- Future tabs can go here -->
       </div>
@@ -131,7 +134,7 @@
               </div>
             </div>
           </div>
-          
+
           <!-- Kanban Board for Chores -->
           <div id="chore-board" class="kanban-board">
             <!-- Lanes will be generated dynamically by JavaScript -->
@@ -194,7 +197,7 @@
               </div>
             </div>
           </div>
-          
+
           <!-- Recipe Book Modal -->
           <div id="recipe-book-modal" class="modal">
             <div class="modal-content recipe-book-modal">
@@ -256,7 +259,7 @@
               </div>
             </div>
           </div>
-          
+
           <!-- Grocery List Modal -->
           <div id="grocery-list-modal" class="modal">
             <div class="modal-content">
@@ -291,7 +294,7 @@
               </div>
             </div>
           </div>
-          
+
           <!-- Meal Categories Modal -->
           <div id="meal-categories-modal" class="modal">
             <div class="modal-content">
@@ -307,7 +310,7 @@
               </div>
             </div>
           </div>
-          
+
           <!-- Cooking Mode Modal -->
           <div id="cooking-mode-modal" class="modal">
             <div class="modal-content cooking-mode-modal">
@@ -357,7 +360,7 @@
               </div>
             </div>
           </div>
-          
+
           <!-- Weekly Meal Plan Grid -->
           <div id="meal-plan-grid">
             <div class="meal-plan-header">
@@ -397,7 +400,7 @@
               <!-- Profiles will be populated by JavaScript -->
             </div>
           </div>
-          
+
           <div class="games-grid">
             <div class="game-item" data-game-url="https://geometrydashonline.github.io/" data-game-age="8+">
               <div class="game-icon geometry-dash-icon">
@@ -421,7 +424,7 @@
               <div class="playtime-indicator">15 min</div>
             </div>
           </div>
-          
+
           <!-- Game Focus Modal -->
           <div id="game-focus-modal" class="modal">
             <div class="modal-content game-modal-content">
@@ -438,7 +441,7 @@
               </div>
             </div>
           </div>
-          
+
           <!-- Get More Games Modal -->
           <div id="get-more-games-modal" class="modal">
             <div class="modal-content">
@@ -462,7 +465,7 @@
                     </div>
                     <button class="btn btn-sm btn-primary install-game-btn"><i class="fas fa-download"></i> Install</button>
                   </div>
-                  
+
                   <div class="community-game-item">
                     <div class="community-game-icon">
                       <img src="https://cdn2.scratch.mit.edu/get_image/project/31903442_480x360.png" alt="Space Shooter">
@@ -477,7 +480,7 @@
                     </div>
                     <button class="btn btn-sm btn-primary install-game-btn"><i class="fas fa-download"></i> Install</button>
                   </div>
-                  
+
                   <div class="community-game-item">
                     <div class="community-game-icon">
                       <img src="https://cdn2.scratch.mit.edu/get_image/project/116222711_480x360.png" alt="Puzzle Quest">
@@ -496,7 +499,7 @@
               </div>
             </div>
           </div>
-          
+
           <!-- Add Game Modal -->
           <div id="add-game-modal" class="modal">
             <div class="modal-content">
@@ -554,6 +557,16 @@
         </div>
       </div>
 
+      <div id="api-test-content" class="tab-content">
+        <div class="content-scrollable" style="height: 100%; overflow: auto;">
+          <iframe id="debug-iframe" src="debug.html" style="width: 100%; height: 100%; border: none; min-height: 800px;"></iframe>
+        </div>
+      </div>
+      </div>
+          </div>
+        </div>
+      </div>
+
       <div id="settings-content" class="tab-content">
         <header class="content-header">
           <h1>Settings</h1>
@@ -571,7 +584,7 @@
                 </div>
               </div>
             </div>
-            
+
             <div class="settings-card">
               <h3>Microphone Test</h3>
               <div class="microphone-test-container">
@@ -585,7 +598,7 @@
               </div>
             </div>
           </div>
-          
+
           <div class="settings-section">
             <h2>App Settings</h2>
             <div class="settings-card">
@@ -611,7 +624,7 @@
                 </button>
               </div>
             </div>
-            
+
             <div class="settings-card">
               <h3>Display</h3>
               <div class="form-row">
@@ -634,7 +647,7 @@
                 </div>
               </div>
             </div>
-            
+
             <div class="settings-card">
               <h3>Screen Protection</h3>
               <div class="form-row">
@@ -661,7 +674,7 @@
               </div>
             </div>
           </div>
-          
+
           <div class="settings-section">
             <h2>User Profiles</h2>
             <div class="settings-card">
@@ -673,10 +686,10 @@
               </div>
             </div>
           </div>
-          
+
         </div>
       </div>
-      
+
       <!-- Profile Edit Modal -->
       <div id="edit-profile-modal" class="modal">
         <div class="modal-content">
@@ -687,14 +700,14 @@
           <div class="modal-body">
             <form id="edit-profile-form">
               <input type="hidden" id="profile-id">
-              
+
               <div class="form-row">
                 <div class="form-group">
                   <label for="profile-name">Name</label>
                   <input type="text" id="profile-name" required>
                 </div>
               </div>
-              
+
               <div class="form-row">
                 <div class="form-group">
                   <label for="profile-color">Profile Color</label>
@@ -708,7 +721,7 @@
                   </div>
                   <input type="hidden" id="profile-color" required>
                 </div>
-                
+
                 <div class="form-group">
                   <label for="profile-icon">Icon</label>
                   <div class="icon-selector" id="profile-icon-selector">
@@ -722,7 +735,7 @@
                   <input type="hidden" id="profile-icon" required>
                 </div>
               </div>
-              
+
               <div class="form-row">
                 <div class="form-group">
                   <label for="profile-photo">Profile Photo</label>
@@ -743,14 +756,14 @@
                   </div>
                 </div>
               </div>
-              
+
               <div class="form-row">
                 <div class="form-group">
                   <label for="profile-game-time-limit">Game Time Limit (minutes/day)</label>
                   <input type="number" id="profile-game-time-limit" min="0" max="120" value="30">
                 </div>
               </div>
-              
+
               <div class="form-actions">
                 <button type="button" class="btn btn-danger" id="delete-profile-btn">Delete Profile</button>
                 <button type="submit" class="btn btn-primary">Save Profile</button>
@@ -769,4 +782,4 @@
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
   <script src="dist/bundle.js"></script>
 </body>
-</html> 
+</html>
