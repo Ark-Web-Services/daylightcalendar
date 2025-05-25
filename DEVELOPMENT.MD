@@ -57,6 +57,25 @@ Once Home Assistant is running in the devcontainer, this add-on will be availabl
     *   **Backend Changes:** For changes to backend code (e.g., Python files, `run.sh` scripts, the add-on's `Dockerfile` in `daylight-calendar/`), you will generally need to **Restart** the add-on from its page in the Home Assistant UI. For `Dockerfile` changes, you might need to rebuild the add-on (often an option in the add-on UI if supported, or by uninstalling/reinstalling locally).
     *   **Integrated Frontend:** The add-on serves its frontend via Ingress (typically after an `npm run build` step defined in the `daylight-calendar/Dockerfile`). Changes to this built frontend will be visible after you rebuild/restart the add-on.
 
+### Updating and Testing Changes in Home Assistant
+
+When you make changes to the code and want to test them in Home Assistant, follow these steps:
+
+1. **Save your changes** in the development environment
+2. **Update version numbers**:
+   - Increment the version in `daylight-calendar/config.yaml`
+   - Add a new entry in `daylight-calendar/CHANGELOG.md` with the new version number
+   - Update the version comment at the top of `daylight-calendar/index.js`
+3. **Update the add-on in Home Assistant**:
+   - Go to the Home Assistant UI (http://localhost:7123)
+   - Navigate to Settings > Add-ons
+   - Click the refresh button in the top-right corner to detect your changes
+   - Click on the Daylight Calendar add-on
+   - Click the "Update" button that appears
+   - Once the update is complete, restart the add-on to apply your changes
+
+This workflow ensures your changes are properly versioned and allows Home Assistant to detect and apply the updates to the add-on.
+
 ## Developing the Frontend UI with `npm run dev` (Live Reloading)
 
 For a faster frontend development experience with live/hot reloading, we now use `webpack-dev-server` managed by `concurrently` alongside `nodemon` for the backend.
@@ -76,7 +95,7 @@ For a faster frontend development experience with live/hot reloading, we now use
     npm run dev
     ```
     This command now does the following:
-    *   Starts your backend Node.js server (`index.js`) using `nodemon` on port `3001`. `nodemon` watches for changes in `index.js` and restarts the backend automatically.
+    *   Starts your backend Node.js server (`index.js`) using `nodemon` on port `3001`. This port is specifically used for development and is separate from the production port (8099). `nodemon` watches for changes in `index.js` and restarts the backend automatically.
     *   Starts `webpack-dev-server` on port `8099`. This server:
         *   Compiles your frontend assets (like `public/script.js` into `public/dist/bundle.js`) in development mode.
         *   Serves the `public` directory (containing `index.html`, `styles.css`, etc.).

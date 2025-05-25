@@ -1,6 +1,111 @@
 # Changelog
+## [1.1.8.7] - 2025-05-27
+
+### Changed
+- Updated development documentation to clearly explain the port 3001 usage for backend during development
+- Improved documentation clarity regarding the separation between development and production ports
+
+## [1.1.8.6] - 2025-05-26
+
+### Added
+- Enhanced debug interface with "Run Full Diagnostic Suite" button
+- Added token revelation feature to show token source information
+- Added "Copy All Results" button to easily share diagnostic information
+- Added current URL display for improved debugging context
+
+### Fixed
+- Fixed token-info API endpoint to support detailed token information
+- Improved debug panel styling for better visibility in all themes
+
+## [1.1.8.5] - 2025-05-25
+
+### Fixed
+- Fixed debug page not scrolling properly in Home Assistant ingress mode
+- Fixed theme color issues causing dark text on dark background in debug interface
+- Fixed debug page width not respecting sidebar layout in ingress mode
+- Added ingress API path detection to debug tools for proper operation through Home Assistant
+- Restored styles.css reference in debug.html
+- Improved error handling for API requests in Home Assistant ingress mode
+
+## [1.1.8.4] - 2025-05-24
+
+### Added
+- Added dedicated development mode toggle in add-on configuration
+- Consolidated diagnostic tools into a single page accessible via `/debug.html`, `/ingress`, or `/local_daylight_calendar/ingress`
+- Added runtime configuration override API for easier troubleshooting
+- Added detailed request logging in development mode
+- Added ingress path detection for better Home Assistant integration
+
+### Fixed
+- Fixed webfont loading in ingress mode by serving fonts at multiple paths
+- Improved error handling for JSON parsing errors in API responses
+- Enhanced diagnostics endpoint with more detailed environment information
+- Fixed 404 errors when accessing API endpoints through ingress
+
+### Changed
+- Upgraded debugging infrastructure to support Home Assistant's ingress path handling
+- Improved socket.io connection with more detailed server information
+- Enhanced error responses with structured data to prevent client crashes
+
+## [1.1.8.3] - 2025-05-24
+
+### Fixed
+- Fixed duplicate code in server initialization
+- Fixed Socket.io configuration for ingress connections
+
+## [1.1.8.2] - 2025-05-24
+
+### Added
+- Added proper support for Home Assistant ingress mode
+- Added API endpoint for token information (/api/token-info)
+- Added Home Assistant API proxy endpoint (/api/ha-proxy)
+- Added initial_data event to socket.io for client configuration
+
+### Fixed
+- Fixed webfonts loading in ingress mode by serving them directly
+- Added CORS headers for ingress mode to allow cross-origin requests
+- Improved detection of ingress environment
+
+
+### Changed
+- Updated server to detect and adapt to ingress mode automatically
+- Simplified API error responses to prevent client parsing errors
+
+## [1.1.8.1] - 2025-05-24
+
+### Fixed
+- Fixed ESM module import error with node-fetch by using dynamic import syntax
+- Resolved MIME type issues with external resources by hosting them locally
+- Improved error handling in API endpoints to prevent client-side crashes
+- Added proper fallbacks for API responses to ensure valid data structures
+- Fixed Font Awesome font file loading issues by including local webfonts
+
+### Changed
+- Updated initialization process to handle ESM imports properly
+
+## [1.1.8] - 2025-05-23
+
+### Fixed
+- Resolved `webpack-dev-server` intermittent startup failures by downgrading to `^4.15.1`.
+- Ensured frontend changes are reliably hot-reloaded during development.
+- Corrected JavaScript `ReferenceError` for `weatherForecastData` (Temporal Dead Zone) by moving its declaration.
+- Fixed `setTheme is not defined` JavaScript error by correcting function call to `updateTheme`.
+- Eliminated persistent dummy weather icons on calendar days by ensuring JavaScript changes were loading correctly.
+- Improved text contrast in dark mode for header elements (time, date, weather) and FullCalendar toolbar components.
+
+### Changed
+- Updated `DEVELOPMENT.MD` with current `npm run dev` instructions for `webpack-dev-server` and `nodemon` via `concurrently`.
+
+### Removed
+- Unnecessary root-level `package.json` and `package-lock.json` files.
+
+### Known Issues
+- **Critical:** Frontend API calls (for calendar data, weather, chores, etc.) are failing with `TypeError: NetworkError when attempting to fetch resource`. This prevents most data from loading in the calendar and other sections. Suspected issue with the backend server not starting or being reachable via the proxy. Investigation pending backend logs.
+- Daily weather icons on the calendar will not display until the above NetworkError is resolved and weather data can be fetched.
+
 ## [1.1.7.1] - 2025-05-12
-- Correct build errors 
+- Correct build errors
+
 
 ## [1.1.7] - 2025-05-12
 
@@ -92,4 +197,4 @@
 - Basic calendar display from Home Assistant.
 - Weather integration.
 - Light and dark themes.
-- Kiosk mode. 
+- Kiosk mode.
