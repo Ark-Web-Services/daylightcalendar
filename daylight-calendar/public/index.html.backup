@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Daylight Calendar</title>
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  <link href="fullcalendar.min.css" rel="stylesheet">
+  <link href="styles.css" rel="stylesheet">
+</head>
+<body>
+  <div id="app" class="theme-light">
+    <!-- Screen burn prevention overlay -->
+    <div class="screen-dimmer" id="screen-dimmer">
+      <div class="screen-dimmer-message">Screen dimmed to prevent burn-in</div>
+      <div class="screen-dimmer-timer">Auto-resume in <span id="dimmer-countdown">30</span> seconds</div>
+      <button class="screen-dimmer-dismiss" id="dimmer-dismiss">Tap to Wake Up</button>
+    </div>
+
+    <!-- Always visible clock display (when enabled) -->
+    <div class="clock-display" id="clock-display">10:25 PM</div>
+
+    <div id="sidebar">
+      <div id="sidebar-logo" class="sidebar-toggle">
+        <i class="material-icons">event</i>
+        <span>Daylight</span>
+        <i class="material-icons">chevron_left</i>
+      </div>
+      <div class="sidebar-divider"></div>
+      <div class="sidebar-tabs">
+        <div class="tab-item active-tab" data-tab-target="calendar-content">
+          <i class="material-icons">calendar_today</i><span>Calendar</span>
+        </div>
+        <div class="tab-item" data-tab-target="chores-content">
+          <i class="material-icons">check_box</i><span>Chores</span>
+        </div>
+        <div class="tab-item" data-tab-target="meals-content">
+          <i class="material-icons">restaurant</i><span>Meals</span>
+        </div>
+        <div class="tab-item" data-tab-target="games-content">
+          <i class="material-icons">sports_esports</i><span>Games</span>
+        </div>
+        <div class="tab-item dev-only-tab" data-tab-target="api-test-content" id="debug-tab">
+          <i class="material-icons">bug_report</i><span>Debug</span>
+        </div>
+        <!-- Future tabs can go here -->
+      </div>
+
+      <div class="sidebar-spacer"></div>
+      <div class="sidebar-footer">
+        <div class="tab-item" data-tab-target="settings-content">
+          <i class="material-icons">settings</i><span>Settings</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="main-content-area">
+      <div id="calendar-content" class="tab-content active-content">
+        <header>
+          <div class="date-time">
+            <h1 id="current-time">--:--</h1>
+            <h2 id="current-date">Loading...</h2>
+          </div>
+          <div class="weather" id="weather-container">
+            <div class="temp">--°</div>
+            <div class="condition"><i class="material-icons">cloud</i></div>
+          </div>
+        </header>
+        <div class="calendar-toolbar">
+          <div class="calendar-users">
+            <div class="users-toggle-label">Users:</div>
+            <div id="user-toggles" class="user-toggle-icons">
+              <!-- User icons will be populated by JavaScript -->
+            </div>
+          </div>
+        </div>
+        <main>
+          <div id="calendar"></div>
+        </main>
+        <footer>
+          <div class="next-event" id="next-event">
+            <h3>Next Event</h3>
+            <p id="next-event-info">No upcoming events</p>
+          </div>
+        </footer>
+      </div>
+
+      <div id="chores-content" class="tab-content">
+        <header class="content-header">
+          <h1>Chore Board</h1>
+          <div class="header-actions">
+            <button id="jump-to-today" class="btn btn-secondary"><i class="material-icons">today</i> Today</button>
+            <button id="toggle-completed" class="btn btn-secondary"><i class="material-icons">visibility_off</i> Hide Completed</button>
+            <button id="add-chore-button" class="btn btn-primary"><i class="material-icons">add</i> New Chore</button>
+          </div>
+        </header>
+        <div class="content-scrollable">
+          <!-- Add Chore Modal/Form -->
+          <div id="add-chore-modal" class="modal">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h3>Add New Chore</h3>
+                <button class="modal-close">&times;</button>
+              </div>
+              <div class="modal-body">
+                <form id="add-chore-form">
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label for="choreName">Chore</label>
+                      <input type="text" id="choreName" name="choreName" placeholder="What needs to be done?" required>
+                    </div>
+                  </div>
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label for="assigneeName">Assign to</label>
+                      <select id="assigneeName" name="assigneeName">
+                        <option value="">Unassigned</option>
+                        <option value="Alex" data-color="#4285f4">Alex</option>
+                        <option value="Jordan" data-color="#34a853">Jordan</option>
+                        <option value="Casey" data-color="#fbbc05">Casey</option>
+                        <option value="Taylor" data-color="#ea4335">Taylor</option>
+                      </select>
+                    </div>
+                    <div class="form-group">
+                      <label for="dueDate">Due Date</label>
+                      <input type="date" id="dueDate" name="dueDate">
+                    </div>
+                  </div>
+                  <div class="form-actions">
+                    <button type="button" class="btn btn-secondary modal-cancel">Cancel</button>
+                    <button type="submit" class="btn btn-primary"><i class="material-icons">add_circle</i> Add Chore</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+
+          <!-- Kanban Board for Chores -->
+          <div id="chore-board" class="kanban-board">
+            <!-- Lanes will be generated dynamically by JavaScript -->
+          </div>
+        </div>
+      </div>
+
+      <div id="meals-content" class="tab-content">
+        <header class="content-header">
+          <h1>Meal Planner</h1>
+          <div class="header-actions">
+            <button id="prev-week" class="btn btn-secondary"><i class="material-icons">chevron_left</i></button>
+            <button id="next-week" class="btn btn-secondary"><i class="material-icons">chevron_right</i></button>
+            <button id="recipe-book-button" class="btn btn-primary"><i class="material-icons">menu_book</i> Recipe Book</button>
+            <button id="grocery-list-button" class="btn btn-primary"><i class="material-icons">shopping_basket</i> Grocery List</button>
+            <button id="add-meal-button" class="btn btn-primary"><i class="material-icons">add</i> Add Meal</button>
+            <button id="meal-categories-button" class="btn btn-primary"><i class="material-icons">label</i> Categories</button>
+          </div>
+        </header>
+        <div class="content-scrollable">
+          <!-- Add Meal Modal -->
+          <div id="add-meal-modal" class="modal">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h3>Add New Meal</h3>
+                <button class="modal-close">&times;</button>
+              </div>
+              <div class="modal-body">
+                <form id="add-meal-form">
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label for="mealDescription">Description</label>
+                      <div class="meal-input-group">
+                        <input type="text" id="mealDescription" name="mealDescription" placeholder="What's for dinner?" required>
+                        <button type="button" id="select-recipe-btn" class="btn btn-sm btn-secondary"><i class="material-icons">menu_book</i> Select Recipe</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label for="mealType">Meal Type</label>
+                      <select id="mealType" name="mealType" required>
+                        <!-- Meal types will be populated by JavaScript -->
+                      </select>
+                    </div>
+                    <input type="hidden" id="mealDate" name="mealDate">
+                    <input type="hidden" id="recipeId" name="recipeId">
+                  </div>
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label for="mealCook">Who's Cooking (optional)</label>
+                      <input type="text" id="mealCook" name="mealCook" placeholder="Enter cook's name">
+                    </div>
+                  </div>
+                  <div class="form-actions">
+                    <button type="button" class="btn btn-secondary modal-cancel">Cancel</button>
+                    <button type="submit" class="btn btn-primary"><i class="material-icons">add_circle</i> Add Meal</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+
+          <!-- Recipe Book Modal -->
+          <div id="recipe-book-modal" class="modal">
+            <div class="modal-content recipe-book-modal">
+              <div class="modal-header">
+                <h3>Recipe Book</h3>
+                <div class="recipe-book-actions">
+                  <button id="add-recipe-button" class="btn btn-sm btn-primary"><i class="material-icons">add</i> New Recipe</button>
+                  <button class="modal-close">&times;</button>
+                </div>
+              </div>
+              <div class="modal-body recipe-book-body">
+                <div class="recipe-book">
+                  <div class="recipe-list">
+                    <!-- Recipe list will be populated by JavaScript -->
+                    <div class="recipe-list-placeholder">
+                      <i class="material-icons spin">refresh</i> Loading recipes...
+                    </div>
+                  </div>
+                  <div class="recipe-detail">
+                    <div class="recipe-detail-placeholder">
+                      <i class="material-icons">book</i>
+                      <p>Select a recipe to view details</p>
+                    </div>
+                    <div class="recipe-detail-content" style="display: none;">
+                      <div class="recipe-header">
+                        <div class="recipe-image-container">
+                          <img id="recipe-image" src="" alt="Recipe Image">
+                        </div>
+                        <div class="recipe-info">
+                          <h3 id="recipe-name"></h3>
+                          <p id="recipe-description"></p>
+                          <div class="recipe-actions">
+                            <button id="add-to-meal-plan" class="btn btn-sm btn-primary"><i class="material-icons">event_note</i> Add to Meal Plan</button>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="recipe-divider"></div>
+                      <div class="recipe-ingredients">
+                        <h4>Ingredients</h4>
+                        <ul id="recipe-ingredients-list">
+                          <!-- Ingredients will be populated by JavaScript -->
+                        </ul>
+                      </div>
+                      <div class="recipe-divider"></div>
+                      <div class="recipe-instructions">
+                        <h4>Instructions</h4>
+                        <div id="recipe-instructions-text"></div>
+                      </div>
+                      <div class="recipe-divider"></div>
+                      <div class="recipe-actions-footer">
+                        <div class="cooking-info">
+                          <span id="recipe-cooking-time"><i class="material-icons">schedule</i> Prep Time: 30 min</span>
+                        </div>
+                        <button id="start-cooking-mode" class="btn btn-primary"><i class="material-icons">restaurant</i> Start Cooking</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Grocery List Modal -->
+          <div id="grocery-list-modal" class="modal">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h3>Grocery List</h3>
+                <button class="modal-close">&times;</button>
+              </div>
+              <div class="modal-body">
+                <div class="grocery-list-container">
+                  <div class="grocery-list-add">
+                    <form id="add-grocery-item-form">
+                      <div class="form-row">
+                        <div class="form-group">
+                          <input type="text" id="groceryItemName" name="groceryItemName" placeholder="Add item..." required>
+                        </div>
+                        <div class="form-group">
+                          <input type="text" id="groceryItemQuantity" name="groceryItemQuantity" placeholder="Quantity">
+                        </div>
+                        <button type="submit" class="btn btn-primary"><i class="material-icons">add</i></button>
+                      </div>
+                    </form>
+                  </div>
+                  <div class="grocery-list-items">
+                    <ul id="grocery-items-list">
+                      <!-- Grocery items will be populated by JavaScript -->
+                      <li class="loading-items">
+                        <i class="material-icons spin">refresh</i> Loading items...
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Meal Categories Modal -->
+          <div id="meal-categories-modal" class="modal">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h3>Meal Categories</h3>
+                <button class="modal-close">&times;</button>
+              </div>
+              <div class="modal-body">
+                <div id="meal-categories-container" class="sortable-list">
+                  <!-- Categories will be populated dynamically -->
+                </div>
+                <button id="add-category" class="btn btn-secondary"><i class="material-icons">add</i> Add Category</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Cooking Mode Modal -->
+          <div id="cooking-mode-modal" class="modal">
+            <div class="modal-content cooking-mode-modal">
+              <div class="modal-header">
+                <h3 id="cooking-recipe-name">Recipe Name</h3>
+                <button class="modal-close">&times;</button>
+              </div>
+              <div class="modal-body cooking-mode-body">
+                <div class="cooking-mode">
+                  <div class="cooking-steps">
+                    <h2>Steps</h2>
+                    <ul id="cooking-steps-list" class="step-list">
+                      <!-- Steps will be populated by JavaScript -->
+                    </ul>
+                  </div>
+                  <div class="cooking-content">
+                    <img id="cooking-recipe-image" src="" alt="Recipe Image">
+                    <div id="current-step-content">
+                      <h3>Step <span id="current-step-number">1</span></h3>
+                      <p id="current-step-instructions"></p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="cooking-controls">
+                <div class="cooking-nav-buttons">
+                  <button id="prev-step" class="btn btn-secondary"><i class="material-icons">arrow_back</i> Previous</button>
+                  <button id="next-step" class="btn btn-primary">Next <i class="material-icons">arrow_forward</i></button>
+                </div>
+                <div class="cooking-timer">
+                  <button id="start-timer" class="btn btn-secondary"><i class="material-icons">timer</i></button>
+                  <span class="cooking-timer-display" id="timer-display">00:00</span>
+                </div>
+                <div class="voice-command-indicator" id="voice-command-indicator">
+                  <i class="material-icons">mic</i>
+                  <span>Voice Commands</span>
+                  <div class="voice-command-help">
+                    <strong>Available Voice Commands:</strong>
+                    <ul>
+                      <li>"Next" or "Next step" - Move to next step</li>
+                      <li>"Previous" or "Back" - Move to previous step</li>
+                      <li>"Start timer" - Start cooking timer</li>
+                      <li>"Stop timer" - Stop cooking timer</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Weekly Meal Plan Grid -->
+          <div id="meal-plan-grid">
+            <div class="meal-plan-header">
+              <div class="meal-plan-cell meal-type-header"></div>
+              <div class="meal-plan-cell day-header" data-day="0">Monday</div>
+              <div class="meal-plan-cell day-header" data-day="1">Tuesday</div>
+              <div class="meal-plan-cell day-header" data-day="2">Wednesday</div>
+              <div class="meal-plan-cell day-header" data-day="3">Thursday</div>
+              <div class="meal-plan-cell day-header" data-day="4">Friday</div>
+              <div class="meal-plan-cell day-header" data-day="5">Saturday</div>
+              <div class="meal-plan-cell day-header" data-day="6">Sunday</div>
+            </div>
+            <!-- Meal rows will be populated dynamically by JavaScript -->
+          </div>
+        </div>
+      </div>
+
+      <div id="games-content" class="tab-content">
+        <header class="content-header">
+          <h1>Games</h1>
+          <div class="header-actions">
+            <button id="add-game-button" class="btn btn-primary"><i class="material-icons">add</i> Add Game</button>
+            <!-- Button temporarily disabled until repository system is built
+            <button id="get-more-games-button" class="btn btn-secondary"><i class="material-icons">get_app</i> Get More Games</button>
+            -->
+          </div>
+        </header>
+        <div class="content-scrollable">
+          <div class="game-profile-selector">
+            <div class="game-profile-header">
+              <h3>Select Profile</h3>
+              <div class="profile-actions">
+                <span id="playtime-balance">Available Playtime: <span id="playtime-minutes">30</span> minutes</span>
+              </div>
+            </div>
+            <div class="profile-list" id="profile-list">
+              <!-- Profiles will be populated by JavaScript -->
+            </div>
+          </div>
+
+          <div class="games-grid">
+            <div class="game-item" data-game-url="https://geometrydashonline.github.io/" data-game-age="8+">
+              <div class="game-icon geometry-dash-icon">
+                <img src="https://vignette2.wikia.nocookie.net/geometry-dash/images/9/90/GeometryDash.png" alt="Geometry Dash" onerror="this.src='https://geometrydashonline.github.io/assets/images/icon.webp'">
+              </div>
+              <div class="game-title">Geometry Dash</div>
+              <div class="playtime-indicator">15 min</div>
+            </div>
+            <div class="game-item" data-game-url="https://hextris.io/" data-game-age="6+">
+              <div class="game-icon">
+                <img src="https://github.com/Hextris/hextris/blob/gh-pages/images/twitter-opengraph.png?raw=true" alt="Hextris" onerror="this.src='https://via.placeholder.com/64'">
+              </div>
+              <div class="game-title">Hextris</div>
+              <div class="playtime-indicator">10 min</div>
+            </div>
+            <div class="game-item" data-game-url="https://ellisonleao.github.io/clumsy-bird/" data-game-age="5+">
+              <div class="game-icon">
+                <img src="https://nathanprinsley-games.prinsh.com/NathanPrinsleyGames/clumsybird/thumb_1.jpg" alt="Clumsy Bird" onerror="this.src='https://via.placeholder.com/64'">
+              </div>
+              <div class="game-title">Clumsy Bird</div>
+              <div class="playtime-indicator">15 min</div>
+            </div>
+          </div>
+
+          <!-- Game Focus Modal -->
+          <div id="game-focus-modal" class="modal">
+            <div class="modal-content game-modal-content">
+              <div class="modal-header">
+                <h3 id="game-modal-title">Game</h3>
+                <button class="modal-close">&times;</button>
+              </div>
+              <div class="modal-body game-modal-body">
+                <div id="game-timer-overlay" class="game-timer-overlay">
+                  <div class="game-timer-display" id="game-timer-display">15:00</div>
+                  <div class="game-timer-user" id="game-timer-user">Alex</div>
+                </div>
+                <iframe id="game-iframe" src="" frameborder="0" allowfullscreen></iframe>
+              </div>
+            </div>
+          </div>
+
+          <!-- Get More Games Modal -->
+          <div id="get-more-games-modal" class="modal">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h3>Community Games</h3>
+                <button class="modal-close">&times;</button>
+              </div>
+              <div class="modal-body">
+                <div class="community-games-grid">
+                  <div class="community-game-item">
+                    <div class="community-game-icon">
+                      <img src="https://cdn2.scratch.mit.edu/get_image/project/104711816_480x360.png" alt="Platformer">
+                    </div>
+                    <div class="community-game-info">
+                      <h4>Platformer Adventure</h4>
+                      <p>A classic platformer game with multiple levels</p>
+                      <div class="community-game-meta">
+                        <span><i class="material-icons">person</i> GameCreator123</span>
+                        <span><i class="material-icons">star</i> 4.5/5</span>
+                      </div>
+                    </div>
+                    <button class="btn btn-sm btn-primary install-game-btn"><i class="material-icons">get_app</i> Install</button>
+                  </div>
+
+                  <div class="community-game-item">
+                    <div class="community-game-icon">
+                      <img src="https://cdn2.scratch.mit.edu/get_image/project/31903442_480x360.png" alt="Space Shooter">
+                    </div>
+                    <div class="community-game-info">
+                      <h4>Space Shooter</h4>
+                      <p>Defend your ship against waves of alien invaders</p>
+                      <div class="community-game-meta">
+                        <span><i class="material-icons">person</i> SpaceGameDev</span>
+                        <span><i class="material-icons">star</i> 4.2/5</span>
+                      </div>
+                    </div>
+                    <button class="btn btn-sm btn-primary install-game-btn"><i class="material-icons">get_app</i> Install</button>
+                  </div>
+
+                  <div class="community-game-item">
+                    <div class="community-game-icon">
+                      <img src="https://cdn2.scratch.mit.edu/get_image/project/116222711_480x360.png" alt="Puzzle Quest">
+                    </div>
+                    <div class="community-game-info">
+                      <h4>Puzzle Quest</h4>
+                      <p>Test your brain with challenging puzzles</p>
+                      <div class="community-game-meta">
+                        <span><i class="material-icons">person</i> PuzzleMaster</span>
+                        <span><i class="material-icons">star</i> 4.8/5</span>
+                      </div>
+                    </div>
+                    <button class="btn btn-sm btn-primary install-game-btn"><i class="material-icons">get_app</i> Install</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Add Game Modal -->
+          <div id="add-game-modal" class="modal">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h3>Add New Game</h3>
+                <button class="modal-close">&times;</button>
+              </div>
+              <div class="modal-body">
+                <form id="add-game-form">
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label for="gameTitle">Game Title</label>
+                      <input type="text" id="gameTitle" name="gameTitle" placeholder="Enter game title" required>
+                    </div>
+                  </div>
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label for="gameURL">Game URL</label>
+                      <input type="url" id="gameURL" name="gameURL" placeholder="https://example.com/game" required>
+                    </div>
+                  </div>
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label for="gameIconURL">Icon URL</label>
+                      <input type="url" id="gameIconURL" name="gameIconURL" placeholder="https://example.com/icon.png">
+                    </div>
+                    <div class="form-group">
+                      <label for="gameIconUpload">Or Upload Icon</label>
+                      <input type="file" id="gameIconUpload" name="gameIconUpload" accept="image/*">
+                    </div>
+                  </div>
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label for="gameAgeRating">Age Rating</label>
+                      <select id="gameAgeRating" name="gameAgeRating">
+                        <option value="all">All Ages</option>
+                        <option value="5+">5+</option>
+                        <option value="8+">8+</option>
+                        <option value="12+">12+</option>
+                      </select>
+                    </div>
+                    <div class="form-group">
+                      <label for="gamePlaytime">Default Playtime (minutes)</label>
+                      <input type="number" id="gamePlaytime" name="gamePlaytime" min="5" max="60" value="15">
+                    </div>
+                  </div>
+                  <div class="form-actions">
+                    <button type="button" class="btn btn-secondary modal-cancel">Cancel</button>
+                    <button type="submit" class="btn btn-primary"><i class="material-icons">add_circle</i> Add Game</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="api-test-content" class="tab-content">
+        <div class="content-scrollable" style="height: 100%; overflow: auto;">
+          <iframe id="debug-iframe" src="debug.html" style="width: 100%; height: 100%; border: none; min-height: 800px;"></iframe>
+        </div>
+      </div>
+      </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="settings-content" class="tab-content">
+        <header class="content-header">
+          <h1>Settings</h1>
+        </header>
+        <div class="content-scrollable">
+          <div class="settings-section">
+            <h2>Media Testing</h2>
+            <div class="settings-card">
+              <h3>Camera Test</h3>
+              <div class="camera-test-container">
+                <video id="camera-test" autoplay playsinline></video>
+                <div class="media-test-buttons">
+                  <button id="start-camera" class="btn btn-primary"><i class="material-icons">video</i> Start Camera</button>
+                  <button id="stop-camera" class="btn btn-secondary" disabled><i class="material-icons">video_off</i> Stop Camera</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <h3>Microphone Test</h3>
+              <div class="microphone-test-container">
+                <div id="mic-level-indicator">
+                  <div id="mic-level-bar"></div>
+                </div>
+                <div class="media-test-buttons">
+                  <button id="start-microphone" class="btn btn-primary"><i class="material-icons">mic</i> Start Microphone</button>
+                  <button id="stop-microphone" class="btn btn-secondary" disabled><i class="material-icons">mic_off</i> Stop Microphone</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h2>App Settings</h2>
+            <div class="settings-card">
+              <h3>Theme</h3>
+              <div class="theme-selector">
+                <button class="theme-button" data-theme="light">
+                  <i class="material-icons">brightness_high</i> Light
+                </button>
+                <button class="theme-button" data-theme="dark">
+                  <i class="material-icons">brightness_low</i> Dark
+                </button>
+                <button class="theme-button" data-theme="pastel">
+                  <i class="material-icons">palette</i> Pastel
+                </button>
+                <button class="theme-button" data-theme="forest">
+                  <i class="material-icons">forest</i> Forest
+                </button>
+                <button class="theme-button" data-theme="ocean">
+                  <i class="material-icons">waves</i> Ocean
+                </button>
+                <button class="theme-button" data-theme="sunset">
+                  <i class="material-icons">brightness_7</i> Sunset
+                </button>
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <h3>Display</h3>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="auto-night-mode">
+                    <input type="checkbox" id="auto-night-mode" name="auto-night-mode">
+                    Auto Night Mode
+                  </label>
+                  <p class="setting-description">Automatically switch to night mode with reduced blue light between sunset and sunrise.</p>
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="night-mode-start">Night Mode Start</label>
+                  <input type="time" id="night-mode-start" name="night-mode-start" value="20:00">
+                </div>
+                <div class="form-group">
+                  <label for="night-mode-end">Night Mode End</label>
+                  <input type="time" id="night-mode-end" name="night-mode-end" value="07:00">
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <h3>Screen Protection</h3>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="screen-burn-protection">
+                    <input type="checkbox" id="screen-burn-protection" name="screen-burn-protection" checked>
+                    Screen Burn Protection
+                  </label>
+                  <p class="setting-description">Dims the screen after a period of inactivity to prevent burn-in on display.</p>
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="dim-after-minutes">Dim After (minutes)</label>
+                  <input type="number" id="dim-after-minutes" min="1" max="60" value="10">
+                </div>
+                <div class="form-group">
+                  <label for="display-clock">
+                    <input type="checkbox" id="display-clock" name="display-clock">
+                    Show Persistent Clock
+                  </label>
+                  <p class="setting-description">Always display clock in corner of screen.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h2>User Profiles</h2>
+            <div class="settings-card">
+              <div class="profile-management">
+                <div class="profile-list-settings" id="profile-list-settings">
+                  <!-- Profiles will be populated by JavaScript -->
+                </div>
+                <button id="add-profile-button" class="btn btn-primary"><i class="material-icons">person_add</i> Add Profile</button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Profile Edit Modal -->
+      <div id="edit-profile-modal" class="modal">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3 id="profile-edit-title">Edit Profile</h3>
+            <button class="modal-close">&times;</button>
+          </div>
+          <div class="modal-body">
+            <form id="edit-profile-form">
+              <input type="hidden" id="profile-id">
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="profile-name">Name</label>
+                  <input type="text" id="profile-name" required>
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="profile-color">Profile Color</label>
+                  <div class="color-selector" id="profile-color-selector">
+                    <button type="button" class="color-option" data-color="#4285f4" style="background-color: #4285f4;"></button>
+                    <button type="button" class="color-option" data-color="#34a853" style="background-color: #34a853;"></button>
+                    <button type="button" class="color-option" data-color="#fbbc05" style="background-color: #fbbc05;"></button>
+                    <button type="button" class="color-option" data-color="#ea4335" style="background-color: #ea4335;"></button>
+                    <button type="button" class="color-option" data-color="#9c27b0" style="background-color: #9c27b0;"></button>
+                    <button type="button" class="color-option" data-color="#009688" style="background-color: #009688;"></button>
+                  </div>
+                  <input type="hidden" id="profile-color" required>
+                </div>
+
+                <div class="form-group">
+                  <label for="profile-icon">Icon</label>
+                  <div class="icon-selector" id="profile-icon-selector">
+                    <button type="button" class="icon-option" data-icon="person"><i class="material-icons">person</i></button>
+                    <button type="button" class="icon-option" data-icon="face"><i class="material-icons">face</i></button>
+                    <button type="button" class="icon-option" data-icon="sentiment_very_satisfied"><i class="material-icons">sentiment_very_satisfied</i></button>
+                    <button type="button" class="icon-option" data-icon="pets"><i class="material-icons">pets</i></button>
+                    <button type="button" class="icon-option" data-icon="cruelty_free"><i class="material-icons">cruelty_free</i></button>
+                    <button type="button" class="icon-option" data-icon="sports_esports"><i class="material-icons">sports_esports</i></button>
+                  </div>
+                  <input type="hidden" id="profile-icon" required>
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="profile-photo">Profile Photo</label>
+                  <div class="profile-photo-container">
+                    <div class="profile-photo-preview" id="profile-photo-preview">
+                      <i class="material-icons">person</i>
+                    </div>
+                    <div class="profile-photo-actions">
+                      <button type="button" id="take-profile-photo" class="btn btn-sm btn-secondary">
+                        <i class="material-icons">photo_camera</i> Take Photo
+                      </button>
+                      <button type="button" id="upload-profile-photo" class="btn btn-sm btn-secondary">
+                        <i class="material-icons">upload</i> Upload
+                      </button>
+                    </div>
+                    <input type="file" id="profile-photo-input" accept="image/*" style="display: none;">
+                    <input type="hidden" id="profile-photo-data">
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="profile-game-time-limit">Game Time Limit (minutes/day)</label>
+                  <input type="number" id="profile-game-time-limit" min="0" max="120" value="30">
+                </div>
+              </div>
+
+              <div class="form-actions">
+                <button type="button" class="btn btn-danger" id="delete-profile-btn">Delete Profile</button>
+                <button type="submit" class="btn btn-primary">Save Profile</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/moment@2.29.4/moment.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.9/index.global.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.7.2/dist/socket.io.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+  <script src="dist/bundle.js"></script>
+</body>
+</html>

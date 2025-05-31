@@ -1,5 +1,24 @@
 # Changelog
-## [1.1.9.0] - 2025-05-28
+## [1.1.9.2] - 2025-05-28
+
+### Fixed
+- Fixed modal close buttons not working in dynamically loaded content (meals, games, chores pages)
+- Added escape key support for closing modals
+- Added click-outside-modal-to-close functionality
+- Fixed debug page button functionality by correcting function name mismatches
+- Fixed theme button functionality in settings page with improved event handling
+- Improved modal event listener management to prevent duplicate listeners
+- Fixed data file check buttons in debug page to use correct file paths
+
+### Enhanced
+- Improved modal user experience with multiple ways to close modals (X button, escape key, click outside)
+- Added better debugging for theme button functionality
+- Enhanced modal setup to work properly with Turbo frame content loading
+- Improved error handling and logging for modal interactions
+
+## [1.1.9.1] - 2025-05-25
+
+## [1.1.9.0] - 2025-05-25
 
 ### Changed
 - Complete redesign of the theming system to implement Material Design 3 principles
@@ -11,13 +30,13 @@
 - Improved typography with Material Design type scale
 - Standardized spacing system with Material Design spacing units
 
-## [1.1.8.7] - 2025-05-27
+## [1.1.8.7] - 2025-05-25
 
 ### Changed
 - Updated development documentation to clearly explain the port 3001 usage for backend during development
 - Improved documentation clarity regarding the separation between development and production ports
 
-## [1.1.8.6] - 2025-05-26
+## [1.1.8.6] - 2025-05-25
 
 ### Added
 - Enhanced debug interface with "Run Full Diagnostic Suite" button

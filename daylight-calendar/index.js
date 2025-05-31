@@ -14,15 +14,15 @@ const axios = require('axios');
 
 // Main initialization function to handle async imports
 async function initializeApp() {
-  // Load environment variables from .env.local if not in production (SUPERVISOR_TOKEN is undefined)
-  if (process.env.SUPERVISOR_TOKEN === undefined) {
-    try {
-      require('dotenv').config({ path: require('path').join(__dirname, '.env.local') });
-      console.log("Loaded .env.local for development.");
-    } catch (e) {
-      console.warn("Could not load .env.local. Proceeding without it for development if SUPERVISOR_TOKEN is also missing.");
-    }
+// Load environment variables from .env.local if not in production (SUPERVISOR_TOKEN is undefined)
+if (process.env.SUPERVISOR_TOKEN === undefined) {
+  try {
+    require('dotenv').config({ path: require('path').join(__dirname, '.env.local') });
+    console.log("Loaded .env.local for development.");
+  } catch (e) {
+    console.warn("Could not load .env.local. Proceeding without it for development if SUPERVISOR_TOKEN is also missing.");
   }
+}
 
   // Dynamically import ESM modules
   const { default: fetch } = await import('node-fetch');
@@ -31,27 +31,27 @@ async function initializeApp() {
   // Make fetch globally available for other functions
   global.fetch = fetch;
 
-  // Configuration
-  let config;
-  const localOptionsPath = path.join(__dirname, 'options.json');
-  const supervisorOptionsPath = '/data/options.json';
-  const isProduction = process.env.SUPERVISOR_TOKEN !== undefined;
+// Configuration
+let config;
+const localOptionsPath = path.join(__dirname, 'options.json');
+const supervisorOptionsPath = '/data/options.json';
+const isProduction = process.env.SUPERVISOR_TOKEN !== undefined;
   const isIngressMode = isProduction && process.env.INGRESS_PORT !== undefined;
 
   if (isIngressMode) {
     console.log(`[INFO] Running in Home Assistant ingress mode on port ${process.env.INGRESS_PORT}`);
   }
 
+try {
+  config = JSON.parse(fs.readFileSync(supervisorOptionsPath, 'utf8'));
+  console.log(`Loaded configuration from ${supervisorOptionsPath}`);
+} catch (error) {
+  console.warn(`Could not read ${supervisorOptionsPath}. This is normal if running locally or if HA Supervisor has not provided it yet.`);
   try {
-    config = JSON.parse(fs.readFileSync(supervisorOptionsPath, 'utf8'));
-    console.log(`Loaded configuration from ${supervisorOptionsPath}`);
-  } catch (error) {
-    console.warn(`Could not read ${supervisorOptionsPath}. This is normal if running locally or if HA Supervisor has not provided it yet.`);
-    try {
-      config = JSON.parse(fs.readFileSync(localOptionsPath, 'utf8'));
-      console.log(`Loaded local fallback configuration from ${localOptionsPath}`);
-    } catch (localError) {
-      console.error(`Failed to load local fallback configuration from ${localOptionsPath}:`, localError);
+    config = JSON.parse(fs.readFileSync(localOptionsPath, 'utf8'));
+    console.log(`Loaded local fallback configuration from ${localOptionsPath}`);
+  } catch (localError) {
+    console.error(`Failed to load local fallback configuration from ${localOptionsPath}:`, localError);
       config = {
         theme: "light",
         show_weather: true,
@@ -60,9 +60,9 @@ async function initializeApp() {
         kiosk_mode: false,
         development_mode: false  // Default to false
       };
-      console.log("Using hardcoded default configuration for debugging.");
-    }
+    console.log("Using hardcoded default configuration for debugging.");
   }
+}
 
   // Ensure development_mode is in config (default to false if not defined)
   config.development_mode = config.development_mode === true;
@@ -76,11 +76,8 @@ async function initializeApp() {
     console.log("[INFO] Running in DEVELOPMENT mode - debug features enabled");
   }
 
-  const DEV_PORT = 3001; // Port for backend during local development when using webpack-dev-server
-  const PROD_PORT = process.env.PORT || 8099; // Original port logic for production/addon
-  const INGRESS_PORT = process.env.INGRESS_PORT || 8099; // Port for Home Assistant ingress
-
-  const PORT = isIngressMode ? INGRESS_PORT : isProduction ? PROD_PORT : DEV_PORT;
+  // Use port 8100 for development to avoid conflict with the Home Assistant addon on 8099
+  const PORT = process.env.PORT || process.env.INGRESS_PORT || (isProduction ? 8099 : 8100);
 
   // Get the ingress path if we're in ingress mode
   const ingressPath = process.env.INGRESS_PATH || '';
@@ -88,8 +85,8 @@ async function initializeApp() {
     console.log(`[INFO] Using ingress path: ${ingressPath}`);
   }
 
-  const app = express();
-  const server = http.createServer(app);
+const app = express();
+const server = http.createServer(app);
 
   // Configure Socket.io with CORS for ingress mode
   const io = new Server(server, {
@@ -101,7 +98,7 @@ async function initializeApp() {
     path: isIngressMode ? '/socket.io' : undefined
   });
 
-  app.use(express.json());
+app.use(express.json());
 
   // Debug middleware to log all requests in development mode
   if (config.development_mode) {
@@ -113,7 +110,7 @@ async function initializeApp() {
   }
 
   // Serve static files
-  app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public')));
 
   // Special handling for ingress mode
   if (isIngressMode) {
@@ -130,26 +127,54 @@ async function initializeApp() {
       res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
       next();
     });
+
+    // Middleware to extract Home Assistant auth information from headers
+    app.use((req, res, next) => {
+      // Log ingress headers to help with debugging
+      if (config.development_mode) {
+        console.log('[DEBUG] Ingress headers:', {
+          'x-ingress-path': req.get('x-ingress-path'),
+          'x-hass-source': req.get('x-hass-source'),
+          'x-forwarded-for': req.get('x-forwarded-for'),
+          'x-forwarded-host': req.get('x-forwarded-host'),
+          'x-forwarded-proto': req.get('x-forwarded-proto'),
+          'authorization': req.get('authorization') ? 'Present' : 'Missing'
+        });
+      }
+
+      // If there's a direct authorization header, extract it and save for API calls
+      if (req.get('authorization')) {
+        const authHeader = req.get('authorization');
+        if (authHeader.startsWith('Bearer ')) {
+          const token = authHeader.slice(7);
+          console.log(`[INFO] Using provided authorization bearer token (${token.length} chars)`);
+          // Store in environment for API calls
+          process.env.HASS_TOKEN = token;
+        }
+      }
+
+      next();
+    });
   }
 
-  // Home Assistant API connection setup
-  const hassApiUrl = isProduction
-    ? 'http://supervisor/core/api'
+// Home Assistant API connection setup
+const hassApiUrl = isProduction
+  ? 'http://supervisor/core/api'
     : process.env.HASS_API_URL || 'http://localhost:8123/api'; // Standard HA port
 
-  // Data directories setup
-  const dataDir = isProduction ? '/data' : path.join(__dirname, 'data');
+// Data directories setup
+const dataDir = isProduction ? '/data' : path.join(__dirname, 'data');
 
-  // Ensure data directory exists
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
-    console.log(`Created data directory at ${dataDir}`);
-  }
+// Ensure data directory exists
+if (!fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir, { recursive: true });
+  console.log(`Created data directory at ${dataDir}`);
+}
 
-  // Helper function to get data file path
-  const getDataPath = (filename) => {
-    return path.join(dataDir, filename);
-  };
+// Helper function to get data file path
+const getDataPath = (filename) => {
+  return path.join(dataDir, filename);
+};
 
   /**
    * Helper function to make HA API calls using axios
@@ -158,12 +183,17 @@ async function initializeApp() {
     const url = hassApiUrl + apiPath; // apiPath should start with a slash
     const method = fetchOptions.method || 'GET';
 
+    // Get the token with additional debugging
+    const token = process.env.SUPERVISOR_TOKEN || process.env.HASS_TOKEN || '';
+    const tokenType = process.env.SUPERVISOR_TOKEN ? 'SUPERVISOR_TOKEN' :
+                     process.env.HASS_TOKEN ? 'HASS_TOKEN' : 'NO TOKEN';
+
     // Create axios config
     const axiosConfig = {
       method: method,
       url: url,
       headers: {
-        Authorization: `Bearer ${process.env.SUPERVISOR_TOKEN || process.env.HASS_TOKEN || ''}`,
+        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
         ...(fetchOptions.headers || {}),
       }
@@ -177,6 +207,7 @@ async function initializeApp() {
     }
 
     console.log(`[INFO] Fetching from HA API: ${method} ${url}`);
+    console.log(`[INFO] Using token type: ${tokenType}, length: ${token.length}`);
 
     if (axiosConfig.data) {
       console.log(`[DEBUG] Request data: ${typeof axiosConfig.data === 'string' ? axiosConfig.data : JSON.stringify(axiosConfig.data)}`);
@@ -238,45 +269,61 @@ async function initializeApp() {
     console.log(`[INFO] Using weather entity: ${weatherEntityId}`);
 
     try {
-      // First, try to get the current weather state
-      console.log(`[INFO] Attempting to fetch weather state from: ${hassApiUrl}/states/${weatherEntityId}`);
+      // First, check if we have valid authentication
+      const token = process.env.SUPERVISOR_TOKEN || process.env.HASS_TOKEN;
+      if (!token) {
+        console.error(`[ERROR] No authentication token available (SUPERVISOR_TOKEN or HASS_TOKEN). Weather data cannot be fetched.`);
+        return createFallbackWeatherData('unavailable', 'No authentication token available');
+      }
 
       // Log auth token availability (without exposing the actual token)
-      const hasToken = !!(process.env.SUPERVISOR_TOKEN || process.env.HASS_TOKEN);
-      console.log(`[INFO] Authentication token available: ${hasToken ? 'Yes' : 'No'}`);
+      console.log(`[INFO] Authentication token available: ${token ? 'Yes' : 'No'} (${token.length} chars)`);
 
-      const currentState = await callHaApi("/states/" + weatherEntityId);
+      try {
+        // Try to get the current weather state
+        console.log(`[INFO] Attempting to fetch weather state from: ${hassApiUrl}/states/${weatherEntityId}`);
+        const currentState = await callHaApi("/states/" + weatherEntityId);
 
-      if (!currentState) {
-        console.error(`[ERROR] Failed to fetch weather state for ${weatherEntityId} - response was empty`);
-        return createFallbackWeatherData('unavailable', 'Failed to fetch weather data (empty response)');
-      }
-
-      console.log(`[INFO] Successfully fetched weather state for ${weatherEntityId}`);
-
-      // Extract forecast from the entity's attributes
-      const forecast = currentState.attributes?.forecast || [];
-
-      // Return both current state and forecast
-      return {
-        current: currentState,
-        forecast: forecast
-      };
-    } catch (error) {
-      console.error('[ERROR] Error fetching weather data:', error.message);
-
-      // Check for specific error types
-      if (error.response) {
-        if (error.response.status === 401) {
-          console.error('[ERROR] Authentication error (401) when fetching weather data. Check your token.');
-          return createFallbackWeatherData('unavailable', 'Authentication error when fetching weather data');
-        } else if (error.response.status === 404) {
-          console.error(`[ERROR] Weather entity '${weatherEntityId}' not found (404). Check entity ID in configuration.`);
-          return createFallbackWeatherData('unavailable', `Weather entity '${weatherEntityId}' not found`);
+        if (!currentState) {
+          console.error(`[ERROR] Failed to fetch weather state for ${weatherEntityId} - response was empty`);
+          return createFallbackWeatherData('unavailable', 'Failed to fetch weather data (empty response)');
         }
-      }
 
-      return createFallbackWeatherData('error', error.message);
+        console.log(`[INFO] Successfully fetched weather state for ${weatherEntityId}`);
+
+        // Extract forecast from the entity's attributes
+        const forecast = currentState.attributes?.forecast || [];
+
+        // Return both current state and forecast
+        return {
+          current: currentState,
+          forecast: forecast
+        };
+      } catch (error) {
+        console.error(`[ERROR] Error fetching weather data:`, error.message);
+        // Save detailed error to help debugging
+        const errorDetails = {
+          error: `Authentication error when fetching weather data`,
+          current: {
+            state: "unavailable",
+            attributes: {
+              temperature: null,
+              temperature_unit: "°C",
+              forecast: []
+            }
+          },
+          forecast: []
+        };
+
+        // Write error to a file for diagnostics
+        const errorPath = getDataPath('weather-error.json');
+        fs.writeFileSync(errorPath, JSON.stringify(errorDetails, null, 2));
+
+        return errorDetails;
+      }
+    } catch (error) {
+      console.error(`[ERROR] General error in fetchWeatherData:`, error.message);
+      return createFallbackWeatherData('unavailable', error.message);
     }
   }
 
@@ -298,58 +345,58 @@ async function initializeApp() {
 
   // Initialize default data files
   function initializeDataFile(filename, defaultData) {
-    const filePath = getDataPath(filename);
-    if (!fs.existsSync(filePath)) {
-      fs.writeFileSync(filePath, JSON.stringify(defaultData, null, 2));
-      console.log(`Initialized ${filename} with default data`);
-    }
+  const filePath = getDataPath(filename);
+  if (!fs.existsSync(filePath)) {
+    fs.writeFileSync(filePath, JSON.stringify(defaultData, null, 2));
+    console.log(`Initialized ${filename} with default data`);
+  }
   }
 
-  // Initialize default data files only in dev mode or on first run
+// Initialize default data files only in dev mode or on first run
   if (config.development_mode) {
-    // Default chores (dev only)
-    initializeDataFile('chores.json', [
-      {
-        id: "dev-1",
-        name: "Example Chore (Dev Only)",
-        assigneeName: "Developer",
-        dueDate: "2024-05-20",
-        completed: false,
-        rewardPoints: 10
-      }
-    ]);
+  // Default chores (dev only)
+  initializeDataFile('chores.json', [
+    {
+      id: "dev-1",
+      name: "Example Chore (Dev Only)",
+      assigneeName: "Developer",
+      dueDate: "2024-05-20",
+      completed: false,
+      rewardPoints: 10
+    }
+  ]);
 
-    // Default users (dev only)
-    initializeDataFile('users.json', [
-      {
-        id: "dev-1",
-        name: "Developer",
-        color: "#4285f4",
-        icon: "fa-user"
-      }
-    ]);
+  // Default users (dev only)
+  initializeDataFile('users.json', [
+    {
+      id: "dev-1",
+      name: "Developer",
+      color: "#4285f4",
+      icon: "fa-user"
+    }
+  ]);
 
-    // Default meal categories (dev only)
-    initializeDataFile('meal-categories.json', [
-      {
-        id: "dev-1",
-        name: "Breakfast",
-        color: "#4285f4",
-        icon: "fa-coffee"
-      },
-      {
-        id: "dev-2",
-        name: "Lunch",
-        color: "#34a853",
-        icon: "fa-hamburger"
-      },
-      {
-        id: "dev-3",
-        name: "Dinner",
-        color: "#fbbc05",
-        icon: "fa-utensils"
-      }
-    ]);
+  // Default meal categories (dev only)
+  initializeDataFile('meal-categories.json', [
+    {
+      id: "dev-1",
+      name: "Breakfast",
+      color: "#4285f4",
+      icon: "fa-coffee"
+    },
+    {
+      id: "dev-2",
+      name: "Lunch",
+      color: "#34a853",
+      icon: "fa-hamburger"
+    },
+    {
+      id: "dev-3",
+      name: "Dinner",
+      color: "#fbbc05",
+      icon: "fa-utensils"
+    }
+  ]);
 
     // Initialize empty meals
     initializeDataFile('meals.json', []);
@@ -360,16 +407,16 @@ async function initializeApp() {
     // Initialize empty recipes
     initializeDataFile('recipes.json', []);
 
-    // Initialize display settings with defaults
-    initializeDataFile('display-settings.json', {
-      autoNightMode: true,
-      nightModeStart: "20:00",
-      nightModeEnd: "07:00",
-      screenBurnProtection: true,
-      dimAfterMinutes: 10,
-      displayClock: false
-    });
-  }
+  // Initialize display settings with defaults
+  initializeDataFile('display-settings.json', {
+    autoNightMode: true,
+    nightModeStart: "20:00",
+    nightModeEnd: "07:00",
+    screenBurnProtection: true,
+    dimAfterMinutes: 10,
+    displayClock: false
+  });
+}
   // Always initialize critical files even in production, to prevent API errors
   else {
     // In production, initialize with empty arrays to prevent errors
@@ -423,9 +470,9 @@ async function initializeApp() {
 
   // ROUTES SECTION
   // Basic routes
-  app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-  });
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
   // Make debug page available through multiple paths for backward compatibility
   // But only if development_mode is enabled or if accessed directly (not through ingress)
@@ -442,7 +489,7 @@ async function initializeApp() {
     }
   });
 
-  app.get('/api/config', (req, res) => {
+app.get('/api/config', (req, res) => {
     // Always include development_mode in the config
     const configResponse = {
       ...config,
@@ -487,17 +534,17 @@ async function initializeApp() {
     res.json(response);
   });
 
-  // Helper function to write data to a file
-  const writeDataFile = (filename, data, res, successCallback) => {
-    const filePath = getDataPath(filename);
-    fs.writeFile(filePath, JSON.stringify(data, null, 2), (err) => {
-      if (err) {
-        console.error(`[ERROR] Error writing ${filename}:`, err);
-        return res.status(500).json({ error: `Failed to save ${filename.replace('.json', '')} data` });
-      }
-      successCallback();
-    });
-  };
+// Helper function to write data to a file
+const writeDataFile = (filename, data, res, successCallback) => {
+  const filePath = getDataPath(filename);
+  fs.writeFile(filePath, JSON.stringify(data, null, 2), (err) => {
+    if (err) {
+      console.error(`[ERROR] Error writing ${filename}:`, err);
+      return res.status(500).json({ error: `Failed to save ${filename.replace('.json', '')} data` });
+    }
+    successCallback();
+  });
+};
 
   // Generic data file handler
   const handleDataFile = (filename) => {
@@ -540,7 +587,7 @@ async function initializeApp() {
   };
 
   // Data file routes
-  app.get('/api/chores', handleDataFile('chores.json'));
+app.get('/api/chores', handleDataFile('chores.json'));
   app.get('/api/users', handleDataFile('users.json'));
   app.get('/api/meal-categories', handleDataFile('meal-categories.json'));
   app.get('/api/meals', handleDataFile('meals.json'));
@@ -548,96 +595,96 @@ async function initializeApp() {
   app.get('/api/grocery-list', handleDataFile('grocery-list.json'));
   app.get('/api/display-settings', handleDataFile('display-settings.json'));
 
-  // POST endpoint to add a new chore
-  app.post('/api/chores', (req, res) => {
-    const filePath = getDataPath('chores.json');
-    fs.readFile(filePath, 'utf8', (err, data) => {
-      if (err && !fs.existsSync(path.dirname(filePath))) {
-        // If directory doesn't exist, create it
-        fs.mkdirSync(path.dirname(filePath), { recursive: true });
-        data = '[]'; // Initialize with empty array
-      } else if (err) {
-        console.error('[ERROR] Error reading chores.json for POST:', err);
-        return res.status(500).json({ error: 'Failed to read chores data' });
-      }
+// POST endpoint to add a new chore
+app.post('/api/chores', (req, res) => {
+  const filePath = getDataPath('chores.json');
+  fs.readFile(filePath, 'utf8', (err, data) => {
+    if (err && !fs.existsSync(path.dirname(filePath))) {
+      // If directory doesn't exist, create it
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      data = '[]'; // Initialize with empty array
+    } else if (err) {
+      console.error('[ERROR] Error reading chores.json for POST:', err);
+      return res.status(500).json({ error: 'Failed to read chores data' });
+    }
 
-      try {
-        const chores = err ? [] : JSON.parse(data);
-        const newChore = {
-          id: Date.now().toString(),
-          name: req.body.name,
-          assigneeName: req.body.assigneeName,
-          dueDate: req.body.dueDate,
-          completed: false,
-          rewardPoints: req.body.rewardPoints || 10 // Default to 10 points if not specified
-        };
-        chores.push(newChore);
+    try {
+      const chores = err ? [] : JSON.parse(data);
+      const newChore = {
+        id: Date.now().toString(),
+        name: req.body.name,
+        assigneeName: req.body.assigneeName,
+        dueDate: req.body.dueDate,
+        completed: false,
+        rewardPoints: req.body.rewardPoints || 10 // Default to 10 points if not specified
+      };
+      chores.push(newChore);
 
-        writeDataFile('chores.json', chores, res, () => {
-          res.status(201).json(newChore);
-        });
-      } catch (parseErr) {
-        console.error('[ERROR] Error parsing chores.json:', parseErr);
-        res.status(500).json({ error: 'Invalid chores data format' });
-      }
-    });
+      writeDataFile('chores.json', chores, res, () => {
+        res.status(201).json(newChore);
+      });
+    } catch (parseErr) {
+      console.error('[ERROR] Error parsing chores.json:', parseErr);
+      res.status(500).json({ error: 'Invalid chores data format' });
+    }
   });
+});
 
-  // DELETE endpoint to remove a chore
-  app.delete('/api/chores/:id', (req, res) => {
-    const filePath = getDataPath('chores.json');
-    fs.readFile(filePath, 'utf8', (err, data) => {
-      if (err) {
-        console.error('[ERROR] Error reading chores.json for DELETE:', err);
-        return res.status(500).json({ error: 'Failed to read chores data' });
+// DELETE endpoint to remove a chore
+app.delete('/api/chores/:id', (req, res) => {
+  const filePath = getDataPath('chores.json');
+  fs.readFile(filePath, 'utf8', (err, data) => {
+    if (err) {
+      console.error('[ERROR] Error reading chores.json for DELETE:', err);
+      return res.status(500).json({ error: 'Failed to read chores data' });
+    }
+    try {
+      let chores = JSON.parse(data);
+      const originalLength = chores.length;
+      chores = chores.filter(chore => chore.id !== req.params.id);
+
+      if (chores.length === originalLength) {
+        return res.status(404).json({ error: 'Chore not found' });
       }
-      try {
-        let chores = JSON.parse(data);
-        const originalLength = chores.length;
-        chores = chores.filter(chore => chore.id !== req.params.id);
 
-        if (chores.length === originalLength) {
-          return res.status(404).json({ error: 'Chore not found' });
-        }
-
-        writeDataFile('chores.json', chores, res, () => {
-          res.status(200).json({ message: 'Chore deleted successfully' });
-        });
-      } catch (err) {
-        console.error('[ERROR] Error parsing chores.json:', err);
-        res.status(500).json({ error: 'Invalid chores data format' });
-      }
-    });
+      writeDataFile('chores.json', chores, res, () => {
+        res.status(200).json({ message: 'Chore deleted successfully' });
+      });
+    } catch (err) {
+      console.error('[ERROR] Error parsing chores.json:', err);
+      res.status(500).json({ error: 'Invalid chores data format' });
+    }
   });
+});
 
-  // PATCH endpoint to update a chore
-  app.patch('/api/chores/:id', (req, res) => {
-    const filePath = getDataPath('chores.json');
-    fs.readFile(filePath, 'utf8', (err, data) => {
-      if (err) {
-        console.error('[ERROR] Error reading chores.json for PATCH:', err);
-        return res.status(500).json({ error: 'Failed to read chores data' });
+// PATCH endpoint to update a chore
+app.patch('/api/chores/:id', (req, res) => {
+  const filePath = getDataPath('chores.json');
+  fs.readFile(filePath, 'utf8', (err, data) => {
+    if (err) {
+      console.error('[ERROR] Error reading chores.json for PATCH:', err);
+      return res.status(500).json({ error: 'Failed to read chores data' });
+    }
+    try {
+      let chores = JSON.parse(data);
+      const choreIndex = chores.findIndex(chore => chore.id === req.params.id);
+
+      if (choreIndex === -1) {
+        return res.status(404).json({ error: 'Chore not found' });
       }
-      try {
-        let chores = JSON.parse(data);
-        const choreIndex = chores.findIndex(chore => chore.id === req.params.id);
 
-        if (choreIndex === -1) {
-          return res.status(404).json({ error: 'Chore not found' });
-        }
+      // Update the chore with the provided fields
+      chores[choreIndex] = { ...chores[choreIndex], ...req.body };
 
-        // Update the chore with the provided fields
-        chores[choreIndex] = { ...chores[choreIndex], ...req.body };
-
-        writeDataFile('chores.json', chores, res, () => {
-          res.status(200).json(chores[choreIndex]);
-        });
-      } catch (err) {
-        console.error('[ERROR] Error parsing chores.json:', err);
-        res.status(500).json({ error: 'Invalid chores data format' });
-      }
-    });
+      writeDataFile('chores.json', chores, res, () => {
+        res.status(200).json(chores[choreIndex]);
+      });
+    } catch (err) {
+      console.error('[ERROR] Error parsing chores.json:', err);
+      res.status(500).json({ error: 'Invalid chores data format' });
+    }
   });
+});
 
   // API proxy for Home Assistant
   app.get('/api/ha-proxy', async (req, res) => {
@@ -654,7 +701,7 @@ async function initializeApp() {
         endpoint: apiPath,
         data: data
       });
-    } catch (error) {
+  } catch (error) {
       console.error(`[ERROR] Error proxying request to HA API at ${endpoint}:`, error.message);
       res.status(500).json({
         success: false,
@@ -666,22 +713,22 @@ async function initializeApp() {
           data: error.response.data
         } : null
       });
-    }
-  });
+  }
+});
 
   // API endpoint for calendar data
-  app.get('/api/calendar', async (req, res) => {
-    try {
-      const calendarData = await fetchCalendarData();
+app.get('/api/calendar', async (req, res) => {
+  try {
+    const calendarData = await fetchCalendarData();
       res.json(calendarData);
     } catch (error) {
       console.error('[ERROR] Error in /api/calendar endpoint:', error.message);
       res.status(500).json({ error: error.message });
-    }
-  });
+  }
+});
 
   // API endpoint for weather data
-  app.get('/api/weather', async (req, res) => {
+app.get('/api/weather', async (req, res) => {
     try {
       const weatherData = await fetchWeatherData();
       if (weatherData && weatherData.current) {
@@ -739,7 +786,7 @@ async function initializeApp() {
           forecast: []
         }
       });
-    } catch (error) {
+  } catch (error) {
       console.error('[ERROR] Error in /api/combined-data endpoint:', error.message);
       res.json({
         calendarData: [],
@@ -750,9 +797,9 @@ async function initializeApp() {
           },
           forecast: []
         }
-      });
-    }
-  });
+    });
+  }
+});
 
   // Enhanced diagnostics endpoint
   app.get('/api/diagnostics', (req, res) => {
@@ -766,12 +813,17 @@ async function initializeApp() {
     const userAgent = req.get('user-agent') || 'unknown';
     const baseUrl = `${requestProtocol}://${req.get('host')}`;
 
+    // Check for Home Assistant ingress headers
+    const ingressPath = req.get('x-ingress-path') || 'none';
+    const hassSource = req.get('x-hass-source') || 'none';
+
     // Get information about the server
     const serverInfo = {
       port: PORT,
       isProduction,
       nodeEnv: process.env.NODE_ENV || 'development',
       hasSupervisorToken: !!process.env.SUPERVISOR_TOKEN,
+      tokenLength: process.env.SUPERVISOR_TOKEN ? process.env.SUPERVISOR_TOKEN.length : 0,
       hasHassToken: !!process.env.HASS_TOKEN,
       hassApiUrl,
       dataDir,
@@ -789,6 +841,10 @@ async function initializeApp() {
         ? "Debug page is blocked in ingress mode when development_mode is disabled"
         : "Debug page is allowed (either in direct access mode or development_mode is enabled)"
     };
+
+    // Check if we're dealing with Home Assistant ingress mode
+    const isIngressRequest = ingressPath !== 'none' || hassSource === 'core.ingress';
+    const detectedPortMismatch = clientPort !== String(PORT);
 
     res.json({
       success: true,
@@ -812,15 +868,19 @@ async function initializeApp() {
         all: req.headers,
         forwardedProto,
         forwardedHost,
-        forwardedFor
+        forwardedFor,
+        ingressPath,
+        hassSource
       },
       server: serverInfo,
       debugPage: debugPageInfo,
-      portMismatch: clientPort !== String(PORT),
+      portMismatch: detectedPortMismatch,
+      ingressDetected: isIngressRequest,
       suggestedFixes: [
         "If using Home Assistant ingress, check that the ingress port matches the container port (8099)",
-        "Update the port configuration in webpack.config.js if developing locally",
-        "Make sure proxy settings in webpack.config.js point to the correct backend URL",
+        "Make sure development_mode is enabled in your addon configuration to help with troubleshooting",
+        "Check that your SUPERVISOR_TOKEN is being correctly passed to the addon",
+        "In config.yaml, ensure hassio_api: true and ingress: true are set",
         "Check Home Assistant addon configuration to ensure ports are correctly mapped"
       ]
     });
@@ -882,29 +942,169 @@ async function initializeApp() {
     });
   });
 
-  // Start the server
-  server.listen(PORT, () => {
-    console.log("[INFO] Server running on port " + PORT);
-    console.log("[INFO] Environment: " + (isProduction ? 'Production' : 'Development'));
+// Test endpoint for API authentication
+app.get('/api/test-ha-auth', async (req, res) => {
+  try {
+    // Test with supervisor token
+    let supervisorResult = null;
+    let hassTokenResult = null;
+    let directApiResult = null;
+
+    // Test errors
+    let supervisorError = null;
+    let hassTokenError = null;
+    let directApiError = null;
+
+    // Get token information
+    const supervisorToken = process.env.SUPERVISOR_TOKEN || '';
+    const hassToken = process.env.HASS_TOKEN || '';
+
+    // Test 1: Using supervisor token
+    if (supervisorToken) {
+      try {
+        const response = await axios({
+          method: 'GET',
+          url: `${hassApiUrl}/config`,
+          headers: {
+            'Authorization': `Bearer ${supervisorToken}`,
+            'Content-Type': 'application/json',
+          }
+        });
+        supervisorResult = response.data;
+      } catch (error) {
+        supervisorError = {
+          message: error.message,
+          status: error.response?.status,
+          data: error.response?.data
+        };
+      }
+    }
+
+    // Test 2: Using HASS token
+    if (hassToken) {
+      try {
+        const response = await axios({
+          method: 'GET',
+          url: `${hassApiUrl}/config`,
+          headers: {
+            'Authorization': `Bearer ${hassToken}`,
+            'Content-Type': 'application/json',
+          }
+        });
+        hassTokenResult = response.data;
+      } catch (error) {
+        hassTokenError = {
+          message: error.message,
+          status: error.response?.status,
+          data: error.response?.data
+        };
+      }
+    }
+
+    // Test 3: Using direct API call
+    try {
+      const apiData = await callHaApi('/config');
+      directApiResult = apiData;
+    } catch (error) {
+      directApiError = {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data
+      };
+    }
+
+    res.json({
+      success: true,
+      tokens: {
+        hasSupervisorToken: !!supervisorToken,
+        supervisorTokenLength: supervisorToken.length,
+        hasHassToken: !!hassToken,
+        hassTokenLength: hassToken.length
+      },
+      results: {
+        supervisorToken: supervisorResult ? { success: true, data: supervisorResult } : { success: false, error: supervisorError },
+        hassToken: hassTokenResult ? { success: true, data: hassTokenResult } : { success: false, error: hassTokenError },
+        directApi: directApiResult ? { success: true, data: directApiResult } : { success: false, error: directApiError }
+      },
+      hassApiUrl,
+      isIngressMode,
+      recommendedFix: !supervisorToken && !hassToken
+        ? "No authentication tokens available. In production, ensure SUPERVISOR_TOKEN is provided. In development, set HASS_TOKEN in .env.local"
+        : supervisorToken && supervisorError
+          ? "Supervisor token is present but not working. Check that hassio_api: true is set in config.yaml"
+          : hassToken && hassTokenError
+            ? "HASS token is present but not working. Check that your token is valid and not expired"
+            : "See detailed results for more information"
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: config.development_mode ? error.stack : null
+    });
+  }
+});
+
+// Port configuration test endpoint
+app.get('/api/port-test', (req, res) => {
+  const clientPort = req.get('host')?.split(':')[1] || 'unknown';
+  const clientHost = req.get('host')?.split(':')[0] || 'unknown';
+  const hasIngressHeaders = !!req.get('x-ingress-path') || req.get('x-hass-source') === 'core.ingress';
+
+  res.json({
+    success: true,
+    server: {
+      port: PORT,
+      ingressPort: process.env.INGRESS_PORT || 'not set',
+      expectedIngressPort: 8099,
+      ingressPath: process.env.INGRESS_PATH || 'not set'
+    },
+    client: {
+      host: clientHost,
+      port: clientPort,
+      fullHost: req.get('host') || 'unknown'
+    },
+    ingress: {
+      detected: hasIngressHeaders,
+      ingressPath: req.get('x-ingress-path') || 'none',
+      hassSource: req.get('x-hass-source') || 'none'
+    },
+    portMismatch: clientPort !== String(PORT),
+    suggestedFixes: [
+      "In config.yaml, ensure ingress_port: 8099 is set",
+      "In config.yaml, ensure ports: 8099/tcp: 8099 is set",
+      "Make sure the container port is exposed correctly"
+    ],
+    documentation: "For more information, see TROUBLESHOOTING.md in the codebase"
+  });
+});
+
+// Start the server
+server.listen(PORT, () => {
+  console.log("[INFO] Server running on port " + PORT);
+  console.log("[INFO] Environment: " + (isProduction ? 'Production' : 'Development'));
     if (!isProduction) {
-      console.log(`[INFO] webpack-dev-server is expected to be running on http://localhost:8099 and proxying to this backend on ${PORT}`);
+      console.log(`[INFO] ====== DEVELOPMENT MODE ======`);
+      console.log(`[INFO] Access the application at: http://localhost:${PORT}`);
+      console.log(`[INFO] This port (${PORT}) is different from the installed addon (8099) to avoid conflicts`);
+      console.log(`[INFO] ================================`);
     }
     if (isIngressMode) {
       console.log("[INFO] Running in Home Assistant ingress mode");
     }
-    console.log("[INFO] Data directory: " + dataDir);
+  console.log("[INFO] Data directory: " + dataDir);
     console.log("[INFO] Development mode: " + (config.development_mode ? "ENABLED" : "DISABLED"));
 
-    // In production mode with kiosk_mode enabled, start the web browser
-    if (isProduction && config.kiosk_mode) {
-      console.log('[INFO] Starting kiosk mode...');
-      try {
-        // Insert your browser startup code here if needed
-      } catch (error) {
-        console.error('[ERROR] Failed to start kiosk mode:', error);
-      }
+  // In production mode with kiosk_mode enabled, start the web browser
+  if (isProduction && config.kiosk_mode) {
+    console.log('[INFO] Starting kiosk mode...');
+    try {
+      // Insert your browser startup code here if needed
+    } catch (error) {
+      console.error('[ERROR] Failed to start kiosk mode:', error);
     }
-  });
+  }
+});
 
   return { app, server, io };
 }
@@ -917,4 +1117,4 @@ initializeApp()
   .catch(error => {
     console.error('[FATAL] Failed to initialize application:', error);
     process.exit(1);
-  });
+});

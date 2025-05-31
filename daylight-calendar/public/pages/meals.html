@@ -1,0 +1,178 @@
+<turbo-frame id="meals-content">
+<header class="content-header">
+  <h1>Meal Planner</h1>
+  <div class="header-actions">
+    <button id="prev-week" class="btn btn-secondary"><i class="material-icons">chevron_left</i></button>
+    <button id="next-week" class="btn btn-secondary"><i class="material-icons">chevron_right</i></button>
+    <button id="recipe-book-button" class="btn btn-primary"><i class="material-icons">menu_book</i> Recipe Book</button>
+    <button id="grocery-list-button" class="btn btn-primary"><i class="material-icons">shopping_basket</i> Grocery List</button>
+    <button id="add-meal-button" class="btn btn-primary"><i class="material-icons">add</i> Add Meal</button>
+    <button id="meal-categories-button" class="btn btn-primary"><i class="material-icons">label</i> Categories</button>
+  </div>
+</header>
+<div class="content-scrollable">
+  <!-- Add Meal Modal -->
+  <div id="add-meal-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Add New Meal</h3>
+        <button class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="add-meal-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="mealDescription">Description</label>
+              <div class="meal-input-group">
+                <input type="text" id="mealDescription" name="mealDescription" placeholder="What's for dinner?" required>
+                <button type="button" id="select-recipe-btn" class="btn btn-sm btn-secondary"><i class="material-icons">menu_book</i> Select Recipe</button>
+              </div>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="mealType">Meal Type</label>
+              <select id="mealType" name="mealType" required>
+                <!-- Meal types will be populated by JavaScript -->
+              </select>
+            </div>
+            <input type="hidden" id="mealDate" name="mealDate">
+            <input type="hidden" id="recipeId" name="recipeId">
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="mealCook">Who's Cooking (optional)</label>
+              <input type="text" id="mealCook" name="mealCook" placeholder="Enter cook's name">
+            </div>
+          </div>
+          <div class="form-actions">
+            <button type="button" class="btn btn-secondary modal-cancel">Cancel</button>
+            <button type="submit" class="btn btn-primary"><i class="material-icons">add_circle</i> Add Meal</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recipe Book Modal -->
+  <div id="recipe-book-modal" class="modal">
+    <div class="modal-content recipe-book-modal">
+      <div class="modal-header">
+        <h3>Recipe Book</h3>
+        <div class="recipe-book-actions">
+          <button id="add-recipe-button" class="btn btn-sm btn-primary"><i class="material-icons">add</i> New Recipe</button>
+          <button class="modal-close">&times;</button>
+        </div>
+      </div>
+      <div class="modal-body recipe-book-body">
+        <div class="recipe-book">
+          <div class="recipe-list">
+            <!-- Recipe list will be populated by JavaScript -->
+            <div class="recipe-list-placeholder">
+              <i class="material-icons spin">refresh</i> Loading recipes...
+            </div>
+          </div>
+          <div class="recipe-detail">
+            <div class="recipe-detail-placeholder">
+              <i class="material-icons">book</i>
+              <p>Select a recipe to view details</p>
+            </div>
+            <div class="recipe-detail-content" style="display: none;">
+              <div class="recipe-header">
+                <div class="recipe-image-container">
+                  <img id="recipe-image" src="" alt="Recipe Image">
+                </div>
+                <div class="recipe-info">
+                  <h3 id="recipe-name"></h3>
+                  <p id="recipe-description"></p>
+                  <div class="recipe-actions">
+                    <button id="add-to-meal-plan" class="btn btn-sm btn-primary"><i class="material-icons">event_note</i> Add to Meal Plan</button>
+                  </div>
+                </div>
+              </div>
+              <div class="recipe-divider"></div>
+              <div class="recipe-ingredients">
+                <h4>Ingredients</h4>
+                <ul id="recipe-ingredients-list">
+                  <!-- Ingredients will be populated by JavaScript -->
+                </ul>
+              </div>
+              <div class="recipe-divider"></div>
+              <div class="recipe-instructions">
+                <h4>Instructions</h4>
+                <div id="recipe-instructions-text"></div>
+              </div>
+              <div class="recipe-divider"></div>
+              <div class="recipe-actions-footer">
+                <div class="cooking-info">
+                  <span id="recipe-cooking-time"><i class="material-icons">schedule</i> Prep Time: 30 min</span>
+                </div>
+                <button id="start-cooking-mode" class="btn btn-primary"><i class="material-icons">restaurant</i> Start Cooking</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Grocery List Modal -->
+  <div id="grocery-list-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Grocery List</h3>
+        <button class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="grocery-list-container">
+          <div class="grocery-list-add">
+            <form id="add-grocery-item-form">
+              <div class="form-row">
+                <div class="form-group">
+                  <input type="text" id="groceryItemName" name="groceryItemName" placeholder="Add item..." required>
+                </div>
+                <div class="form-group">
+                  <input type="text" id="groceryItemQuantity" name="groceryItemQuantity" placeholder="Quantity">
+                </div>
+                <button type="submit" class="btn btn-primary"><i class="material-icons">add</i></button>
+              </div>
+            </form>
+          </div>
+          <div class="grocery-list-items">
+            <ul id="grocery-items-list">
+              <!-- Grocery items will be populated by JavaScript -->
+              <li class="loading-items">
+                <i class="material-icons spin">refresh</i> Loading items...
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Meal Categories Modal -->
+  <div id="meal-categories-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Meal Categories</h3>
+        <button class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="meal-categories-container" class="sortable-list">
+          <!-- Categories will be populated dynamically -->
+        </div>
+        <button id="add-category" class="btn btn-secondary"><i class="material-icons">add</i> Add Category</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Meal Week View -->
+  <div id="meal-week-view">
+    <!-- Meal planner will be populated dynamically by JavaScript -->
+    <div class="loading-indicator">
+      <i class="material-icons spin">refresh</i> Loading meal plan...
+    </div>
+  </div>
+</div>
+</turbo-frame>

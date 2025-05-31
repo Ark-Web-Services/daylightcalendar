@@ -163,6 +163,30 @@ This weather data is fetched from Home Assistant's weather entity API via `/api/
 * `/api/calendar` - Returns calendar events from the configured calendar entity
 * `/api/combined-data` - Returns both weather and calendar data in a single response
 
+## UI Components and Dependencies
+
+### Icons
+Daylight Calendar uses Material Icons for its UI. The app imports the Material Icons library from Google Fonts CDN:
+
+```html
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+```
+
+To use an icon, include it in your HTML like this:
+```html
+<i class="material-icons">calendar_today</i>
+```
+
+The complete list of available Material Icons can be found at https://fonts.google.com/icons.
+
+For weather icons, the app maps Home Assistant weather conditions to appropriate Material Icons. These mappings are defined in:
+- `updateCurrentWeatherDisplay()` function for the main weather display
+- `updateCalendarDayWeather()` function for calendar day weather icons
+
+### Networking Architecture
+
+The Daylight Calendar application has a frontend/backend split with two different ports in development mode:
+
 ## Further Development
 
 *   Make your code changes within VS Code, which is now connected to the devcontainer.

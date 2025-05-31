@@ -1,0 +1,178 @@
+<turbo-frame id="games-content">
+<header class="content-header">
+  <h1>Games</h1>
+  <div class="header-actions">
+    <button id="add-game-button" class="btn btn-primary"><i class="material-icons">add</i> Add Game</button>
+    <!-- Button temporarily disabled until repository system is built
+    <button id="get-more-games-button" class="btn btn-secondary"><i class="material-icons">get_app</i> Get More Games</button>
+    -->
+  </div>
+</header>
+<div class="content-scrollable">
+  <div class="game-profile-selector">
+    <div class="game-profile-header">
+      <h3>Select Profile</h3>
+      <div class="profile-actions">
+        <span id="playtime-balance">Available Playtime: <span id="playtime-minutes">30</span> minutes</span>
+      </div>
+    </div>
+    <div class="profile-list" id="profile-list">
+      <!-- Profiles will be populated by JavaScript -->
+    </div>
+  </div>
+
+  <div class="games-grid">
+    <div class="game-item" data-game-url="https://geometrydashonline.github.io/" data-game-age="8+">
+      <div class="game-icon geometry-dash-icon">
+        <img src="https://vignette2.wikia.nocookie.net/geometry-dash/images/9/90/GeometryDash.png" alt="Geometry Dash" onerror="this.src='https://geometrydashonline.github.io/assets/images/icon.webp'">
+      </div>
+      <div class="game-title">Geometry Dash</div>
+      <div class="playtime-indicator">15 min</div>
+    </div>
+    <div class="game-item" data-game-url="https://hextris.io/" data-game-age="6+">
+      <div class="game-icon">
+        <img src="https://github.com/Hextris/hextris/blob/gh-pages/images/twitter-opengraph.png?raw=true" alt="Hextris" onerror="this.src='https://via.placeholder.com/64'">
+      </div>
+      <div class="game-title">Hextris</div>
+      <div class="playtime-indicator">10 min</div>
+    </div>
+    <div class="game-item" data-game-url="https://ellisonleao.github.io/clumsy-bird/" data-game-age="5+">
+      <div class="game-icon">
+        <img src="https://nathanprinsley-games.prinsh.com/NathanPrinsleyGames/clumsybird/thumb_1.jpg" alt="Clumsy Bird" onerror="this.src='https://via.placeholder.com/64'">
+      </div>
+      <div class="game-title">Clumsy Bird</div>
+      <div class="playtime-indicator">15 min</div>
+    </div>
+  </div>
+
+  <!-- Game Focus Modal -->
+  <div id="game-focus-modal" class="modal">
+    <div class="modal-content game-modal-content">
+      <div class="modal-header">
+        <h3 id="game-modal-title">Game</h3>
+        <button class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body game-modal-body">
+        <div id="game-timer-overlay" class="game-timer-overlay">
+          <div class="game-timer-display" id="game-timer-display">15:00</div>
+          <div class="game-timer-user" id="game-timer-user">Alex</div>
+        </div>
+        <iframe id="game-iframe" src="" frameborder="0" allowfullscreen></iframe>
+      </div>
+    </div>
+  </div>
+
+  <!-- Get More Games Modal -->
+  <div id="get-more-games-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Community Games</h3>
+        <button class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="community-games-grid">
+          <div class="community-game-item">
+            <div class="community-game-icon">
+              <img src="https://cdn2.scratch.mit.edu/get_image/project/104711816_480x360.png" alt="Platformer">
+            </div>
+            <div class="community-game-info">
+              <h4>Platformer Adventure</h4>
+              <p>A classic platformer game with multiple levels</p>
+              <div class="community-game-meta">
+                <span><i class="material-icons">person</i> GameCreator123</span>
+                <span><i class="material-icons">star</i> 4.5/5</span>
+              </div>
+            </div>
+            <button class="btn btn-sm btn-primary install-game-btn"><i class="material-icons">get_app</i> Install</button>
+          </div>
+
+          <div class="community-game-item">
+            <div class="community-game-icon">
+              <img src="https://cdn2.scratch.mit.edu/get_image/project/31903442_480x360.png" alt="Space Shooter">
+            </div>
+            <div class="community-game-info">
+              <h4>Space Shooter</h4>
+              <p>Defend your ship against waves of alien invaders</p>
+              <div class="community-game-meta">
+                <span><i class="material-icons">person</i> SpaceGameDev</span>
+                <span><i class="material-icons">star</i> 4.2/5</span>
+              </div>
+            </div>
+            <button class="btn btn-sm btn-primary install-game-btn"><i class="material-icons">get_app</i> Install</button>
+          </div>
+
+          <div class="community-game-item">
+            <div class="community-game-icon">
+              <img src="https://cdn2.scratch.mit.edu/get_image/project/116222711_480x360.png" alt="Puzzle Quest">
+            </div>
+            <div class="community-game-info">
+              <h4>Puzzle Quest</h4>
+              <p>Test your brain with challenging puzzles</p>
+              <div class="community-game-meta">
+                <span><i class="material-icons">person</i> PuzzleMaster</span>
+                <span><i class="material-icons">star</i> 4.8/5</span>
+              </div>
+            </div>
+            <button class="btn btn-sm btn-primary install-game-btn"><i class="material-icons">get_app</i> Install</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Game Modal -->
+  <div id="add-game-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Add New Game</h3>
+        <button class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="add-game-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="gameTitle">Game Title</label>
+              <input type="text" id="gameTitle" name="gameTitle" placeholder="Enter game title" required>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="gameURL">Game URL</label>
+              <input type="url" id="gameURL" name="gameURL" placeholder="https://example.com/game" required>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="gameIconURL">Icon URL</label>
+              <input type="url" id="gameIconURL" name="gameIconURL" placeholder="https://example.com/icon.png">
+            </div>
+            <div class="form-group">
+              <label for="gameIconUpload">Or Upload Icon</label>
+              <input type="file" id="gameIconUpload" name="gameIconUpload" accept="image/*">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="gameAgeRating">Age Rating</label>
+              <select id="gameAgeRating" name="gameAgeRating">
+                <option value="all">All Ages</option>
+                <option value="5+">5+</option>
+                <option value="8+">8+</option>
+                <option value="12+">12+</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="gamePlaytime">Default Playtime (minutes)</label>
+              <input type="number" id="gamePlaytime" name="gamePlaytime" min="5" max="60" value="15">
+            </div>
+          </div>
+          <div class="form-actions">
+            <button type="button" class="btn btn-secondary modal-cancel">Cancel</button>
+            <button type="submit" class="btn btn-primary"><i class="material-icons">add_circle</i> Add Game</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+</turbo-frame>

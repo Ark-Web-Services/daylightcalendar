@@ -1,0 +1,30 @@
+<turbo-frame id="calendar-content">
+<!-- Calendar Content -->
+<header>
+  <div class="date-time">
+    <h1 id="current-time">--:--</h1>
+    <h2 id="current-date">Loading...</h2>
+  </div>
+  <div class="weather" id="weather-container">
+    <div class="temp">--°</div>
+    <div class="condition"><i class="material-icons">cloud</i></div>
+  </div>
+</header>
+<div class="calendar-toolbar">
+  <div class="calendar-users">
+    <div class="users-toggle-label">Users:</div>
+    <div id="user-toggles" class="user-toggle-icons">
+      <!-- User icons will be populated by JavaScript -->
+    </div>
+  </div>
+</div>
+<main>
+  <div id="calendar"></div>
+</main>
+<footer>
+  <div class="next-event" id="next-event">
+    <h3>Next Event</h3>
+    <p id="next-event-info">No upcoming events</p>
+  </div>
+</footer>
+</turbo-frame>

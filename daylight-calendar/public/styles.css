@@ -199,12 +199,327 @@
   --warning-color: var(--md-warning);
   --danger-color: var(--md-error);
   --card-shadow: var(--md-shadow-1);
+  --sidebar-width: 256px;
+  --sidebar-collapsed-width: 72px;
+  --transition-speed: var(--md-transition-standard);
+  --primary-color: var(--md-primary);
   --sidebar-bg: var(--md-surface-2);
   --sidebar-text: var(--md-on-surface);
   --sidebar-hover: var(--md-surface-3);
-  --card-bg: var(--md-surface-2);
-  --card-hover-bg: var(--md-surface-3);
+  --card-bg: var(--md-surface);
+  --card-hover-bg: var(--md-surface-variant);
   --theme-name: "dark";
+}
+
+/* Pastel theme */
+.theme-pastel {
+  /* Primary colors */
+  --md-primary: #ffb3ba;
+  --md-on-primary: #5c0015;
+  --md-primary-container: #ffdfe2;
+  --md-on-primary-container: #7e2a38;
+
+  /* Secondary colors */
+  --md-secondary: #ffdfba;
+  --md-on-secondary: #624600;
+  --md-secondary-container: #fff0dd;
+  --md-on-secondary-container: #7d613d;
+
+  /* Tertiary colors */
+  --md-tertiary: #baffc9;
+  --md-on-tertiary: #00622a;
+  --md-tertiary-container: #d8ffe3;
+  --md-on-tertiary-container: #2d7d48;
+
+  /* Error colors */
+  --md-error: #ff928b;
+  --md-on-error: #690002;
+  --md-error-container: #ffdad6;
+  --md-on-error-container: #7d3b37;
+
+  /* Background colors */
+  --md-background: #fff9fa;
+  --md-on-background: #3a3a3c;
+
+  /* Surface colors */
+  --md-surface: #fff9fa;
+  --md-on-surface: #3a3a3c;
+  --md-surface-variant: #f8e8ea;
+  --md-on-surface-variant: #6e6567;
+
+  /* Outline colors */
+  --md-outline: #e5cacd;
+  --md-outline-variant: #f0dde0;
+
+  /* State colors */
+  --md-success: #a5e8af;
+  --md-warning: #ffd37e;
+  --md-info: #b3dbff;
+
+  /* Surface treatment */
+  --md-surface-1: #fff9fa;
+  --md-surface-2: #fcf0f2;
+  --md-surface-3: #f8e8ea;
+  --md-surface-4: #f5e0e2;
+  --md-surface-5: #f0d5d8;
+
+  /* Elevation and shadows */
+  --md-shadow-1: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.12);
+  --md-shadow-2: 0 3px 6px rgba(0,0,0,0.10), 0 3px 6px rgba(0,0,0,0.14);
+  --md-shadow-3: 0 10px 20px rgba(0,0,0,0.12), 0 6px 6px rgba(0,0,0,0.14);
+  --md-shadow-4: 0 14px 28px rgba(0,0,0,0.15), 0 10px 10px rgba(0,0,0,0.12);
+  --md-shadow-5: 0 19px 38px rgba(0,0,0,0.18), 0 15px 12px rgba(0,0,0,0.14);
+
+  /* Legacy variables mapped to MD3 */
+  --bg-color: var(--md-background);
+  --text-color: var(--md-on-background);
+  --header-bg: var(--md-surface-1);
+  --event-bg: var(--md-primary);
+  --event-text: var(--md-on-primary);
+  --today-bg: var(--md-primary-container);
+  --border-color: var(--md-outline);
+  --success-color: var(--md-success);
+  --warning-color: var(--md-warning);
+  --danger-color: var(--md-error);
+  --card-shadow: var(--md-shadow-1);
+  --sidebar-width: 256px;
+  --sidebar-collapsed-width: 72px;
+  --transition-speed: var(--md-transition-standard);
+  --primary-color: var(--md-primary);
+  --sidebar-bg: var(--md-surface-2);
+  --sidebar-text: var(--md-on-surface);
+  --sidebar-hover: var(--md-surface-3);
+  --card-bg: var(--md-surface);
+  --card-hover-bg: var(--md-surface-variant);
+  --theme-name: "pastel";
+}
+
+/* Forest theme */
+.theme-forest {
+  /* Primary colors */
+  --md-primary: #2e7d32;
+  --md-on-primary: #ffffff;
+  --md-primary-container: #b8e6b9;
+  --md-on-primary-container: #0c5110;
+
+  /* Secondary colors */
+  --md-secondary: #66bb6a;
+  --md-on-secondary: #ffffff;
+  --md-secondary-container: #d8f3d8;
+  --md-on-secondary-container: #1e4620;
+
+  /* Tertiary colors */
+  --md-tertiary: #8d6e63;
+  --md-on-tertiary: #ffffff;
+  --md-tertiary-container: #e1d4cf;
+  --md-on-tertiary-container: #4e3a32;
+
+  /* Error colors */
+  --md-error: #c62828;
+  --md-on-error: #ffffff;
+  --md-error-container: #ffcdd2;
+  --md-on-error-container: #7f0000;
+
+  /* Background colors */
+  --md-background: #f1f8e9;
+  --md-on-background: #1b1c18;
+
+  /* Surface colors */
+  --md-surface: #f1f8e9;
+  --md-on-surface: #1b1c18;
+  --md-surface-variant: #e0e9d9;
+  --md-on-surface-variant: #4a4c45;
+
+  /* Outline colors */
+  --md-outline: #b9c2b1;
+  --md-outline-variant: #d4dfca;
+
+  /* State colors */
+  --md-success: #4caf50;
+  --md-warning: #ffa000;
+  --md-info: #4caf50;
+
+  /* Surface treatment */
+  --md-surface-1: #f1f8e9;
+  --md-surface-2: #e8f4df;
+  --md-surface-3: #e0edd6;
+  --md-surface-4: #d7e7cd;
+  --md-surface-5: #cee0c3;
+
+  /* Legacy variables mapped to MD3 */
+  --bg-color: var(--md-background);
+  --text-color: var(--md-on-background);
+  --header-bg: var(--md-surface-1);
+  --event-bg: var(--md-primary);
+  --event-text: var(--md-on-primary);
+  --today-bg: var(--md-primary-container);
+  --border-color: var(--md-outline);
+  --success-color: var(--md-success);
+  --warning-color: var(--md-warning);
+  --danger-color: var(--md-error);
+  --card-shadow: var(--md-shadow-1);
+  --sidebar-width: 256px;
+  --sidebar-collapsed-width: 72px;
+  --transition-speed: var(--md-transition-standard);
+  --primary-color: var(--md-primary);
+  --sidebar-bg: var(--md-surface-2);
+  --sidebar-text: var(--md-on-surface);
+  --sidebar-hover: var(--md-surface-3);
+  --card-bg: var(--md-surface);
+  --card-hover-bg: var(--md-surface-variant);
+  --theme-name: "forest";
+}
+
+/* Ocean theme */
+.theme-ocean {
+  /* Primary colors */
+  --md-primary: #0277bd;
+  --md-on-primary: #ffffff;
+  --md-primary-container: #b3e5fc;
+  --md-on-primary-container: #004c79;
+
+  /* Secondary colors */
+  --md-secondary: #29b6f6;
+  --md-on-secondary: #003b57;
+  --md-secondary-container: #cbeffe;
+  --md-on-secondary-container: #01579b;
+
+  /* Tertiary colors */
+  --md-tertiary: #26a69a;
+  --md-on-tertiary: #ffffff;
+  --md-tertiary-container: #b2dfdb;
+  --md-on-tertiary-container: #00695c;
+
+  /* Error colors */
+  --md-error: #e53935;
+  --md-on-error: #ffffff;
+  --md-error-container: #ffcdd2;
+  --md-on-error-container: #b71c1c;
+
+  /* Background colors */
+  --md-background: #e3f2fd;
+  --md-on-background: #0d2c40;
+
+  /* Surface colors */
+  --md-surface: #e3f2fd;
+  --md-on-surface: #0d2c40;
+  --md-surface-variant: #d1e6f8;
+  --md-on-surface-variant: #3c5567;
+
+  /* Outline colors */
+  --md-outline: #a1c4e1;
+  --md-outline-variant: #c2def3;
+
+  /* State colors */
+  --md-success: #26a69a;
+  --md-warning: #fdd835;
+  --md-info: #29b6f6;
+
+  /* Surface treatment */
+  --md-surface-1: #e3f2fd;
+  --md-surface-2: #d6ebfa;
+  --md-surface-3: #c7e3f7;
+  --md-surface-4: #badcf4;
+  --md-surface-5: #add6f2;
+
+  /* Legacy variables mapped to MD3 */
+  --bg-color: var(--md-background);
+  --text-color: var(--md-on-background);
+  --header-bg: var(--md-surface-1);
+  --event-bg: var(--md-primary);
+  --event-text: var(--md-on-primary);
+  --today-bg: var(--md-primary-container);
+  --border-color: var(--md-outline);
+  --success-color: var(--md-success);
+  --warning-color: var(--md-warning);
+  --danger-color: var(--md-error);
+  --card-shadow: var(--md-shadow-1);
+  --sidebar-width: 256px;
+  --sidebar-collapsed-width: 72px;
+  --transition-speed: var(--md-transition-standard);
+  --primary-color: var(--md-primary);
+  --sidebar-bg: var(--md-surface-2);
+  --sidebar-text: var(--md-on-surface);
+  --sidebar-hover: var(--md-surface-3);
+  --card-bg: var(--md-surface);
+  --card-hover-bg: var(--md-surface-variant);
+  --theme-name: "ocean";
+}
+
+/* Sunset theme */
+.theme-sunset {
+  /* Primary colors */
+  --md-primary: #ff9800;
+  --md-on-primary: #000000;
+  --md-primary-container: #ffe0b2;
+  --md-on-primary-container: #5d3700;
+
+  /* Secondary colors */
+  --md-secondary: #f57c00;
+  --md-on-secondary: #ffffff;
+  --md-secondary-container: #ffd3a1;
+  --md-on-secondary-container: #5a2800;
+
+  /* Tertiary colors */
+  --md-tertiary: #bf360c;
+  --md-on-tertiary: #ffffff;
+  --md-tertiary-container: #ffccbc;
+  --md-on-tertiary-container: #8c1c03;
+
+  /* Error colors */
+  --md-error: #d32f2f;
+  --md-on-error: #ffffff;
+  --md-error-container: #ffcdd2;
+  --md-on-error-container: #8b0000;
+
+  /* Background colors */
+  --md-background: #fff8e1;
+  --md-on-background: #3e2723;
+
+  /* Surface colors */
+  --md-surface: #fff8e1;
+  --md-on-surface: #3e2723;
+  --md-surface-variant: #f8eed0;
+  --md-on-surface-variant: #705b3b;
+
+  /* Outline colors */
+  --md-outline: #d7c89f;
+  --md-outline-variant: #ede4c7;
+
+  /* State colors */
+  --md-success: #66bb6a;
+  --md-warning: #ffa000;
+  --md-info: #42a5f5;
+
+  /* Surface treatment */
+  --md-surface-1: #fff8e1;
+  --md-surface-2: #fff3d0;
+  --md-surface-3: #ffefc0;
+  --md-surface-4: #ffeab0;
+  --md-surface-5: #ffe6a0;
+
+  /* Legacy variables mapped to MD3 */
+  --bg-color: var(--md-background);
+  --text-color: var(--md-on-background);
+  --header-bg: var(--md-surface-1);
+  --event-bg: var(--md-primary);
+  --event-text: var(--md-on-primary);
+  --today-bg: var(--md-primary-container);
+  --border-color: var(--md-outline);
+  --success-color: var(--md-success);
+  --warning-color: var(--md-warning);
+  --danger-color: var(--md-error);
+  --card-shadow: var(--md-shadow-1);
+  --sidebar-width: 256px;
+  --sidebar-collapsed-width: 72px;
+  --transition-speed: var(--md-transition-standard);
+  --primary-color: var(--md-primary);
+  --sidebar-bg: var(--md-surface-2);
+  --sidebar-text: var(--md-on-surface);
+  --sidebar-hover: var(--md-surface-3);
+  --card-bg: var(--md-surface);
+  --card-hover-bg: var(--md-surface-variant);
+  --theme-name: "sunset";
 }
 
 /* Base typography & layout */
@@ -778,11 +1093,6 @@ footer {
   font-weight: 500;
 }
 
-.tab-item i {
-  margin-right: var(--md-space-3);
-  font-size: 1.25rem;
-}
-
 #app.sidebar-collapsed .tab-item span {
   display: none;
 }
@@ -1116,4 +1426,437 @@ footer {
   .next-event p {
     font-size: 0.9rem;
   }
+}
+
+/* Screen Dimmer */
+.screen-dimmer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.85);
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  display: none;
+}
+
+.screen-dimmer.active {
+  display: flex;
+}
+
+.screen-dimmer-message {
+  font-size: 1.5rem;
+  margin-bottom: 1rem;
+  text-align: center;
+}
+
+.screen-dimmer-timer {
+  font-size: 1.2rem;
+  margin-bottom: 2rem;
+  text-align: center;
+}
+
+.screen-dimmer-dismiss {
+  background-color: var(--md-primary);
+  color: var(--md-on-primary);
+  border: none;
+  border-radius: var(--md-shape-medium);
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  cursor: pointer;
+  box-shadow: var(--md-shadow-2);
+}
+
+/* Clock Display */
+.clock-display {
+  position: fixed;
+  bottom: 1rem;
+  right: 1rem;
+  background-color: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  padding: 0.5rem 1rem;
+  border-radius: var(--md-shape-medium);
+  font-size: 1.2rem;
+  z-index: 5000;
+  display: none;
+}
+
+.clock-display.active {
+  display: block;
+}
+
+/* Font Awesome Icon Size Adjustments */
+.fas, .fab, .far {
+  font-size: 1rem; /* Default size for all icons */
+}
+
+.tab-item i {
+  font-size: 1.25rem; /* Sidebar icons slightly larger */
+  margin-right: var(--md-space-3);
+}
+
+.btn i {
+  font-size: 0.875rem; /* Button icons should be slightly smaller */
+  margin-right: 0.25rem;
+}
+
+.weather .condition i {
+  font-size: 1.5rem; /* Weather condition icon */
+}
+
+.day-weather-icon i {
+  font-size: 1rem; /* Calendar day weather icons */
+}
+
+.item-actions i,
+.profile-edit-btn i,
+.modal-close i {
+  font-size: 0.875rem; /* Action button icons */
+}
+
+header i,
+.header-actions i {
+  font-size: 1rem; /* Header icons */
+}
+
+#sidebar-logo i {
+  font-size: 1.5rem; /* Sidebar logo icon */
+}
+
+.toggle-icon {
+  font-size: 1rem !important; /* Force sidebar toggle icon size */
+}
+
+/* Add a spin animation for Material Icons */
+.material-icons.spin {
+  animation: spin 2s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Material Icons in buttons */
+.btn .material-icons {
+  vertical-align: middle;
+  font-size: 16px;
+  margin-right: 4px;
+}
+
+.btn-sm .material-icons {
+  font-size: 14px;
+}
+
+/* Games section */
+.games-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--md-space-4);
+  margin-top: var(--md-space-4);
+}
+
+.game-item {
+  background-color: var(--md-surface-1);
+  border-radius: var(--md-shape-medium);
+  padding: var(--md-space-3);
+  box-shadow: var(--md-shadow-1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  transition: all var(--md-transition-standard);
+  cursor: pointer;
+  height: 180px;
+}
+
+.game-item:hover {
+  box-shadow: var(--md-shadow-2);
+  transform: translateY(-4px);
+}
+
+.game-icon {
+  width: 80px;
+  height: 80px;
+  margin-bottom: var(--md-space-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.game-icon img {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: var(--md-shape-small);
+}
+
+.game-title {
+  font-weight: 500;
+  margin-bottom: var(--md-space-2);
+}
+
+.playtime-indicator {
+  font-size: 0.8rem;
+  color: var(--md-on-surface-variant);
+}
+
+/* Game profile selector */
+.game-profile-selector {
+  background-color: var(--md-surface-1);
+  border-radius: var(--md-shape-medium);
+  padding: var(--md-space-3);
+  margin-bottom: var(--md-space-4);
+  box-shadow: var(--md-shadow-1);
+}
+
+.game-profile-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--md-space-3);
+}
+
+.profile-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--md-space-3);
+}
+
+/* Settings section */
+.settings-section {
+  margin-bottom: var(--md-space-6);
+  width: 100%;
+  display: block;
+}
+
+.settings-section h2 {
+  margin-bottom: var(--md-space-3);
+  font-weight: 500;
+  color: var(--md-on-surface);
+  font-size: 1.25rem;
+  display: block;
+}
+
+.settings-card {
+  background-color: var(--md-surface-1);
+  border-radius: var(--md-shape-medium);
+  padding: var(--md-space-4);
+  margin-bottom: var(--md-space-4);
+  box-shadow: var(--md-shadow-1);
+  display: block;
+  width: 100%;
+}
+
+.settings-card h3 {
+  margin-top: 0;
+  margin-bottom: var(--md-space-3);
+  font-weight: 500;
+  font-size: 1.1rem;
+  color: var(--md-on-surface);
+}
+
+.theme-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--md-space-3);
+  margin-bottom: var(--md-space-3);
+}
+
+.theme-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--md-space-3);
+  border-radius: var(--md-shape-medium);
+  background-color: var(--md-surface-2);
+  border: 1px solid var(--md-outline-variant);
+  cursor: pointer;
+  transition: all var(--md-transition-standard);
+  width: 80px;
+  height: 80px;
+}
+
+.theme-button:hover {
+  background-color: var(--md-surface-3);
+}
+
+.theme-button i {
+  font-size: 1.5rem;
+  margin-bottom: var(--md-space-2);
+}
+
+.setting-description {
+  font-size: 0.8rem;
+  color: var(--md-on-surface-variant);
+  margin-top: 0.25rem;
+}
+
+/* Fix for input elements in settings */
+.settings-card input[type="checkbox"],
+.settings-card input[type="number"],
+.settings-card input[type="time"] {
+  background-color: var(--md-surface);
+  border: 1px solid var(--md-outline);
+  padding: var(--md-space-2);
+  border-radius: var(--md-shape-small);
+  color: var(--md-on-surface);
+}
+
+.settings-card input[type="number"],
+.settings-card input[type="time"] {
+  width: 120px;
+  text-align: center;
+}
+
+.settings-card .form-group {
+  margin-bottom: var(--md-space-3);
+  color: var(--md-on-surface);
+}
+
+.settings-card label {
+  color: var(--md-on-surface);
+  display: block;
+  margin-bottom: var(--md-space-2);
+}
+
+/* Game modal */
+.game-modal-content {
+  max-width: 90vw;
+  width: 90vw;
+  max-height: 90vh;
+}
+
+.game-modal-body {
+  padding: 0;
+  position: relative;
+  height: 80vh;
+  overflow: hidden;
+}
+
+#game-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+#game-timer-overlay {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background-color: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: var(--md-space-2) var(--md-space-3);
+  border-radius: var(--md-shape-medium);
+  z-index: 10;
+}
+
+/* Community games */
+.community-games-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-space-3);
+}
+
+.community-game-item {
+  display: flex;
+  align-items: center;
+  padding: var(--md-space-3);
+  background-color: var(--md-surface-1);
+  border-radius: var(--md-shape-medium);
+  box-shadow: var(--md-shadow-1);
+}
+
+#settings-content.tab-content {
+  display: none; /* Hidden by default */
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  overflow-y: auto;
+  background-color: var(--md-background);
+  color: var(--md-on-surface);
+  position: relative; /* Add this to ensure proper stacking */
+  z-index: 1; /* Ensure content is on top */
+  visibility: visible !important; /* Force visibility */
+}
+
+#settings-content.tab-content.active-content {
+  display: flex !important; /* Shown when active - use !important to override any other styles */
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+#settings-content .content-scrollable {
+  display: block !important;
+  width: 100%;
+  padding: 0 var(--md-space-4) var(--md-space-4) var(--md-space-4);
+  overflow-y: auto;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+/* Force text visibility in settings */
+#settings-content .settings-section h2,
+#settings-content .settings-card h3,
+#settings-content .form-group label,
+#settings-content .setting-description {
+  color: var(--md-on-surface) !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  display: block !important;
+}
+
+/* Make settings cards explicitly visible */
+#settings-content .settings-card {
+  visibility: visible !important;
+  opacity: 1 !important;
+  display: block !important;
+  background-color: var(--md-surface-1) !important;
+  color: var(--md-on-surface) !important;
+}
+
+/* Additional fix for media test sections */
+.camera-test-container,
+.microphone-test-container {
+  margin-top: var(--md-space-3);
+  padding: var(--md-space-3);
+  background-color: var(--md-surface-2);
+  border-radius: var(--md-shape-medium);
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-space-3);
+}
+
+#camera-test {
+  width: 100%;
+  height: 240px;
+  background-color: var(--md-surface-3);
+  border-radius: var(--md-shape-small);
+}
+
+#mic-level-indicator {
+  width: 100%;
+  height: 40px;
+  background-color: var(--md-surface-3);
+  border-radius: var(--md-shape-small);
+  position: relative;
+  overflow: hidden;
+}
+
+#mic-level-bar {
+  height: 100%;
+  width: 0%;
+  background-color: var(--md-primary);
+  transition: width 0.1s ease-in-out;
+}
+
+.media-test-buttons {
+  display: flex;
+  gap: var(--md-space-3);
+  margin-top: var(--md-space-3);
 }

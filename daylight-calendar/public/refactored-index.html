@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Daylight Calendar</title>
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  <link href="fullcalendar.min.css" rel="stylesheet">
+  <link href="styles.css" rel="stylesheet">
+  <!-- Socket.io client library -->
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+  <div id="app" class="theme-light">
+    <!-- Screen burn prevention overlay -->
+    <div class="screen-dimmer" id="screen-dimmer">
+      <div class="screen-dimmer-message">Screen dimmed to prevent burn-in</div>
+      <div class="screen-dimmer-timer">Auto-resume in <span id="dimmer-countdown">30</span> seconds</div>
+      <button class="screen-dimmer-dismiss" id="dimmer-dismiss">Tap to Wake Up</button>
+    </div>
+
+    <!-- Always visible clock display (when enabled) -->
+    <div class="clock-display" id="clock-display">10:25 PM</div>
+
+    <div id="sidebar">
+      <div id="sidebar-logo" class="sidebar-toggle">
+        <i class="material-icons">event</i>
+        <span>Daylight</span>
+        <i class="material-icons">chevron_left</i>
+      </div>
+      <div class="sidebar-divider"></div>
+      <div class="sidebar-tabs">
+        <div class="tab-item active-tab" data-tab-target="calendar-content">
+          <i class="material-icons">calendar_today</i><span>Calendar</span>
+        </div>
+        <div class="tab-item" data-tab-target="chores-content">
+          <i class="material-icons">check_box</i><span>Chores</span>
+        </div>
+        <div class="tab-item" data-tab-target="meals-content">
+          <i class="material-icons">restaurant</i><span>Meals</span>
+        </div>
+        <div class="tab-item" data-tab-target="games-content">
+          <i class="material-icons">sports_esports</i><span>Games</span>
+        </div>
+        <div class="tab-item dev-only-tab" data-tab-target="api-test-content" id="debug-tab">
+          <i class="material-icons">bug_report</i><span>Debug</span>
+        </div>
+        <!-- Future tabs can go here -->
+      </div>
+
+      <div class="sidebar-spacer"></div>
+      <div class="sidebar-footer">
+        <div class="tab-item" data-tab-target="settings-content">
+          <i class="material-icons">settings</i><span>Settings</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="main-content-area">
+      <!-- Empty content containers that will be filled by the page loader -->
+      <div id="calendar-content" class="tab-content active-content">
+        <!-- Calendar content will be loaded here -->
+        <div class="loading-indicator">
+          <i class="material-icons spin">refresh</i> Loading calendar...
+        </div>
+      </div>
+
+      <div id="chores-content" class="tab-content">
+        <!-- Chores content will be loaded here -->
+      </div>
+
+      <div id="meals-content" class="tab-content">
+        <!-- Meals content will be loaded here -->
+      </div>
+
+      <div id="games-content" class="tab-content">
+        <!-- Games content will be loaded here -->
+      </div>
+
+      <div id="api-test-content" class="tab-content">
+        <!-- API test content will be loaded here -->
+      </div>
+
+      <div id="settings-content" class="tab-content">
+        <!-- Settings content will be loaded here -->
+      </div>
+
+      <!-- Shared modals that might be used across multiple pages -->
+      <div id="profile-edit-modal" class="modal">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3 id="profile-edit-title">Edit Profile</h3>
+            <button class="modal-close">&times;</button>
+          </div>
+          <div class="modal-body">
+            <form id="edit-profile-form">
+              <input type="hidden" id="profile-id">
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="profile-name">Name</label>
+                  <input type="text" id="profile-name" required>
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="profile-color">Profile Color</label>
+                  <div class="color-selector" id="profile-color-selector">
+                    <button type="button" class="color-option" data-color="#4285f4" style="background-color: #4285f4;"></button>
+                    <button type="button" class="color-option" data-color="#34a853" style="background-color: #34a853;"></button>
+                    <button type="button" class="color-option" data-color="#fbbc05" style="background-color: #fbbc05;"></button>
+                    <button type="button" class="color-option" data-color="#ea4335" style="background-color: #ea4335;"></button>
+                    <button type="button" class="color-option" data-color="#9c27b0" style="background-color: #9c27b0;"></button>
+                    <button type="button" class="color-option" data-color="#009688" style="background-color: #009688;"></button>
+                  </div>
+                  <input type="hidden" id="profile-color" required>
+                </div>
+
+                <div class="form-group">
+                  <label for="profile-icon">Icon</label>
+                  <div class="icon-selector" id="profile-icon-selector">
+                    <button type="button" class="icon-option" data-icon="person"><i class="material-icons">person</i></button>
+                    <button type="button" class="icon-option" data-icon="face"><i class="material-icons">face</i></button>
+                    <button type="button" class="icon-option" data-icon="sentiment_very_satisfied"><i class="material-icons">sentiment_very_satisfied</i></button>
+                    <button type="button" class="icon-option" data-icon="pets"><i class="material-icons">pets</i></button>
+                    <button type="button" class="icon-option" data-icon="cruelty_free"><i class="material-icons">cruelty_free</i></button>
+                    <button type="button" class="icon-option" data-icon="sports_esports"><i class="material-icons">sports_esports</i></button>
+                  </div>
+                  <input type="hidden" id="profile-icon" required>
+                </div>
+              </div>
+
+              <!-- Other profile edit form elements -->
+              <div class="form-actions">
+                <button type="button" id="delete-profile-btn" class="btn btn-danger"><i class="material-icons">delete</i> Delete Profile</button>
+                <button type="button" class="btn btn-secondary modal-cancel">Cancel</button>
+                <button type="submit" class="btn btn-primary"><i class="material-icons">save</i> Save Profile</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/page-loader.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>

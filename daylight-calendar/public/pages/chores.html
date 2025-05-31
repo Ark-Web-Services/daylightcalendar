@@ -1,0 +1,56 @@
+<turbo-frame id="chores-content">
+<header class="content-header">
+  <h1>Chore Board</h1>
+  <div class="header-actions">
+    <button id="jump-to-today" class="btn btn-secondary"><i class="material-icons">today</i> Today</button>
+    <button id="toggle-completed" class="btn btn-secondary"><i class="material-icons">visibility_off</i> Hide Completed</button>
+    <button id="add-chore-button" class="btn btn-primary"><i class="material-icons">add</i> New Chore</button>
+  </div>
+</header>
+<div class="content-scrollable">
+  <!-- Add Chore Modal/Form -->
+  <div id="add-chore-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Add New Chore</h3>
+        <button class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="add-chore-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="choreName">Chore</label>
+              <input type="text" id="choreName" name="choreName" placeholder="What needs to be done?" required>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="assigneeName">Assign to</label>
+              <select id="assigneeName" name="assigneeName">
+                <option value="">Unassigned</option>
+                <option value="Alex" data-color="#4285f4">Alex</option>
+                <option value="Jordan" data-color="#34a853">Jordan</option>
+                <option value="Casey" data-color="#fbbc05">Casey</option>
+                <option value="Taylor" data-color="#ea4335">Taylor</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="dueDate">Due Date</label>
+              <input type="date" id="dueDate" name="dueDate">
+            </div>
+          </div>
+          <div class="form-actions">
+            <button type="button" class="btn btn-secondary modal-cancel">Cancel</button>
+            <button type="submit" class="btn btn-primary"><i class="material-icons">add_circle</i> Add Chore</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Kanban Board for Chores -->
+  <div id="chore-board" class="kanban-board">
+    <!-- Lanes will be generated dynamically by JavaScript -->
+  </div>
+</div>
+</turbo-frame>

@@ -232,32 +232,34 @@
                 </div>
             </div>
 
-            <div class="api-test-section">
-                <h2>Supervisor Token Info</h2>
-                <div id="token-info" class="token-info">
-                    <div class="token-status">
-                        <span class="token-label">Token Status:</span>
+            <div class="api-test-section token-test-section">
+                <h2>Token Information</h2>
+                <div class="token-info">
+                    <div class="token-info-item">
+                        <span class="label">Token Availability:</span>
                         <span id="token-availability" class="token-value">Checking...</span>
                     </div>
-                    <div class="token-details">
-                        <span class="token-label">Token Type:</span>
+                    <div class="token-info-item">
+                        <span class="label">Token Type:</span>
                         <span id="token-type" class="token-value">Unknown</span>
                     </div>
-                    <div class="token-source">
-                        <span class="token-label">Token Source:</span>
+                    <div class="token-info-item">
+                        <span class="label">Token Source:</span>
                         <span id="token-source" class="token-value">Unknown</span>
                     </div>
-                    <div class="token-actions">
-                        <button id="reveal-token-btn" class="btn btn-warning"><i class="fas fa-eye"></i> Reveal Token Info</button>
-                        <div id="token-reveal-info" class="token-reveal-info" style="display: none;">
-                            <div class="token-preview" id="token-preview">Token not available</div>
-                            <div class="token-warning">Warning: Only reveal tokens in a secure environment</div>
-                        </div>
+                    <div class="token-info-item advanced-token-info" style="display: none;">
+                        <span class="label">Curl Example:</span>
+                        <code id="curl-example" class="token-value">curl -X GET "http://supervisor/core/api/config" -H "Authorization: Bearer YOUR_TOKEN"</code>
                     </div>
-                    <div class="token-cmd">
-                        <h3>Sample curl command:</h3>
-                        <pre id="curl-example" class="code-block">curl -X GET "http://supervisor/core/api/config" -H "Authorization: Bearer SUPERVISOR_TOKEN"</pre>
+                    <div class="token-reveal-container">
+                        <button id="reveal-token-btn" class="btn btn-secondary btn-sm"><i class="fas fa-eye"></i> Show Advanced Token Info</button>
+                        <span id="token-reveal-info" class="info-text" style="display: none;">Advanced token information is available in development mode</span>
                     </div>
+                </div>
+                <div class="debug-controls">
+                    <button id="test-auth" class="btn btn-primary"><i class="fas fa-key"></i> Test Authentication Methods</button>
+                    <button id="test-port-config" class="btn btn-info"><i class="fas fa-network-wired"></i> Test Port Configuration</button>
+                    <a href="INGRESS_TROUBLESHOOTING.md" target="_blank" class="btn btn-secondary"><i class="fas fa-question-circle"></i> Ingress Troubleshooting Guide</a>
                 </div>
             </div>
 
@@ -410,36 +412,38 @@
             }
 
             if (revealTokenButton) {
-                revealTokenButton.addEventListener('click', toggleTokenReveal);
+                revealTokenButton.addEventListener('click', toggleAdvancedTokenInfo);
             }
 
             // Data file checks
             if (checkChoresBtn) {
-                checkChoresBtn.addEventListener('click', () => checkDataFile('/api/chores'));
+                checkChoresBtn.addEventListener('click', () => checkDataFile('chores.json'));
             }
 
             if (checkUsersBtn) {
-                checkUsersBtn.addEventListener('click', () => checkDataFile('/api/users'));
+                checkUsersBtn.addEventListener('click', () => checkDataFile('users.json'));
             }
 
             if (checkMealsBtn) {
-                checkMealsBtn.addEventListener('click', () => checkDataFile('/api/meals'));
+                checkMealsBtn.addEventListener('click', () => checkDataFile('meals.json'));
             }
 
             if (checkWeatherBtn) {
-                checkWeatherBtn.addEventListener('click', () => checkDataFile('/api/weather'));
+                checkWeatherBtn.addEventListener('click', () => checkDataFile('weather.json'));
             }
 
-            // Function to toggle token reveal
-            function toggleTokenReveal() {
+            // Add listeners for new authentication and port test buttons
+            document.getElementById('test-auth').addEventListener('click', testAuthenticationMethods);
+            document.getElementById('test-port-config').addEventListener('click', testPortConfiguration);
+
+            // Function to toggle advanced token info
+            function toggleAdvancedTokenInfo() {
                 if (tokenRevealInfo.style.display === 'none') {
                     tokenRevealInfo.style.display = 'block';
-                    revealTokenButton.innerHTML = '<i class="fas fa-eye-slash"></i> Hide Token Info';
-                    // Fetch detailed token info if not already done
-                    fetchDetailedTokenInfo();
+                    revealTokenButton.innerHTML = '<i class="fas fa-eye-slash"></i> Hide Advanced Token Info';
                 } else {
                     tokenRevealInfo.style.display = 'none';
-                    revealTokenButton.innerHTML = '<i class="fas fa-eye"></i> Reveal Token Info';
+                    revealTokenButton.innerHTML = '<i class="fas fa-eye"></i> Show Advanced Token Info';
                 }
             }
 
@@ -853,6 +857,81 @@ ${diagnosticData.diagnosticDetails}
                             });
                     }
                 });
+            }
+
+            // Function to test authentication methods
+            async function testAuthenticationMethods() {
+                try {
+                    const responseElement = document.getElementById('ha-response');
+                    responseElement.textContent = 'Testing authentication methods...';
+                    responseElement.className = 'api-response';
+
+                    const response = await makeApiRequest('/api/test-ha-auth');
+                    if (!response.ok) {
+                        throw new Error(`Authentication test failed with status: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    responseElement.textContent = JSON.stringify(data, null, 2);
+
+                    // Update status based on results
+                    const statusElement = document.getElementById('ha-connection-status');
+
+                    if (data.results.directApi.success) {
+                        statusElement.textContent = 'Success: Authentication is working';
+                        statusElement.className = 'connection-status success';
+                    } else {
+                        statusElement.textContent = `Error: ${data.recommendedFix}`;
+                        statusElement.className = 'connection-status error';
+                    }
+
+                } catch (error) {
+                    console.error('Error testing authentication methods:', error);
+                    document.getElementById('ha-response').textContent = `Error: ${error.message}`;
+                    document.getElementById('ha-response').className = 'api-response error';
+                }
+            }
+
+            // Function to test port configuration
+            async function testPortConfiguration() {
+                try {
+                    connectionDiagnosisDisplay.textContent = 'Testing port configuration...';
+                    connectionDiagnosisDisplay.className = 'value warning';
+
+                    const response = await makeApiRequest('/api/port-test');
+                    if (!response.ok) {
+                        throw new Error(`Port test failed with status: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    diagnosticDetailsDisplay.textContent = JSON.stringify(data, null, 2);
+
+                    // Update port displays
+                    serverPortDisplay.textContent = data.server.port;
+                    clientUrlDisplay.textContent = `${window.location.protocol}//${data.client.fullHost}`;
+
+                    if (data.portMismatch) {
+                        connectionDiagnosisDisplay.textContent = 'Port mismatch detected';
+                        connectionDiagnosisDisplay.className = 'value error';
+
+                        // Update fix list
+                        fixList.innerHTML = '';
+                        data.suggestedFixes.forEach(fix => {
+                            const li = document.createElement('li');
+                            li.textContent = fix;
+                            fixList.appendChild(li);
+                        });
+                    } else {
+                        connectionDiagnosisDisplay.textContent = 'Port configuration OK';
+                        connectionDiagnosisDisplay.className = 'value success';
+                    }
+
+                } catch (error) {
+                    console.error('Error testing port configuration:', error);
+                    diagnosticDetailsDisplay.textContent = `Error: ${error.message}`;
+                    connectionDiagnosisDisplay.textContent = 'Error testing port configuration';
+                    connectionDiagnosisDisplay.className = 'value error';
+                }
             }
         });
     </script>

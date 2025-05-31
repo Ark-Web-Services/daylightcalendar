@@ -7,19 +7,12 @@ module.exports = {
     path: path.resolve(__dirname, 'public/dist'),
     filename: 'bundle.js',
   },
-  devServer: {
-    static: {
-      directory: path.join(__dirname, 'public'),
-    },
-    port: 8099,
-    proxy: {
-      '/api': 'http://localhost:3001',
-      '/socket.io': {
-        target: 'http://localhost:3001',
-        ws: true
-      }
-    },
-    hot: true,
+  // Simple config that just builds the bundle without starting a separate server
+  resolve: {
+    extensions: ['.js', '.json'],
   },
-  // Add necessary module rules and plugins here
+  watchOptions: {
+    ignored: /node_modules/,
+    poll: 1000,
+  }
 };

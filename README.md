@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="daylightcalendar.png" alt="Daylight Calendar" width="500" style="border-radius: 10px; border: 1px solid #ddd; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
+</p>
+
 # Daylight Calendar for Home Assistant
 
 This repository contains the Daylight Calendar add-on for Home Assistant, which provides a beautiful fullscreen calendar display for your Home Assistant touchscreen.
@@ -30,4 +34,4 @@ For detailed documentation, see the [add-on README](daylight-calendar/README.md)
 
 ## License
 
-MIT License 
+MIT License

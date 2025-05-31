@@ -1,8 +1,8 @@
-# Daylight Calendar for Home Assistant
-
 <p align="center">
   <img src="../daylightcalendar.png" alt="Daylight Calendar" width="500" style="border-radius: 10px; border: 1px solid #ddd; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
 </p>
+
+# Daylight Calendar for Home Assistant
 
 A beautiful fullscreen calendar display for your Home Assistant touchscreen, inspired by Daylight Calendar. Now featuring a tabbed interface for Calendar, Chores, Meals, and Games!
 
@@ -100,6 +100,25 @@ If your display shows a command line instead of the calendar:
 
 ## Usage
 
+### User Interface
+
+The Daylight Calendar features an intuitive tabbed interface with the following sections:
+
+- **Calendar:** View and manage your Home Assistant calendar events
+- **Chores:** Interactive Kanban board for household task management
+- **Meals:** Weekly meal planning with recipe book integration
+- **Games:** Entertainment section with embedded games
+- **Settings:** Configure themes, display settings, and user profiles
+
+#### Modal Interactions
+
+Throughout the interface, you'll encounter modal dialogs for various actions. These modals can be closed in multiple ways:
+- Click the **X** button in the top-right corner
+- Press the **Escape** key
+- Click outside the modal area (on the backdrop)
+
+This provides a flexible and intuitive user experience across all devices.
+
 ### Kiosk Mode
 
 When `kiosk_mode` is enabled (default), the add-on will:
@@ -130,4 +149,4 @@ If you have any issues or feature requests, please open an issue on GitHub.
 
 ## License
 
-MIT License 
+MIT License

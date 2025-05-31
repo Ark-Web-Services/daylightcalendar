@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Settings Test Page</title>
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  <link href="styles.css" rel="stylesheet">
+  <style>
+    /* Additional styles to force visibility */
+    body {
+      margin: 0;
+      padding: 0;
+      height: 100vh;
+      width: 100vw;
+      background-color: var(--md-background);
+      color: var(--md-on-background);
+      font-family: var(--md-font-family);
+    }
+
+
+    h1 {
+      color: var(--md-on-background);
+    }
+  </style>
+</head>
+<body class="theme-light">
+  <div class="settings-container">
+    <h1>Settings Test Page</h1>
+
+    <div class="settings-section">
+      <h2>App Settings</h2>
+      <div class="settings-card">
+        <h3>Theme</h3>
+        <div class="theme-selector">
+          <button class="theme-button" data-theme="light">
+            <i class="material-icons">brightness_high</i> Light
+          </button>
+          <button class="theme-button" data-theme="dark">
+            <i class="material-icons">brightness_low</i> Dark
+          </button>
+          <button class="theme-button" data-theme="pastel">
+            <i class="material-icons">palette</i> Pastel
+          </button>
+        </div>
+      </div>
+
+      <div class="settings-card">
+        <h3>Display</h3>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="auto-night-mode">
+              <input type="checkbox" id="auto-night-mode" name="auto-night-mode">
+              Auto Night Mode
+            </label>
+            <p class="setting-description">Automatically switch to night mode with reduced blue light between sunset and sunrise.</p>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="night-mode-start">Night Mode Start</label>
+            <input type="time" id="night-mode-start" name="night-mode-start" value="20:00">
+          </div>
+          <div class="form-group">
+            <label for="night-mode-end">Night Mode End</label>
+            <input type="time" id="night-mode-end" name="night-mode-end" value="07:00">
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-card">
+        <h3>Screen Protection</h3>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="screen-burn-protection">
+              <input type="checkbox" id="screen-burn-protection" name="screen-burn-protection" checked>
+              Screen Burn Protection
+            </label>
+            <p class="setting-description">Dims the screen after a period of inactivity to prevent burn-in on display.</p>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="dim-after-minutes">Dim After (minutes)</label>
+            <input type="number" id="dim-after-minutes" min="1" max="60" value="10">
+          </div>
+          <div class="form-group">
+            <label for="display-clock">
+              <input type="checkbox" id="display-clock" name="display-clock">
+              Show Persistent Clock
+            </label>
+            <p class="setting-description">Always display clock in corner of screen.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Simple theme toggle function
+    document.querySelectorAll('.theme-button').forEach(button => {
+      button.addEventListener('click', (e) => {
+        const theme = e.currentTarget.dataset.theme;
+        document.body.className = `theme-${theme}`;
+
+        // Set active state on this button and remove from others
+        document.querySelectorAll('.theme-button').forEach(btn => {
+          btn.classList.remove('active');
+        });
+        e.currentTarget.classList.add('active');
+      });
+    });
+  </script>
+</body>
+</html>
