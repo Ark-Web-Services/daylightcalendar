@@ -893,6 +893,7 @@ main {
 /* Calendar styling (FullCalendar) */
 #calendar {
   height: 100%;
+  min-height: 600px;
 }
 
 .fc {
@@ -922,11 +923,77 @@ main {
 
 .fc-header-toolbar {
   margin-bottom: var(--md-space-4) !important;
+  padding: var(--md-space-2) 0;
 }
 
 .fc-toolbar-title {
   font-size: 1.5rem !important;
   font-weight: 400;
+  color: var(--md-on-surface);
+}
+
+.fc-button-group {
+  box-shadow: var(--md-shadow-1);
+  border-radius: var(--md-shape-small);
+  overflow: hidden;
+}
+
+.fc-button {
+  background-color: var(--md-surface-variant) !important;
+  border: none !important;
+  color: var(--md-on-surface-variant) !important;
+  padding: 8px 12px !important;
+  font-size: 0.875rem !important;
+  transition: all var(--md-transition-standard) !important;
+}
+
+.fc-button:hover {
+  background-color: var(--md-primary-container) !important;
+  color: var(--md-on-primary-container) !important;
+}
+
+.fc-button-active {
+  background-color: var(--md-primary) !important;
+  color: var(--md-on-primary) !important;
+}
+
+.fc-daygrid-day-number {
+  color: var(--md-on-surface);
+  font-weight: 500;
+}
+
+.fc-col-header-cell {
+  background-color: var(--md-surface-variant);
+  color: var(--md-on-surface-variant);
+  font-weight: 500;
+  border: none;
+}
+
+.fc-timegrid-slot {
+  border-color: var(--md-outline-variant);
+}
+
+.fc-timegrid-axis {
+  color: var(--md-on-surface-variant);
+  font-size: 0.75rem;
+}
+
+.fc-scrollgrid {
+  border: 1px solid var(--md-outline-variant);
+  border-radius: var(--md-shape-medium);
+}
+
+.fc-theme-standard td, .fc-theme-standard th {
+  border-color: var(--md-outline-variant);
+}
+
+.fc-now-indicator {
+  border-color: var(--md-primary);
+}
+
+.fc-now-indicator-arrow {
+  border-top-color: var(--md-primary);
+  border-bottom-color: var(--md-primary);
 }
 
 /* Footer */

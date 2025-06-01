@@ -273,6 +273,46 @@ const getDataPath = (filename) => {
       const token = process.env.SUPERVISOR_TOKEN || process.env.HASS_TOKEN;
       if (!token) {
         console.error(`[ERROR] No authentication token available (SUPERVISOR_TOKEN or HASS_TOKEN). Weather data cannot be fetched.`);
+
+        // In development mode, provide mock weather data
+        if (config.development_mode) {
+          console.log('[INFO] Development mode: providing mock weather data');
+          return {
+            current: {
+              state: "sunny",
+              attributes: {
+                temperature: 22,
+                temperature_unit: "°C",
+                friendly_name: "Mock Weather",
+                forecast: [
+                  {
+                    datetime: new Date().toISOString(),
+                    temperature: 22,
+                    condition: "sunny"
+                  },
+                  {
+                    datetime: new Date(Date.now() + 24*60*60*1000).toISOString(),
+                    temperature: 24,
+                    condition: "partly-cloudy"
+                  }
+                ]
+              }
+            },
+            forecast: [
+              {
+                datetime: new Date().toISOString(),
+                temperature: 22,
+                condition: "sunny"
+              },
+              {
+                datetime: new Date(Date.now() + 24*60*60*1000).toISOString(),
+                temperature: 24,
+                condition: "partly-cloudy"
+              }
+            ]
+          };
+        }
+
         return createFallbackWeatherData('unavailable', 'No authentication token available');
       }
 
@@ -286,6 +326,24 @@ const getDataPath = (filename) => {
 
         if (!currentState) {
           console.error(`[ERROR] Failed to fetch weather state for ${weatherEntityId} - response was empty`);
+
+          // In development mode, provide mock weather data as fallback
+          if (config.development_mode) {
+            console.log('[INFO] Development mode: providing mock weather data as fallback');
+            return {
+              current: {
+                state: "cloudy",
+                attributes: {
+                  temperature: 20,
+                  temperature_unit: "°C",
+                  friendly_name: "Mock Weather (Fallback)",
+                  forecast: []
+                }
+              },
+              forecast: []
+            };
+          }
+
           return createFallbackWeatherData('unavailable', 'Failed to fetch weather data (empty response)');
         }
 
@@ -301,6 +359,25 @@ const getDataPath = (filename) => {
         };
       } catch (error) {
         console.error(`[ERROR] Error fetching weather data:`, error.message);
+
+        // In development mode, provide mock weather data as fallback
+        if (config.development_mode) {
+          console.log('[INFO] Development mode: providing mock weather data due to API error');
+          return {
+            error: `Development mode: Home Assistant not available (${error.message})`,
+            current: {
+              state: "partly-cloudy",
+              attributes: {
+                temperature: 18,
+                temperature_unit: "°C",
+                friendly_name: "Mock Weather (Error Fallback)",
+                forecast: []
+              }
+            },
+            forecast: []
+          };
+        }
+
         // Save detailed error to help debugging
         const errorDetails = {
           error: `Authentication error when fetching weather data`,
@@ -323,6 +400,25 @@ const getDataPath = (filename) => {
       }
     } catch (error) {
       console.error(`[ERROR] General error in fetchWeatherData:`, error.message);
+
+      // In development mode, provide mock weather data
+      if (config.development_mode) {
+        console.log('[INFO] Development mode: providing mock weather data due to general error');
+        return {
+          error: `Development mode: ${error.message}`,
+          current: {
+            state: "clear-night",
+            attributes: {
+              temperature: 15,
+              temperature_unit: "°C",
+              friendly_name: "Mock Weather (General Error)",
+              forecast: []
+            }
+          },
+          forecast: []
+        };
+      }
+
       return createFallbackWeatherData('unavailable', error.message);
     }
   }

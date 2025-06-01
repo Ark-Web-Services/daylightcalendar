@@ -398,9 +398,17 @@ function initializeSettingsPage() {
 
   // Setup display settings event listeners only when settings page is loaded
   setTimeout(() => {
+    console.log('[DEBUG] Settings page timeout reached, setting up elements...');
+
     const screenBurnProtection = document.getElementById('screen-burn-protection');
     const dimAfterMinutes = document.getElementById('dim-after-minutes');
     const displayClock = document.getElementById('display-clock');
+
+    console.log('[DEBUG] Settings elements found:', {
+      screenBurnProtection: !!screenBurnProtection,
+      dimAfterMinutes: !!dimAfterMinutes,
+      displayClock: !!displayClock
+    });
 
     if (screenBurnProtection) {
       screenBurnProtection.addEventListener('change', function(e) {
@@ -415,6 +423,7 @@ function initializeSettingsPage() {
           wakeScreen();
         }
       });
+      console.log('[DEBUG] Screen burn protection listener added');
     }
 
     if (dimAfterMinutes) {
@@ -423,6 +432,7 @@ function initializeSettingsPage() {
         console.log('[INFO] Dim after minutes:', displaySettings.dimAfterMinutes);
         resetInactivityTimer();
       });
+      console.log('[DEBUG] Dim after minutes listener added');
     }
 
     if (displayClock) {
@@ -436,13 +446,17 @@ function initializeSettingsPage() {
           clockDisplay.classList.remove('active');
         }
       });
+      console.log('[DEBUG] Display clock listener added');
     }
 
     // Setup theme buttons
     const themeButtons = document.querySelectorAll('.theme-button');
     console.log('[DEBUG] Found theme buttons:', themeButtons.length);
-    themeButtons.forEach(button => {
-      button.addEventListener('click', () => {
+    themeButtons.forEach((button, index) => {
+      console.log('[DEBUG] Setting up theme button', index, 'with theme:', button.dataset.theme);
+      button.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
         const theme = button.dataset.theme;
         console.log('[INFO] Theme selected:', theme);
 
@@ -460,6 +474,7 @@ function initializeSettingsPage() {
         console.log('[DEBUG] Theme applied to document and body:', theme);
       });
     });
+    console.log('[DEBUG] All theme button listeners added');
 
     // Setup camera/microphone test buttons
     const startCameraBtn = document.getElementById('start-camera');
@@ -467,6 +482,14 @@ function initializeSettingsPage() {
     const startMicBtn = document.getElementById('start-microphone');
     const stopMicBtn = document.getElementById('stop-microphone');
     const cameraVideo = document.getElementById('camera-test');
+
+    console.log('[DEBUG] Media test elements found:', {
+      startCameraBtn: !!startCameraBtn,
+      stopCameraBtn: !!stopCameraBtn,
+      startMicBtn: !!startMicBtn,
+      stopMicBtn: !!stopMicBtn,
+      cameraVideo: !!cameraVideo
+    });
 
     if (startCameraBtn && stopCameraBtn && cameraVideo) {
       startCameraBtn.addEventListener('click', async () => {
@@ -492,6 +515,7 @@ function initializeSettingsPage() {
         startCameraBtn.disabled = false;
         stopCameraBtn.disabled = true;
       });
+      console.log('[DEBUG] Camera button listeners added');
     }
 
     if (startMicBtn && stopMicBtn) {
@@ -556,6 +580,7 @@ function initializeSettingsPage() {
         startMicBtn.disabled = false;
         stopMicBtn.disabled = true;
       });
+      console.log('[DEBUG] Microphone button listeners added');
     }
 
     // Setup add profile button
@@ -569,10 +594,17 @@ function initializeSettingsPage() {
           // This would normally add the profile to the system
         }
       });
+      console.log('[DEBUG] Add profile button listener added');
     }
+
+    // Re-setup modals for settings page
+    setupModals();
+    console.log('[DEBUG] Modals re-setup for settings page');
 
     loadProfilesForSettings();
     fetchDisplaySettings();
+
+    console.log('[DEBUG] Settings page initialization complete');
   }, 100);
 }
 
@@ -734,6 +766,15 @@ function setupCalendar() {
 
   console.log('[DEBUG] Setting up FullCalendar...');
 
+  // Check if FullCalendar is available
+  if (typeof FullCalendar === 'undefined') {
+    console.error('[ERROR] FullCalendar library not loaded, retrying in 1000ms...');
+    setTimeout(() => {
+      setupCalendar();
+    }, 1000);
+    return;
+  }
+
   try {
     calendar = new FullCalendar.Calendar(calendarEl, {
       initialView: 'timeGridWeek',
@@ -746,6 +787,7 @@ function setupCalendar() {
       slotMaxTime: '24:00:00',
       allDaySlot: true,
       height: 'auto',
+      aspectRatio: 1.35,
       events: '/api/calendar',
       eventClick: function(info) {
         console.log('[DEBUG] Event clicked:', info.event);
@@ -756,15 +798,44 @@ function setupCalendar() {
       },
       loading: function(isLoading) {
         console.log('[DEBUG] Calendar loading:', isLoading);
+      },
+      eventDisplay: 'block',
+      dayMaxEvents: false,
+      moreLinkClick: 'popover',
+      nowIndicator: true,
+      scrollTime: '08:00:00',
+      eventTimeFormat: {
+        hour: 'numeric',
+        minute: '2-digit',
+        omitZeroMinute: false,
+        meridiem: 'short'
       }
     });
 
     calendar.render();
     console.log('[DEBUG] FullCalendar rendered successfully');
+
+    // Force a resize after render to ensure proper sizing
+    setTimeout(() => {
+      if (calendar) {
+        calendar.updateSize();
+        console.log('[DEBUG] Calendar size updated after render');
+      }
+    }, 100);
+
   } catch (error) {
     console.error('[ERROR] Failed to initialize FullCalendar:', error);
     // Reset calendar variable so it can be retried
     calendar = null;
+
+    // Show error message in calendar container
+    calendarEl.innerHTML = `
+      <div style="padding: 20px; text-align: center; color: var(--md-error);">
+        <h3>Calendar Error</h3>
+        <p>Failed to initialize calendar: ${error.message}</p>
+        <button onclick="setupCalendar()" class="btn btn-primary">Retry</button>
+      </div>
+    `;
   }
 }
 
