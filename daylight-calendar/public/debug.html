@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Daylight Calendar - Diagnostic Tools</title>
+    <title>Daylight Calendar - Debug Console</title>
     <link href="fontawesome.min.css" rel="stylesheet">
     <link href="styles.css" rel="stylesheet">
     <style>
@@ -19,921 +19,535 @@
         }
         .debug-container {
             padding: 20px;
-            width: calc(100% - 40px);
-            max-width: 100%;
-            box-sizing: border-box;
+            max-width: 1200px;
+            margin: 0 auto;
         }
-        h1, h2, h3, label, .label {
-            color: var(--heading-color, #333) !important;
-        }
-        .api-test-section {
-            background-color: var(--card-bg, rgba(255,255,255,0.8));
+        .debug-section {
+            background-color: var(--card-bg, rgba(255,255,255,0.9));
             border-radius: 8px;
-            padding: 15px;
+            padding: 20px;
             margin-bottom: 20px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-            color: var(--text-color, #333);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
-        .api-test-section h2 {
+        .debug-section h2 {
             margin-top: 0;
-            font-size: 1.4rem;
-            margin-bottom: 15px;
+            color: var(--primary-color, #2196F3);
+            border-bottom: 2px solid var(--primary-color, #2196F3);
+            padding-bottom: 10px;
         }
-        .response-container {
-            background-color: var(--code-bg, #f8f8f8);
-            color: var(--code-color, #333);
-            padding: 10px;
-            border-radius: 4px;
-            border: 1px solid var(--border-color, #ddd);
-            max-height: 300px;
-            overflow: auto;
-        }
-        .token-value, .connection-status, .value {
-            font-weight: bold;
-        }
-        .token-value.available, .connection-status.success, .value.success {
-            color: var(--success-color, #4caf50);
-        }
-        .token-value.unavailable, .connection-status.error, .value.error {
-            color: var(--error-color, #f44336);
-        }
-        .connection-status.pending, .value.warning {
-            color: var(--warning-color, #ff9800);
-        }
-        input, select {
-            background-color: var(--input-bg, #fff);
-            color: var(--input-color, #333);
-            border: 1px solid var(--border-color, #ddd);
-        }
-        .btn {
-            color: var(--btn-text, white);
-        }
-        .btn-primary {
-            background-color: var(--primary-color, #2196F3);
-        }
-        .btn-secondary {
-            background-color: var(--secondary-color, #607d8b);
-        }
-        .code-block {
-            background-color: var(--code-bg, #f5f5f5);
-            color: var(--code-color, #333);
-        }
-
-        /* Styles for new diagnostic features */
-        .debug-controls {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 15px;
-        }
-
-        .current-url-info {
-            background-color: var(--card-bg, rgba(255,255,255,0.3));
-            padding: 8px;
-            border-radius: 4px;
-            margin-bottom: 15px;
-            border-left: 3px solid var(--primary-color, #2196F3);
-        }
-
-        .token-actions {
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
             margin: 15px 0;
         }
-
-        .token-reveal-info {
-            margin-top: 10px;
-            padding: 10px;
-            background-color: var(--code-bg, #f8f8f8);
-            border: 1px solid var(--border-color, #ddd);
-            border-radius: 4px;
+        .status-item {
+            background: var(--code-bg, #f8f9fa);
+            padding: 12px;
+            border-radius: 6px;
+            border-left: 4px solid var(--border-color, #ddd);
         }
+        .status-item.success { border-left-color: #4caf50; }
+        .status-item.error { border-left-color: #f44336; }
+        .status-item.warning { border-left-color: #ff9800; }
+        .status-item.info { border-left-color: #2196F3; }
 
-        .token-preview {
-            margin-bottom: 10px;
-            line-height: 1.5;
+        .status-label {
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: var(--text-color, #333);
         }
-
-        .token-warning {
-            color: var(--error-color, #f44336);
+        .status-value {
+            font-family: 'Courier New', monospace;
             font-size: 0.9em;
-            margin-top: 8px;
-            font-style: italic;
+            word-break: break-all;
+        }
+        .status-value.success { color: #4caf50; }
+        .status-value.error { color: #f44336; }
+        .status-value.warning { color: #ff9800; }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            margin: 15px 0;
+            flex-wrap: wrap;
+        }
+        .btn {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s;
+        }
+        .btn-primary { background: #2196F3; color: white; }
+        .btn-secondary { background: #6c757d; color: white; }
+        .btn-success { background: #28a745; color: white; }
+        .btn-danger { background: #dc3545; color: white; }
+        .btn:hover { opacity: 0.9; transform: translateY(-1px); }
+
+        .response-container {
+            background: var(--code-bg, #f8f9fa);
+            border: 1px solid var(--border-color, #dee2e6);
+            border-radius: 6px;
+            padding: 15px;
+            margin: 15px 0;
+            max-height: 400px;
+            overflow: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            white-space: pre-wrap;
+        }
+
+        .info-box {
+            background: #e3f2fd;
+            border: 1px solid #2196F3;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .info-box.warning {
+            background: #fff3e0;
+            border-color: #ff9800;
+        }
+        .info-box.success {
+            background: #e8f5e8;
+            border-color: #4caf50;
+        }
+        .info-box.error {
+            background: #ffebee;
+            border-color: #f44336;
+        }
+
+        .environment-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .environment-badge.development {
+            background: #fff3e0;
+            color: #ef6c00;
+            border: 1px solid #ff9800;
+        }
+        .environment-badge.production {
+            background: #e8f5e8;
+            color: #2e7d32;
+            border: 1px solid #4caf50;
+        }
+
+        .diagnostic-summary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .diagnostic-summary h1 {
+            margin: 0 0 10px 0;
+            font-size: 1.8em;
+        }
+        .diagnostic-summary .subtitle {
+            opacity: 0.9;
+            font-size: 1.1em;
         }
     </style>
 </head>
 <body>
     <div class="debug-container">
-        <h1>Daylight Calendar Diagnostic Tools</h1>
+        <div class="diagnostic-summary">
+            <h1>🔧 Daylight Calendar Debug Console</h1>
+            <p class="subtitle">System diagnostics and troubleshooting tools</p>
+        </div>
 
-        <div class="api-test-container">
-            <div class="api-test-section api-diagnostic-section">
-                <h2>Connection Diagnostics</h2>
-                <div class="debug-controls">
-                    <button id="run-all-diagnostics" class="btn btn-primary"><i class="fas fa-stethoscope"></i> Run Full Diagnostic Suite</button>
-                    <button id="copy-all-diagnostics" class="btn btn-secondary"><i class="fas fa-copy"></i> Copy All Results</button>
-                </div>
-                <div class="current-url-info">
-                    <span class="label">Current Access URL:</span>
-                    <span id="current-access-url" class="value">Checking...</span>
-                </div>
-                <div class="port-info">
-                    <div class="diagnostic-item">
-                        <span class="label">Client URL:</span>
-                        <span id="client-url" class="value">Checking...</span>
-                    </div>
-                    <div class="diagnostic-item">
-                        <span class="label">Server Port:</span>
-                        <span id="server-port" class="value">Checking...</span>
-                    </div>
-                    <div class="diagnostic-item">
-                        <span class="label">Request Path:</span>
-                        <span id="request-path" class="value">Checking...</span>
-                    </div>
-                    <div class="diagnostic-item">
-                        <span class="label">Server Environment:</span>
-                        <span id="server-env" class="value">Checking...</span>
-                    </div>
-                    <div class="diagnostic-item">
-                        <span class="label">Status:</span>
-                        <span id="connection-diagnosis" class="value">Checking...</span>
-                    </div>
-                </div>
-                <div class="form-actions">
-                    <button id="run-diagnostics" class="btn btn-primary"><i class="fas fa-stethoscope"></i> Run Diagnostics</button>
-                    <button id="refresh-endpoints-button" class="btn btn-primary"><i class="fas fa-sync"></i> Refresh</button>
-                </div>
-                <div class="diagnostic-result">
-                    <h3>Diagnostic Details</h3>
-                    <pre id="diagnostic-details" class="response-container">No diagnostics run yet</pre>
-                </div>
-                <div id="fix-suggestions" class="fix-suggestions">
-                    <h3>Suggested Fixes</h3>
-                    <ul id="fix-list">
-                        <li>Run diagnostics to see suggested fixes</li>
-                    </ul>
-                </div>
-
-                <div class="url-fixer">
-                    <h3>URL Fixer Tool</h3>
-                    <p>If you're experiencing port issues, use this tool to generate correct URLs:</p>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="url-to-fix">URL to Fix</label>
-                            <input type="text" id="url-to-fix" placeholder="Enter URL with wrong port" value="">
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="corrected-port">Correct Port</label>
-                            <input type="text" id="corrected-port" placeholder="e.g., 8099" value="8099">
-                        </div>
-                    </div>
-                    <div class="form-actions">
-                        <button id="fix-url-button" class="btn btn-primary"><i class="fas fa-magic"></i> Generate Fixed URL</button>
-                    </div>
-                    <div class="fixed-url-result">
-                        <label>Fixed URL:</label>
-                        <div class="url-display-container">
-                            <pre id="fixed-url" class="code-block">No URL fixed yet</pre>
-                            <button id="copy-url-button" class="btn btn-sm btn-secondary"><i class="fas fa-copy"></i> Copy</button>
-                        </div>
-                    </div>
-                </div>
+        <!-- System Status Section -->
+        <div class="debug-section">
+            <h2>📊 System Status</h2>
+            <div class="btn-group">
+                <button id="run-full-diagnostic" class="btn btn-primary">
+                    <i class="fas fa-stethoscope"></i> Run Full Diagnostic
+                </button>
+                <button id="copy-report" class="btn btn-secondary">
+                    <i class="fas fa-copy"></i> Copy Report
+                </button>
+                <button id="refresh-status" class="btn btn-success">
+                    <i class="fas fa-sync"></i> Refresh
+                </button>
             </div>
 
-            <div class="api-test-section">
-                <h2>Home Assistant API Connection</h2>
-                <div class="api-test-form">
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="ha-api-endpoint">Endpoint</label>
-                            <select id="ha-api-endpoint">
-                                <option value="/api">Root API</option>
-                                <option value="/api/states">States</option>
-                                <option value="/api/config">Config</option>
-                                <option value="/api/services">Services</option>
-                                <option value="/api/calendars">Calendars</option>
-                                <option value="/api/weather">Weather</option>
-                                <option value="/api/history/period">History</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="ha-custom-endpoint">Custom Endpoint</label>
-                            <input type="text" id="ha-custom-endpoint" placeholder="e.g., /api/states/weather.home">
-                        </div>
-                    </div>
-                    <div class="form-actions">
-                        <button id="test-ha-api" class="btn btn-primary"><i class="fas fa-play"></i> Test Connection</button>
-                    </div>
+            <div class="status-grid">
+                <div class="status-item info">
+                    <div class="status-label">Environment</div>
+                    <div class="status-value" id="environment-status">Checking...</div>
                 </div>
-                <div class="api-test-result">
-                    <h3>Connection Status</h3>
-                    <div id="ha-connection-status" class="connection-status">Not tested</div>
-                    <h3>Response</h3>
-                    <pre id="ha-response" class="response-container">No response yet</pre>
+                <div class="status-item info">
+                    <div class="status-label">Access Mode</div>
+                    <div class="status-value" id="access-mode">Checking...</div>
                 </div>
-            </div>
-
-            <div class="api-test-section token-test-section">
-                <h2>Token Information</h2>
-                <div class="token-info">
-                    <div class="token-info-item">
-                        <span class="label">Token Availability:</span>
-                        <span id="token-availability" class="token-value">Checking...</span>
-                    </div>
-                    <div class="token-info-item">
-                        <span class="label">Token Type:</span>
-                        <span id="token-type" class="token-value">Unknown</span>
-                    </div>
-                    <div class="token-info-item">
-                        <span class="label">Token Source:</span>
-                        <span id="token-source" class="token-value">Unknown</span>
-                    </div>
-                    <div class="token-info-item advanced-token-info" style="display: none;">
-                        <span class="label">Curl Example:</span>
-                        <code id="curl-example" class="token-value">curl -X GET "http://supervisor/core/api/config" -H "Authorization: Bearer YOUR_TOKEN"</code>
-                    </div>
-                    <div class="token-reveal-container">
-                        <button id="reveal-token-btn" class="btn btn-secondary btn-sm"><i class="fas fa-eye"></i> Show Advanced Token Info</button>
-                        <span id="token-reveal-info" class="info-text" style="display: none;">Advanced token information is available in development mode</span>
-                    </div>
+                <div class="status-item info">
+                    <div class="status-label">Server Port</div>
+                    <div class="status-value" id="server-port">Checking...</div>
                 </div>
-                <div class="debug-controls">
-                    <button id="test-auth" class="btn btn-primary"><i class="fas fa-key"></i> Test Authentication Methods</button>
-                    <button id="test-port-config" class="btn btn-info"><i class="fas fa-network-wired"></i> Test Port Configuration</button>
-                    <a href="INGRESS_TROUBLESHOOTING.md" target="_blank" class="btn btn-secondary"><i class="fas fa-question-circle"></i> Ingress Troubleshooting Guide</a>
+                <div class="status-item" id="ha-connection-status">
+                    <div class="status-label">Home Assistant</div>
+                    <div class="status-value" id="ha-status">Checking...</div>
                 </div>
-            </div>
-
-            <div class="api-test-section">
-                <h2>Local API Endpoints</h2>
-                <div class="api-test-form">
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="local-api-endpoint">Endpoint</label>
-                            <select id="local-api-endpoint">
-                                <option value="/api/config">Config</option>
-                                <option value="/api/calendar">Calendar</option>
-                                <option value="/api/weather">Weather</option>
-                                <option value="/api/chores">Chores</option>
-                                <option value="/api/meals">Meals</option>
-                                <option value="/api/users">Users</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="form-actions">
-                        <button id="test-local-api" class="btn btn-primary"><i class="fas fa-play"></i> Test Connection</button>
-                    </div>
+                <div class="status-item" id="weather-status-item">
+                    <div class="status-label">Weather Data</div>
+                    <div class="status-value" id="weather-status">Checking...</div>
                 </div>
-                <div class="api-test-result">
-                    <h3>Connection Status</h3>
-                    <div id="local-connection-status" class="connection-status">Not tested</div>
-                    <h3>Response</h3>
-                    <pre id="local-response" class="response-container">No response yet</pre>
-                </div>
-            </div>
-
-            <div class="api-test-section">
-                <h2>Data Files</h2>
-                <div class="form-actions">
-                    <button id="check-chores" class="btn btn-secondary"><i class="fas fa-tasks"></i> Check Chores</button>
-                    <button id="check-users" class="btn btn-secondary"><i class="fas fa-users"></i> Check Users</button>
-                    <button id="check-meals" class="btn btn-secondary"><i class="fas fa-utensils"></i> Check Meals</button>
-                    <button id="check-weather" class="btn btn-secondary"><i class="fas fa-cloud-sun"></i> Check Weather</button>
-                </div>
-                <div class="api-test-result">
-                    <h3>Data File Contents</h3>
-                    <pre id="data-file-content" class="response-container">Select a data file to view its contents</pre>
+                <div class="status-item" id="calendar-status-item">
+                    <div class="status-label">Calendar Data</div>
+                    <div class="status-value" id="calendar-status">Checking...</div>
                 </div>
             </div>
         </div>
+
+        <!-- Connection Testing Section -->
+        <div class="debug-section">
+            <h2>🔗 Connection Testing</h2>
+            <div class="btn-group">
+                <button id="test-ha-api" class="btn btn-primary">
+                    <i class="fas fa-home"></i> Test Home Assistant API
+                </button>
+                <button id="test-weather-api" class="btn btn-primary">
+                    <i class="fas fa-cloud"></i> Test Weather API
+                </button>
+                <button id="test-calendar-api" class="btn btn-primary">
+                    <i class="fas fa-calendar"></i> Test Calendar API
+                </button>
+            </div>
+            <div class="response-container" id="connection-results">Click a test button to see results...</div>
+        </div>
+
+        <!-- Configuration Section -->
+        <div class="debug-section">
+            <h2>⚙️ Configuration</h2>
+            <div class="btn-group">
+                <button id="show-config" class="btn btn-secondary">
+                    <i class="fas fa-cog"></i> Show Current Config
+                </button>
+                <button id="show-env-vars" class="btn btn-secondary">
+                    <i class="fas fa-list"></i> Show Environment
+                </button>
+            </div>
+            <div class="response-container" id="config-display">Click a button to view configuration...</div>
+        </div>
+
+        <!-- Quick Fixes Section -->
+        <div class="debug-section">
+            <h2>🛠️ Quick Fixes</h2>
+            <div id="quick-fixes-content">
+                <div class="info-box">
+                    <h4>🎯 Understanding Access Modes</h4>
+                    <ul>
+                        <li><strong>Development Mode:</strong> Runs on port 8100, uses mock data when Home Assistant isn't available</li>
+                        <li><strong>Home Assistant Addon:</strong> Runs on port 8099, accessed through Home Assistant interface</li>
+                        <li><strong>Ingress Mode:</strong> Accessed through Home Assistant's ingress proxy with special URL path</li>
+                    </ul>
+                </div>
+                <div id="dynamic-fixes"></div>
+            </div>
+        </div>
+
+        <!-- Raw Diagnostic Data Section -->
+        <div class="debug-section">
+            <h2>📋 Full Diagnostic Report</h2>
+            <div class="btn-group">
+                <button id="generate-report" class="btn btn-danger">
+                    <i class="fas fa-file-alt"></i> Generate Full Report
+                </button>
+            </div>
+            <div class="response-container" id="full-diagnostic-report">Click "Generate Full Report" to see complete diagnostic data...</div>
+        </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.7.2/dist/socket.io.min.js"></script>
     <script>
+        // Global state
+        let diagnosticData = {};
+
+        // Initialize page
         document.addEventListener('DOMContentLoaded', function() {
-            // Detect if we're running in Home Assistant ingress mode
-            const isIngress = window.location.pathname.includes('/api/hassio_ingress/');
+            console.log('[DEBUG] Debug page loaded');
+            refreshSystemStatus();
+            setupEventListeners();
+        });
 
-            // Function to get the proper API base URL
-            function getApiBaseUrl() {
-                if (isIngress) {
-                    // Extract the ingress path prefix
-                    const pathParts = window.location.pathname.split('/');
-                    const ingressIndex = pathParts.indexOf('hassio_ingress');
-                    if (ingressIndex !== -1 && pathParts.length > ingressIndex + 1) {
-                        // Reconstruct the ingress path
-                        return '/api/hassio_ingress/' + pathParts[ingressIndex + 1];
-                    }
-                }
-                return ''; // Default empty prefix for direct access
+        function setupEventListeners() {
+            document.getElementById('run-full-diagnostic').addEventListener('click', runFullDiagnostic);
+            document.getElementById('copy-report').addEventListener('click', copyDiagnosticReport);
+            document.getElementById('refresh-status').addEventListener('click', refreshSystemStatus);
+            document.getElementById('test-ha-api').addEventListener('click', testHomeAssistantAPI);
+            document.getElementById('test-weather-api').addEventListener('click', testWeatherAPI);
+            document.getElementById('test-calendar-api').addEventListener('click', testCalendarAPI);
+            document.getElementById('show-config').addEventListener('click', showConfiguration);
+            document.getElementById('show-env-vars').addEventListener('click', showEnvironment);
+            document.getElementById('generate-report').addEventListener('click', generateFullReport);
+        }
+
+        async function refreshSystemStatus() {
+            try {
+                console.log('[DEBUG] Refreshing system status...');
+
+                // Get basic system info
+                const response = await fetch('/api/diagnostics');
+                const data = await response.json();
+                diagnosticData = data;
+
+                // Update environment status
+                const envElement = document.getElementById('environment-status');
+                const isProduction = data.server.isProduction;
+                envElement.textContent = isProduction ? 'Production' : 'Development';
+                envElement.className = 'status-value ' + (isProduction ? 'success' : 'warning');
+
+                // Update access mode
+                const accessElement = document.getElementById('access-mode');
+                const accessMode = data.server.isIngressMode ? 'Home Assistant Ingress' :
+                                 isProduction ? 'Direct Access (Addon)' : 'Standalone Development';
+                accessElement.textContent = accessMode;
+
+                // Update server port
+                document.getElementById('server-port').textContent = data.server.port || 'Unknown';
+
+                // Test Home Assistant connection
+                await updateHomeAssistantStatus();
+
+                // Test weather and calendar
+                await updateWeatherStatus();
+                await updateCalendarStatus();
+
+                console.log('[DEBUG] System status updated');
+            } catch (error) {
+                console.error('[ERROR] Failed to refresh system status:', error);
+                showError('Failed to refresh system status: ' + error.message);
             }
+        }
 
-            // Function to make API requests with proper path
-            async function makeApiRequest(endpoint) {
-                const baseUrl = getApiBaseUrl();
-                const url = baseUrl + endpoint;
-                console.log('Making API request to:', url);
-                return await fetch(url);
-            }
+        async function updateHomeAssistantStatus() {
+            const statusItem = document.getElementById('ha-connection-status');
+            const statusValue = document.getElementById('ha-status');
 
-            // Elements
-            const tokenAvailability = document.getElementById('token-availability');
-            const tokenType = document.getElementById('token-type');
-            const tokenSource = document.getElementById('token-source');
-            const curlExample = document.getElementById('curl-example');
-            const haApiEndpoint = document.getElementById('ha-api-endpoint');
-            const haCustomEndpoint = document.getElementById('ha-custom-endpoint');
-            const testHaApiButton = document.getElementById('test-ha-api');
-            const haConnectionStatus = document.getElementById('ha-connection-status');
-            const haResponse = document.getElementById('ha-response');
-            const localApiEndpoint = document.getElementById('local-api-endpoint');
-            const testLocalApiButton = document.getElementById('test-local-api');
-            const localConnectionStatus = document.getElementById('local-connection-status');
-            const localResponse = document.getElementById('local-response');
-            const refreshEndpointsButton = document.getElementById('refresh-endpoints-button');
+            try {
+                const response = await fetch('/api/ha-proxy');
+                const data = await response.json();
 
-            // Diagnostic elements
-            const runDiagnosticsButton = document.getElementById('run-diagnostics');
-            const runAllDiagnosticsButton = document.getElementById('run-all-diagnostics');
-            const copyAllDiagnosticsButton = document.getElementById('copy-all-diagnostics');
-            const revealTokenButton = document.getElementById('reveal-token-btn');
-            const tokenRevealInfo = document.getElementById('token-reveal-info');
-            const tokenPreview = document.getElementById('token-preview');
-            const clientUrlDisplay = document.getElementById('client-url');
-            const serverPortDisplay = document.getElementById('server-port');
-            const requestPathDisplay = document.getElementById('request-path');
-            const serverEnvDisplay = document.getElementById('server-env');
-            const connectionDiagnosisDisplay = document.getElementById('connection-diagnosis');
-            const diagnosticDetailsDisplay = document.getElementById('diagnostic-details');
-            const fixList = document.getElementById('fix-list');
-            const currentAccessUrlDisplay = document.getElementById('current-access-url');
-
-            // Data file buttons
-            const checkChoresBtn = document.getElementById('check-chores');
-            const checkUsersBtn = document.getElementById('check-users');
-            const checkMealsBtn = document.getElementById('check-meals');
-            const checkWeatherBtn = document.getElementById('check-weather');
-            const dataFileContent = document.getElementById('data-file-content');
-
-            // Display current access URL
-            currentAccessUrlDisplay.textContent = window.location.href;
-
-            // Fetch token info when the page loads
-            fetchTokenInfo();
-
-            // Run basic diagnostics on page load
-            runBasicDiagnostics();
-
-            // Add event listeners
-            if (refreshEndpointsButton) {
-                refreshEndpointsButton.addEventListener('click', () => {
-                    fetchTokenInfo();
-                    runBasicDiagnostics();
-                });
-            }
-
-            if (testHaApiButton) {
-                testHaApiButton.addEventListener('click', testHaApiConnection);
-            }
-
-            if (testLocalApiButton) {
-                testLocalApiButton.addEventListener('click', testLocalApiConnection);
-            }
-
-            if (runDiagnosticsButton) {
-                runDiagnosticsButton.addEventListener('click', runFullDiagnostics);
-            }
-
-            if (runAllDiagnosticsButton) {
-                runAllDiagnosticsButton.addEventListener('click', runComprehensiveDiagnostics);
-            }
-
-            if (copyAllDiagnosticsButton) {
-                copyAllDiagnosticsButton.addEventListener('click', copyAllDiagnosticResults);
-            }
-
-            if (revealTokenButton) {
-                revealTokenButton.addEventListener('click', toggleAdvancedTokenInfo);
-            }
-
-            // Data file checks
-            if (checkChoresBtn) {
-                checkChoresBtn.addEventListener('click', () => checkDataFile('chores.json'));
-            }
-
-            if (checkUsersBtn) {
-                checkUsersBtn.addEventListener('click', () => checkDataFile('users.json'));
-            }
-
-            if (checkMealsBtn) {
-                checkMealsBtn.addEventListener('click', () => checkDataFile('meals.json'));
-            }
-
-            if (checkWeatherBtn) {
-                checkWeatherBtn.addEventListener('click', () => checkDataFile('weather.json'));
-            }
-
-            // Add listeners for new authentication and port test buttons
-            document.getElementById('test-auth').addEventListener('click', testAuthenticationMethods);
-            document.getElementById('test-port-config').addEventListener('click', testPortConfiguration);
-
-            // Function to toggle advanced token info
-            function toggleAdvancedTokenInfo() {
-                if (tokenRevealInfo.style.display === 'none') {
-                    tokenRevealInfo.style.display = 'block';
-                    revealTokenButton.innerHTML = '<i class="fas fa-eye-slash"></i> Hide Advanced Token Info';
+                if (data.success) {
+                    statusItem.className = 'status-item success';
+                    statusValue.textContent = '✅ Connected';
+                    statusValue.className = 'status-value success';
                 } else {
-                    tokenRevealInfo.style.display = 'none';
-                    revealTokenButton.innerHTML = '<i class="fas fa-eye"></i> Show Advanced Token Info';
+                    statusItem.className = 'status-item warning';
+                    statusValue.textContent = '⚠️ ' + (data.error || 'Connection issues');
+                    statusValue.className = 'status-value warning';
                 }
+            } catch (error) {
+                statusItem.className = 'status-item error';
+                statusValue.textContent = '❌ Failed to connect';
+                statusValue.className = 'status-value error';
             }
+        }
 
-            // Function to fetch detailed token info
-            async function fetchDetailedTokenInfo() {
-                try {
-                    tokenPreview.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading token info...';
+        async function updateWeatherStatus() {
+            const statusItem = document.getElementById('weather-status-item');
+            const statusValue = document.getElementById('weather-status');
 
-                    const response = await makeApiRequest('/api/token-info?detailed=true');
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
+            try {
+                const response = await fetch('/api/weather');
+                const data = await response.json();
 
-                    const data = await response.json();
-
-                    if (data.available) {
-                        let tokenInfoHtml = `
-                            <strong>Type:</strong> ${data.type}<br>
-                            <strong>Length:</strong> ${data.length} characters<br>
-                            <strong>First chars:</strong> ${data.first_chars}<br>
-                            <strong>Environment:</strong> ${data.from_env_var ? data.from_env_var : 'Unknown'}<br>
-                        `;
-
-                        // Add a masked version (showing only first/last few chars)
-                        if (data.masked_token) {
-                            tokenInfoHtml += `<strong>Masked Token:</strong> ${data.masked_token}<br>`;
-                        }
-
-                        tokenPreview.innerHTML = tokenInfoHtml;
-                    } else {
-                        tokenPreview.textContent = 'No token available';
-                    }
-                } catch (error) {
-                    tokenPreview.textContent = `Error fetching token details: ${error.message}`;
+                if (data.error) {
+                    statusItem.className = 'status-item warning';
+                    statusValue.textContent = '⚠️ Using mock data';
+                    statusValue.className = 'status-value warning';
+                } else {
+                    statusItem.className = 'status-item success';
+                    statusValue.textContent = '✅ Live data';
+                    statusValue.className = 'status-value success';
                 }
+            } catch (error) {
+                statusItem.className = 'status-item error';
+                statusValue.textContent = '❌ Failed';
+                statusValue.className = 'status-value error';
             }
+        }
 
-            // Function to copy all diagnostic results
-            async function copyAllDiagnosticResults() {
-                // First run a comprehensive diagnostic to ensure data is fresh
-                await runComprehensiveDiagnostics();
+        async function updateCalendarStatus() {
+            const statusItem = document.getElementById('calendar-status-item');
+            const statusValue = document.getElementById('calendar-status');
 
-                // Collect all diagnostic data
-                const diagnosticData = {
-                    accessUrl: currentAccessUrlDisplay.textContent,
-                    clientInfo: {
-                        url: clientUrlDisplay.textContent,
-                        serverPort: serverPortDisplay.textContent,
-                        requestPath: requestPathDisplay.textContent,
-                        serverEnv: serverEnvDisplay.textContent,
-                        connectionStatus: connectionDiagnosisDisplay.textContent
-                    },
-                    tokenInfo: {
-                        availability: tokenAvailability.textContent,
-                        type: tokenType.textContent,
-                        source: tokenSource.textContent
-                    },
-                    haApiTest: haConnectionStatus.textContent,
-                    haResponse: haResponse.textContent,
-                    localApiTest: localConnectionStatus.textContent,
-                    localResponse: localResponse.textContent,
-                    dataFileContent: dataFileContent.textContent,
-                    diagnosticDetails: diagnosticDetailsDisplay.textContent
+            try {
+                const response = await fetch('/api/calendar');
+                const data = await response.json();
+
+                statusItem.className = 'status-item success';
+                statusValue.textContent = `✅ ${Array.isArray(data) ? data.length : 0} events`;
+                statusValue.className = 'status-value success';
+            } catch (error) {
+                statusItem.className = 'status-item error';
+                statusValue.textContent = '❌ Failed';
+                statusValue.className = 'status-value error';
+            }
+        }
+
+        async function runFullDiagnostic() {
+            const button = document.getElementById('run-full-diagnostic');
+            button.disabled = true;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running...';
+
+            try {
+                await refreshSystemStatus();
+                showSuccess('Full diagnostic completed successfully!');
+            } catch (error) {
+                showError('Diagnostic failed: ' + error.message);
+            } finally {
+                button.disabled = false;
+                button.innerHTML = '<i class="fas fa-stethoscope"></i> Run Full Diagnostic';
+            }
+        }
+
+        async function testHomeAssistantAPI() {
+            const resultsElement = document.getElementById('connection-results');
+            resultsElement.textContent = 'Testing Home Assistant API connection...';
+
+            try {
+                const response = await fetch('/api/ha-proxy');
+                const data = await response.json();
+                resultsElement.textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                resultsElement.textContent = 'Error testing Home Assistant API: ' + error.message;
+            }
+        }
+
+        async function testWeatherAPI() {
+            const resultsElement = document.getElementById('connection-results');
+            resultsElement.textContent = 'Testing Weather API...';
+
+            try {
+                const response = await fetch('/api/weather');
+                const data = await response.json();
+                resultsElement.textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                resultsElement.textContent = 'Error testing Weather API: ' + error.message;
+            }
+        }
+
+        async function testCalendarAPI() {
+            const resultsElement = document.getElementById('connection-results');
+            resultsElement.textContent = 'Testing Calendar API...';
+
+            try {
+                const response = await fetch('/api/calendar');
+                const data = await response.json();
+                resultsElement.textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                resultsElement.textContent = 'Error testing Calendar API: ' + error.message;
+            }
+        }
+
+        async function showConfiguration() {
+            const configElement = document.getElementById('config-display');
+            configElement.textContent = 'Loading configuration...';
+
+            try {
+                const response = await fetch('/api/config');
+                const data = await response.json();
+                configElement.textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                configElement.textContent = 'Error loading configuration: ' + error.message;
+            }
+        }
+
+        async function showEnvironment() {
+            const configElement = document.getElementById('config-display');
+            configElement.textContent = 'Loading environment information...';
+
+            try {
+                const response = await fetch('/api/diagnostics');
+                const data = await response.json();
+
+                const envInfo = {
+                    server: data.server,
+                    client: data.client,
+                    headers: data.headers
                 };
 
-                // Format as text
-                let textToCopy = `
-DAYLIGHT CALENDAR DIAGNOSTIC REPORT
-Generated: ${new Date().toISOString()}
-Access URL: ${diagnosticData.accessUrl}
+                configElement.textContent = JSON.stringify(envInfo, null, 2);
+            } catch (error) {
+                configElement.textContent = 'Error loading environment: ' + error.message;
+            }
+        }
 
-CLIENT INFO:
-- URL: ${diagnosticData.clientInfo.url}
-- Server Port: ${diagnosticData.clientInfo.serverPort}
-- Request Path: ${diagnosticData.clientInfo.requestPath}
-- Server Environment: ${diagnosticData.clientInfo.serverEnv}
-- Connection Status: ${diagnosticData.clientInfo.connectionStatus}
+        async function generateFullReport() {
+            const reportElement = document.getElementById('full-diagnostic-report');
+            reportElement.textContent = 'Generating comprehensive diagnostic report...';
 
-TOKEN INFO:
-- Availability: ${diagnosticData.tokenInfo.availability}
-- Type: ${diagnosticData.tokenInfo.type}
-- Source: ${diagnosticData.tokenInfo.source}
+            try {
+                // Collect all diagnostic data
+                const diagnostics = await fetch('/api/diagnostics').then(r => r.json());
+                const config = await fetch('/api/config').then(r => r.json());
+                const weather = await fetch('/api/weather').then(r => r.json());
+                const calendar = await fetch('/api/calendar').then(r => r.json());
 
-HOME ASSISTANT API TEST:
-Status: ${diagnosticData.haApiTest}
-Response: ${diagnosticData.haResponse}
-
-LOCAL API TEST:
-Status: ${diagnosticData.localApiTest}
-Response: ${diagnosticData.localResponse}
-
-DATA FILE CONTENT:
-${diagnosticData.dataFileContent}
-
-DIAGNOSTIC DETAILS:
-${diagnosticData.diagnosticDetails}
-`;
-
-                // Copy to clipboard
+                let haTest;
                 try {
-                    await navigator.clipboard.writeText(textToCopy);
-                    copyAllDiagnosticsButton.innerHTML = '<i class="fas fa-check"></i> Copied!';
-                    setTimeout(() => {
-                        copyAllDiagnosticsButton.innerHTML = '<i class="fas fa-copy"></i> Copy All Results';
-                    }, 2000);
-                } catch (err) {
-                    console.error('Failed to copy:', err);
-                    copyAllDiagnosticsButton.innerHTML = '<i class="fas fa-times"></i> Copy Failed';
-                    setTimeout(() => {
-                        copyAllDiagnosticsButton.innerHTML = '<i class="fas fa-copy"></i> Copy All Results';
-                    }, 2000);
-                }
-            }
-
-            // Function to run comprehensive diagnostics
-            async function runComprehensiveDiagnostics() {
-                // Show loading state
-                runAllDiagnosticsButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running Tests...';
-
-                try {
-                    // 1. Run full diagnostics
-                    await runFullDiagnostics();
-
-                    // 2. Check token info
-                    await fetchTokenInfo();
-
-                    // 3. Test HA API
-                    await testHaApiConnection();
-
-                    // 4. Test local API
-                    await testLocalApiConnection();
-
-                    // 5. Check weather data
-                    await checkDataFile('/api/weather');
-
-                    // Show success state
-                    runAllDiagnosticsButton.innerHTML = '<i class="fas fa-check"></i> Tests Complete';
-                    setTimeout(() => {
-                        runAllDiagnosticsButton.innerHTML = '<i class="fas fa-stethoscope"></i> Run Full Diagnostic Suite';
-                    }, 2000);
-                } catch (error) {
-                    console.error('Error running comprehensive diagnostics:', error);
-                    runAllDiagnosticsButton.innerHTML = '<i class="fas fa-times"></i> Tests Failed';
-                    setTimeout(() => {
-                        runAllDiagnosticsButton.innerHTML = '<i class="fas fa-stethoscope"></i> Run Full Diagnostic Suite';
-                    }, 2000);
-                }
-            }
-
-            // Function to run basic diagnostics
-            function runBasicDiagnostics() {
-                // Update displays with basic info
-                clientUrlDisplay.textContent = window.location.href;
-                requestPathDisplay.textContent = window.location.pathname;
-
-                // Detect current port from URL
-                const currentPort = window.location.port || (window.location.protocol === 'https:' ? '443' : '80');
-                const correctPort = '8099'; // Expected server port
-
-                if (currentPort !== correctPort) {
-                    serverPortDisplay.textContent = `Mismatch: Client ${currentPort}, Server expects ${correctPort}`;
-                    serverPortDisplay.className = 'value error';
-                    connectionDiagnosisDisplay.textContent = 'Port mismatch detected';
-                    connectionDiagnosisDisplay.className = 'value error';
-                } else {
-                    serverPortDisplay.textContent = currentPort;
-                    serverPortDisplay.className = 'value success';
-                }
-            }
-
-            // Function to run full diagnostics
-            async function runFullDiagnostics() {
-                try {
-                    // Update status
-                    connectionDiagnosisDisplay.textContent = 'Running diagnostics...';
-                    connectionDiagnosisDisplay.className = 'value warning';
-                    diagnosticDetailsDisplay.textContent = 'Fetching diagnostic information...';
-
-                    // Try to get diagnostics
-                    let response;
-                    try {
-                        response = await makeApiRequest('/api/diagnostics');
-                    } catch (directError) {
-                        console.error('Direct diagnostics request failed:', directError);
-                        throw new Error('Failed to connect to diagnostics endpoint');
-                    }
-
-                    if (!response.ok) {
-                        throw new Error(`Diagnostics endpoint returned status: ${response.status}`);
-                    }
-
-                    const data = await response.json();
-
-                    // Update the diagnostic displays
-                    serverPortDisplay.textContent = data.server.port;
-                    serverEnvDisplay.textContent = data.server.isProduction ? 'Production' : 'Development';
-
-                    if (data.portMismatch) {
-                        connectionDiagnosisDisplay.textContent = 'Port mismatch detected';
-                        connectionDiagnosisDisplay.className = 'value error';
-                    } else {
-                        connectionDiagnosisDisplay.textContent = 'Connection OK';
-                        connectionDiagnosisDisplay.className = 'value success';
-                    }
-
-                    // Show full diagnostics details
-                    diagnosticDetailsDisplay.textContent = JSON.stringify(data, null, 2);
-
-                    // Update fix suggestions
-                    fixList.innerHTML = '';
-                    if (data.suggestedFixes && data.suggestedFixes.length > 0) {
-                        data.suggestedFixes.forEach(fix => {
-                            const li = document.createElement('li');
-                            li.textContent = fix;
-                            fixList.appendChild(li);
-                        });
-                    } else {
-                        const li = document.createElement('li');
-                        li.textContent = 'No fixes needed - connection appears to be working correctly';
-                        fixList.appendChild(li);
-                    }
-
-                } catch (error) {
-                    console.error('Error running diagnostics:', error);
-                    connectionDiagnosisDisplay.textContent = `Error: ${error.message}`;
-                    connectionDiagnosisDisplay.className = 'value error';
-                    diagnosticDetailsDisplay.textContent = `Failed to run diagnostics: ${error.message}\n\nThis likely indicates a connectivity issue between your browser and the server.\n\nPossible fixes:\n1. Check that the server is running on port 8099\n2. If using Home Assistant ingress, ensure the add-on is correctly configured\n3. Verify the webpack proxy settings if in development mode`;
-
-                    // Update fix suggestions for connection errors
-                    fixList.innerHTML = '';
-                    [
-                        "Check that your server is running and accessible",
-                        "If using Home Assistant, check that the add-on is installed and running",
-                        "Verify that your browser can reach the server (no firewall blocking)",
-                        "Try accessing the API directly at http://localhost:8099/api/config",
-                        "Check for errors in the server logs"
-                    ].forEach(fix => {
-                        const li = document.createElement('li');
-                        li.textContent = fix;
-                        fixList.appendChild(li);
-                    });
-                }
-            }
-
-            // Function to fetch token info
-            async function fetchTokenInfo() {
-                try {
-                    tokenAvailability.textContent = 'Checking...';
-                    tokenAvailability.className = 'token-value';
-                    tokenType.textContent = 'Unknown';
-                    tokenSource.textContent = 'Unknown';
-
-                    const response = await makeApiRequest('/api/token-info');
-                    const data = await response.json();
-
-                    if (data.available) {
-                        tokenAvailability.textContent = 'Available';
-                        tokenAvailability.classList.add('available');
-                        tokenType.textContent = data.type.charAt(0).toUpperCase() + data.type.slice(1) +
-                                              ` Token (${data.length} chars, starts with ${data.first_chars})`;
-
-                        // Determine and display token source
-                        if (data.type === 'supervisor') {
-                            tokenSource.textContent = 'SUPERVISOR_TOKEN environment variable (from Home Assistant)';
-                        } else if (data.type === 'hass') {
-                            tokenSource.textContent = 'HASS_TOKEN environment variable (from .env.local file)';
-                        } else {
-                            tokenSource.textContent = 'Unknown source';
-                        }
-
-                        // Update curl example
-                        curlExample.textContent = `curl -X GET "${data.hass_api_url}/config" -H "Authorization: Bearer ${data.type === 'supervisor' ? 'SUPERVISOR_TOKEN' : 'YOUR_LONG_LIVED_TOKEN'}"`;
-                    } else {
-                        tokenAvailability.textContent = 'Unavailable';
-                        tokenAvailability.classList.add('unavailable');
-                        tokenType.textContent = 'No token available';
-                        tokenSource.textContent = 'None';
-
-                        // Update curl example with note
-                        curlExample.textContent = 'No token available. Cannot generate curl example.';
-                    }
-                } catch (error) {
-                    console.error('Error fetching token info:', error);
-                    tokenAvailability.textContent = 'Error checking token';
-                    tokenAvailability.classList.add('unavailable');
-                    tokenSource.textContent = 'Error fetching token info';
-                }
-            }
-
-            // Function to test Home Assistant API connection
-            async function testHaApiConnection() {
-                try {
-                    // Update status
-                    haConnectionStatus.textContent = 'Testing...';
-                    haConnectionStatus.className = 'connection-status pending';
-                    haResponse.textContent = 'Waiting for response...';
-
-                    // Get the endpoint
-                    let endpoint = haApiEndpoint.value;
-                    if (haCustomEndpoint.value.trim()) {
-                        endpoint = haCustomEndpoint.value.trim();
-                    }
-
-                    // Make the request
-                    const response = await makeApiRequest(`/api/ha-proxy?endpoint=${encodeURIComponent(endpoint)}`);
-                    const data = await response.json();
-
-                    if (data.success) {
-                        haConnectionStatus.textContent = 'Success';
-                        haConnectionStatus.className = 'connection-status success';
-                        haResponse.textContent = JSON.stringify(data.data, null, 2);
-                    } else {
-                        haConnectionStatus.textContent = `Error: ${data.error}`;
-                        haConnectionStatus.className = 'connection-status error';
-                        haResponse.textContent = JSON.stringify(data, null, 2);
-                    }
-                } catch (error) {
-                    console.error('Error testing HA API connection:', error);
-                    haConnectionStatus.textContent = `Error: ${error.message}`;
-                    haConnectionStatus.className = 'connection-status error';
-                    haResponse.textContent = error.toString();
-                }
-            }
-
-            // Function to test local API connection
-            async function testLocalApiConnection() {
-                try {
-                    // Update status
-                    localConnectionStatus.textContent = 'Testing...';
-                    localConnectionStatus.className = 'connection-status pending';
-                    localResponse.textContent = 'Waiting for response...';
-
-                    // Get the endpoint
-                    const endpoint = localApiEndpoint.value;
-
-                    // Make the request using the proper URL builder
-                    const response = await makeApiRequest(endpoint);
-                    const data = await response.json();
-
-                    localConnectionStatus.textContent = 'Success';
-                    localConnectionStatus.className = 'connection-status success';
-                    localResponse.textContent = JSON.stringify(data, null, 2);
-                } catch (error) {
-                    console.error('Error testing local API connection:', error);
-                    localConnectionStatus.textContent = `Error: ${error.message}`;
-                    localConnectionStatus.className = 'connection-status error';
-                    localResponse.textContent = error.toString();
-                }
-            }
-
-            // Function to check data files
-            async function checkDataFile(endpoint) {
-                try {
-                    dataFileContent.textContent = 'Loading data...';
-
-                    const response = await makeApiRequest(endpoint);
-                    const data = await response.json();
-
-                    dataFileContent.textContent = JSON.stringify(data, null, 2);
-                } catch (error) {
-                    console.error(`Error checking data file at ${endpoint}:`, error);
-                    dataFileContent.textContent = `Error: ${error.message}`;
-                }
-            }
-
-            // URL Fixer functionality
-            const urlToFix = document.getElementById('url-to-fix');
-            const correctedPort = document.getElementById('corrected-port');
-            const fixUrlButton = document.getElementById('fix-url-button');
-            const fixedUrl = document.getElementById('fixed-url');
-            const copyUrlButton = document.getElementById('copy-url-button');
-
-            if (fixUrlButton) {
-                // Pre-fill the input with the current URL if it's empty
-                if (!urlToFix.value) {
-                    urlToFix.value = window.location.href;
+                    haTest = await fetch('/api/ha-proxy').then(r => r.json());
+                } catch (e) {
+                    haTest = { error: e.message };
                 }
 
-                fixUrlButton.addEventListener('click', () => {
-                    try {
-                        const url = new URL(urlToFix.value);
-                        const newPort = correctedPort.value.trim();
-
-                        // Create the fixed URL
-                        url.port = newPort;
-
-                        // Update the fixed URL display
-                        fixedUrl.textContent = url.toString();
-                    } catch (error) {
-                        fixedUrl.textContent = `Error: ${error.message}`;
+                const fullReport = {
+                    timestamp: new Date().toISOString(),
+                    summary: {
+                        environment: diagnostics.server.isProduction ? 'Production' : 'Development',
+                        accessMode: diagnostics.server.isIngressMode ? 'Ingress' : 'Direct',
+                        port: diagnostics.server.port,
+                        homeAssistant: haTest.success ? 'Connected' : 'Disconnected'
+                    },
+                    diagnostics,
+                    configuration: config,
+                    apis: {
+                        homeAssistant: haTest,
+                        weather,
+                        calendar
                     }
-                });
+                };
+
+                reportElement.textContent = JSON.stringify(fullReport, null, 2);
+            } catch (error) {
+                reportElement.textContent = 'Error generating report: ' + error.message;
             }
+        }
 
-            if (copyUrlButton) {
-                copyUrlButton.addEventListener('click', () => {
-                    const textToCopy = fixedUrl.textContent;
-
-                    if (textToCopy && !textToCopy.startsWith('No URL') && !textToCopy.startsWith('Error:')) {
-                        navigator.clipboard.writeText(textToCopy)
-                            .then(() => {
-                                // Visual feedback that the URL was copied
-                                const originalText = copyUrlButton.innerHTML;
-                                copyUrlButton.innerHTML = '<i class="fas fa-check"></i> Copied!';
-                                setTimeout(() => {
-                                    copyUrlButton.innerHTML = originalText;
-                                }, 2000);
-                            })
-                            .catch(err => {
-                                console.error('Error copying text: ', err);
-                            });
-                    }
-                });
-            }
-
-            // Function to test authentication methods
-            async function testAuthenticationMethods() {
-                try {
-                    const responseElement = document.getElementById('ha-response');
-                    responseElement.textContent = 'Testing authentication methods...';
-                    responseElement.className = 'api-response';
-
-                    const response = await makeApiRequest('/api/test-ha-auth');
-                    if (!response.ok) {
-                        throw new Error(`Authentication test failed with status: ${response.status}`);
-                    }
-
-                    const data = await response.json();
-                    responseElement.textContent = JSON.stringify(data, null, 2);
-
-                    // Update status based on results
-                    const statusElement = document.getElementById('ha-connection-status');
-
-                    if (data.results.directApi.success) {
-                        statusElement.textContent = 'Success: Authentication is working';
-                        statusElement.className = 'connection-status success';
-                    } else {
-                        statusElement.textContent = `Error: ${data.recommendedFix}`;
-                        statusElement.className = 'connection-status error';
-                    }
-
-                } catch (error) {
-                    console.error('Error testing authentication methods:', error);
-                    document.getElementById('ha-response').textContent = `Error: ${error.message}`;
-                    document.getElementById('ha-response').className = 'api-response error';
+        async function copyDiagnosticReport() {
+            try {
+                const reportElement = document.getElementById('full-diagnostic-report');
+                if (reportElement.textContent.includes('Click')) {
+                    await generateFullReport();
                 }
+
+                await navigator.clipboard.writeText(reportElement.textContent);
+                showSuccess('Diagnostic report copied to clipboard!');
+            } catch (error) {
+                showError('Failed to copy report: ' + error.message);
             }
+        }
 
-            // Function to test port configuration
-            async function testPortConfiguration() {
-                try {
-                    connectionDiagnosisDisplay.textContent = 'Testing port configuration...';
-                    connectionDiagnosisDisplay.className = 'value warning';
+        function showSuccess(message) {
+            const fixesElement = document.getElementById('dynamic-fixes');
+            fixesElement.innerHTML = `<div class="info-box success"><strong>✅ Success:</strong> ${message}</div>`;
+        }
 
-                    const response = await makeApiRequest('/api/port-test');
-                    if (!response.ok) {
-                        throw new Error(`Port test failed with status: ${response.status}`);
-                    }
-
-                    const data = await response.json();
-                    diagnosticDetailsDisplay.textContent = JSON.stringify(data, null, 2);
-
-                    // Update port displays
-                    serverPortDisplay.textContent = data.server.port;
-                    clientUrlDisplay.textContent = `${window.location.protocol}//${data.client.fullHost}`;
-
-                    if (data.portMismatch) {
-                        connectionDiagnosisDisplay.textContent = 'Port mismatch detected';
-                        connectionDiagnosisDisplay.className = 'value error';
-
-                        // Update fix list
-                        fixList.innerHTML = '';
-                        data.suggestedFixes.forEach(fix => {
-                            const li = document.createElement('li');
-                            li.textContent = fix;
-                            fixList.appendChild(li);
-                        });
-                    } else {
-                        connectionDiagnosisDisplay.textContent = 'Port configuration OK';
-                        connectionDiagnosisDisplay.className = 'value success';
-                    }
-
-                } catch (error) {
-                    console.error('Error testing port configuration:', error);
-                    diagnosticDetailsDisplay.textContent = `Error: ${error.message}`;
-                    connectionDiagnosisDisplay.textContent = 'Error testing port configuration';
-                    connectionDiagnosisDisplay.className = 'value error';
-                }
-            }
-        });
+        function showError(message) {
+            const fixesElement = document.getElementById('dynamic-fixes');
+            fixesElement.innerHTML = `<div class="info-box error"><strong>❌ Error:</strong> ${message}</div>`;
+        }
     </script>
 </body>
 </html>

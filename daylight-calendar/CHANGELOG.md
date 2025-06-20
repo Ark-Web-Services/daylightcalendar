@@ -1,4 +1,27 @@
 # Changelog
+## [1.1.9.3] - 2025-05-31
+
+### Fixed
+- **Calendar Display Issues**: Downloaded correct FullCalendar CSS file to fix calendar formatting and display problems
+- **Weather Data Population**: Enhanced weather API to provide mock data in development mode when Home Assistant is unavailable
+- **Settings Page Functionality**: Fixed theme buttons and other settings controls not working properly
+- **Calendar Initialization**: Added better error handling and retry logic for FullCalendar library loading
+- **Modal Functionality**: Enhanced modal setup to work properly with dynamically loaded settings page content
+
+### Enhanced
+- **Calendar Styling**: Improved calendar appearance with Material Design 3 theming and proper sizing
+- **Weather Error Handling**: Added comprehensive fallback weather data to prevent authentication errors in development
+- **Debug Logging**: Added extensive debugging to settings page initialization for better troubleshooting
+- **Theme System**: Enhanced theme button event handling with proper event prevention and state management
+- **Development Experience**: Improved development mode with better mock data and error handling
+
+### Technical Improvements
+- Fixed FullCalendar CSS corruption issue by downloading fresh copy from CDN
+- Enhanced setupCalendar() function with proper error handling and library availability checks
+- Improved initializeSettingsPage() function with comprehensive element detection and event binding
+- Added proper modal event listener management to prevent duplicate listeners
+- Enhanced weather API with structured error responses and development mode fallbacks
+
 ## [1.1.9.2] - 2025-05-28
 
 ### Fixed
