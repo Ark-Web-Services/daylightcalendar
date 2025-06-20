@@ -162,20 +162,6 @@ const hassApiUrl = isProduction
   ? 'http://supervisor/core/api'
     : process.env.HASS_API_URL || 'http://localhost:8123/api'; // Standard HA port
 
-// Data directories setup
-const dataDir = isProduction ? '/data' : path.join(__dirname, 'data');
-
-// Ensure data directory exists
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
-  console.log(`Created data directory at ${dataDir}`);
-}
-
-// Helper function to get data file path
-const getDataPath = (filename) => {
-  return path.join(dataDir, filename);
-};
-
   /**
    * Helper function to make HA API calls using axios
    */
@@ -302,7 +288,7 @@ const getDataPath = (filename) => {
       } catch (error) {
         console.error(`[ERROR] Error fetching weather data:`, error.message);
 
-        // Save detailed error to help debugging
+        // Return error details without writing to file
         const errorDetails = {
           error: `Authentication error when fetching weather data: ${error.message}`,
           current: {
@@ -315,10 +301,6 @@ const getDataPath = (filename) => {
           },
           forecast: []
         };
-
-        // Write error to a file for diagnostics
-        const errorPath = getDataPath('weather-error.json');
-        fs.writeFileSync(errorPath, JSON.stringify(errorDetails, null, 2));
 
         return errorDetails;
       }
@@ -344,101 +326,6 @@ const getDataPath = (filename) => {
     };
   }
 
-  // Initialize default data files
-  function initializeDataFile(filename, defaultData) {
-  const filePath = getDataPath(filename);
-  if (!fs.existsSync(filePath)) {
-    fs.writeFileSync(filePath, JSON.stringify(defaultData, null, 2));
-    console.log(`Initialized ${filename} with default data`);
-  }
-  }
-
-// Initialize default data files only in dev mode or on first run
-  if (config.development_mode) {
-  // Default chores (dev only)
-  initializeDataFile('chores.json', [
-    {
-      id: "dev-1",
-      name: "Example Chore (Dev Only)",
-      assigneeName: "Developer",
-      dueDate: "2024-05-20",
-      completed: false,
-      rewardPoints: 10
-    }
-  ]);
-
-  // Default users (dev only)
-  initializeDataFile('users.json', [
-    {
-      id: "dev-1",
-      name: "Developer",
-      color: "#4285f4",
-      icon: "fa-user"
-    }
-  ]);
-
-  // Default meal categories (dev only)
-  initializeDataFile('meal-categories.json', [
-    {
-      id: "dev-1",
-      name: "Breakfast",
-      color: "#4285f4",
-      icon: "fa-coffee"
-    },
-    {
-      id: "dev-2",
-      name: "Lunch",
-      color: "#34a853",
-      icon: "fa-hamburger"
-    },
-    {
-      id: "dev-3",
-      name: "Dinner",
-      color: "#fbbc05",
-      icon: "fa-utensils"
-    }
-  ]);
-
-    // Initialize empty meals
-    initializeDataFile('meals.json', []);
-
-    // Initialize empty grocery list
-    initializeDataFile('grocery-list.json', []);
-
-    // Initialize empty recipes
-    initializeDataFile('recipes.json', []);
-
-  // Initialize display settings with defaults
-  initializeDataFile('display-settings.json', {
-    autoNightMode: true,
-    nightModeStart: "20:00",
-    nightModeEnd: "07:00",
-    screenBurnProtection: true,
-    dimAfterMinutes: 10,
-    displayClock: false
-  });
-}
-  // Always initialize critical files even in production, to prevent API errors
-  else {
-    // In production, initialize with empty arrays to prevent errors
-    initializeDataFile('chores.json', []);
-    initializeDataFile('users.json', []);
-    initializeDataFile('meal-categories.json', []);
-    initializeDataFile('meals.json', []);
-    initializeDataFile('grocery-list.json', []);
-    initializeDataFile('recipes.json', []);
-
-    // Default display settings for production
-    initializeDataFile('display-settings.json', {
-      autoNightMode: true,
-      nightModeStart: "20:00",
-      nightModeEnd: "07:00",
-      screenBurnProtection: true,
-      dimAfterMinutes: 10,
-      displayClock: false
-    });
-  }
-
   // Socket.io connection handling
   io.on('connection', (socket) => {
     console.log('[INFO] Client connected to socket.io');
@@ -454,8 +341,7 @@ const getDataPath = (filename) => {
           port: PORT,
           isProduction,
           isIngressMode,
-          hassApiUrl,
-          dataDir
+          hassApiUrl
         }
       });
     }
@@ -535,190 +421,38 @@ app.get('/api/config', (req, res) => {
     res.json(response);
   });
 
-// Helper function to write data to a file
-const writeDataFile = (filename, data, res, successCallback) => {
-  const filePath = getDataPath(filename);
-  fs.writeFile(filePath, JSON.stringify(data, null, 2), (err) => {
-    if (err) {
-      console.error(`[ERROR] Error writing ${filename}:`, err);
-      return res.status(500).json({ error: `Failed to save ${filename.replace('.json', '')} data` });
-    }
-    successCallback();
-  });
-};
-
-  // Generic data file handler
-  const handleDataFile = (filename) => {
-    return (req, res) => {
-      const filePath = getDataPath(filename);
-      fs.readFile(filePath, 'utf8', (err, data) => {
-        if (err) {
-          if (filename === 'chores.json' || filename === 'users.json' ||
-              filename === 'meal-categories.json' || filename === 'meals.json' ||
-              filename === 'recipes.json' || filename === 'grocery-list.json') {
-            return res.json([]);
-          }
-          return res.status(500).json({ error: `Failed to load ${filename.replace('.json', '')} data` });
-        }
-
-        try {
-          const jsonData = JSON.parse(data);
-
-          // Ensure data that should be arrays is actually an array
-          if ((filename === 'chores.json' || filename === 'users.json' ||
-               filename === 'meal-categories.json' || filename === 'meals.json' ||
-               filename === 'recipes.json' || filename === 'grocery-list.json') &&
-              !Array.isArray(jsonData)) {
-            console.warn(`[WARN] ${filename} did not contain an array as expected, returning empty array`);
-            return res.json([]);
-          }
-
-          res.json(jsonData);
-        } catch (parseError) {
-          console.error(`[ERROR] Error parsing ${filename}:`, parseError);
-          if (filename === 'chores.json' || filename === 'users.json' ||
-              filename === 'meal-categories.json' || filename === 'meals.json' ||
-              filename === 'recipes.json' || filename === 'grocery-list.json') {
-            return res.json([]);
-          }
-          res.status(500).json({ error: `Failed to parse ${filename.replace('.json', '')} data` });
-        }
-      });
-    };
-  };
-
-  // Data file routes
-app.get('/api/chores', handleDataFile('chores.json'));
-  app.get('/api/users', handleDataFile('users.json'));
-  app.get('/api/meal-categories', handleDataFile('meal-categories.json'));
-  app.get('/api/meals', handleDataFile('meals.json'));
-  app.get('/api/recipes', handleDataFile('recipes.json'));
-  app.get('/api/grocery-list', handleDataFile('grocery-list.json'));
-  app.get('/api/display-settings', handleDataFile('display-settings.json'));
-
-// POST endpoint to add a new chore
-app.post('/api/chores', (req, res) => {
-  const filePath = getDataPath('chores.json');
-  fs.readFile(filePath, 'utf8', (err, data) => {
-    if (err && !fs.existsSync(path.dirname(filePath))) {
-      // If directory doesn't exist, create it
-      fs.mkdirSync(path.dirname(filePath), { recursive: true });
-      data = '[]'; // Initialize with empty array
-    } else if (err) {
-      console.error('[ERROR] Error reading chores.json for POST:', err);
-      return res.status(500).json({ error: 'Failed to read chores data' });
-    }
-
-    try {
-      const chores = err ? [] : JSON.parse(data);
-      const newChore = {
-        id: Date.now().toString(),
-        name: req.body.name,
-        assigneeName: req.body.assigneeName,
-        dueDate: req.body.dueDate,
-        completed: false,
-        rewardPoints: req.body.rewardPoints || 10 // Default to 10 points if not specified
-      };
-      chores.push(newChore);
-
-      writeDataFile('chores.json', chores, res, () => {
-        res.status(201).json(newChore);
-      });
-    } catch (parseErr) {
-      console.error('[ERROR] Error parsing chores.json:', parseErr);
-      res.status(500).json({ error: 'Invalid chores data format' });
-    }
-  });
-});
-
-// DELETE endpoint to remove a chore
-app.delete('/api/chores/:id', (req, res) => {
-  const filePath = getDataPath('chores.json');
-  fs.readFile(filePath, 'utf8', (err, data) => {
-    if (err) {
-      console.error('[ERROR] Error reading chores.json for DELETE:', err);
-      return res.status(500).json({ error: 'Failed to read chores data' });
-    }
-    try {
-      let chores = JSON.parse(data);
-      const originalLength = chores.length;
-      chores = chores.filter(chore => chore.id !== req.params.id);
-
-      if (chores.length === originalLength) {
-        return res.status(404).json({ error: 'Chore not found' });
-      }
-
-      writeDataFile('chores.json', chores, res, () => {
-        res.status(200).json({ message: 'Chore deleted successfully' });
-      });
-    } catch (err) {
-      console.error('[ERROR] Error parsing chores.json:', err);
-      res.status(500).json({ error: 'Invalid chores data format' });
-    }
-  });
-});
-
-// PATCH endpoint to update a chore
-app.patch('/api/chores/:id', (req, res) => {
-  const filePath = getDataPath('chores.json');
-  fs.readFile(filePath, 'utf8', (err, data) => {
-    if (err) {
-      console.error('[ERROR] Error reading chores.json for PATCH:', err);
-      return res.status(500).json({ error: 'Failed to read chores data' });
-    }
-    try {
-      let chores = JSON.parse(data);
-      const choreIndex = chores.findIndex(chore => chore.id === req.params.id);
-
-      if (choreIndex === -1) {
-        return res.status(404).json({ error: 'Chore not found' });
-      }
-
-      // Update the chore with the provided fields
-      chores[choreIndex] = { ...chores[choreIndex], ...req.body };
-
-      writeDataFile('chores.json', chores, res, () => {
-        res.status(200).json(chores[choreIndex]);
-      });
-    } catch (err) {
-      console.error('[ERROR] Error parsing chores.json:', err);
-      res.status(500).json({ error: 'Invalid chores data format' });
-    }
-  });
-});
-
-  // API proxy for Home Assistant
-  app.get('/api/ha-proxy', async (req, res) => {
-    const endpoint = req.query.endpoint;
-    if (!endpoint) {
-      return res.status(400).json({ error: 'Missing endpoint parameter' });
-    }
-
-    try {
-      // Remove leading /api if present since hassApiUrl already includes it
-      let apiPath = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-      if (apiPath.startsWith('/api/')) {
-        apiPath = apiPath.substring(4); // Remove '/api' prefix
-      }
-      const data = await callHaApi(apiPath);
-      res.json({
-        success: true,
-        endpoint: apiPath,
-        data: data
-      });
-  } catch (error) {
-      console.error(`[ERROR] Error proxying request to HA API at ${endpoint}:`, error.message);
-      res.status(500).json({
-        success: false,
-        endpoint: endpoint,
-        error: error.message,
-        response: error.response ? {
-          status: error.response.status,
-          statusText: error.response.statusText,
-          data: error.response.data
-        } : null
-      });
+// API proxy for Home Assistant
+app.get('/api/ha-proxy', async (req, res) => {
+  const endpoint = req.query.endpoint;
+  if (!endpoint) {
+    return res.status(400).json({ error: 'Missing endpoint parameter' });
   }
+
+  try {
+    // Remove leading /api if present since hassApiUrl already includes it
+    let apiPath = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    if (apiPath.startsWith('/api/')) {
+      apiPath = apiPath.substring(4); // Remove '/api' prefix
+    }
+    const data = await callHaApi(apiPath);
+    res.json({
+      success: true,
+      endpoint: apiPath,
+      data: data
+    });
+} catch (error) {
+    console.error(`[ERROR] Error proxying request to HA API at ${endpoint}:`, error.message);
+    res.status(500).json({
+      success: false,
+      endpoint: endpoint,
+      error: error.message,
+      response: error.response ? {
+        status: error.response.status,
+        statusText: error.response.statusText,
+        data: error.response.data
+      } : null
+    });
+}
 });
 
   // API endpoint for calendar data
@@ -831,7 +565,6 @@ app.get('/api/weather', async (req, res) => {
       tokenLength: process.env.SUPERVISOR_TOKEN ? process.env.SUPERVISOR_TOKEN.length : 0,
       hasHassToken: !!process.env.HASS_TOKEN,
       hassApiUrl,
-      dataDir,
       uptime: process.uptime(),
       isIngressMode,
       ingressPath: process.env.INGRESS_PATH || '',
@@ -1085,7 +818,7 @@ server.listen(PORT, () => {
     if (isIngressMode) {
       console.log("[INFO] Running in Home Assistant ingress mode");
     }
-  console.log("[INFO] Data directory: " + dataDir);
+
     console.log("[INFO] Development mode: " + (config.development_mode ? "ENABLED" : "DISABLED"));
 
   // In production mode with kiosk_mode enabled, start the web browser
