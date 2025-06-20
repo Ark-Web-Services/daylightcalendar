@@ -158,6 +158,40 @@
             opacity: 0.9;
             font-size: 1.1em;
         }
+
+        .info-text {
+            color: #666;
+            margin-bottom: 15px;
+            line-height: 1.5;
+        }
+
+        .custom-endpoint-test {
+            background: var(--code-bg, #f8f9fa);
+            border: 1px solid var(--border-color, #dee2e6);
+            border-radius: 6px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+
+        .custom-endpoint-test h4 {
+            margin: 0 0 10px 0;
+            color: var(--text-color, #333);
+        }
+
+        .form-row {
+            margin: 10px 0;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: var(--text-color, #333);
+        }
+
+        .endpoint-help {
+            margin-top: 10px;
+        }
     </style>
 </head>
 <body>
@@ -171,14 +205,11 @@
         <div class="debug-section">
             <h2>📊 System Status</h2>
             <div class="btn-group">
-                <button id="run-full-diagnostic" class="btn btn-primary">
-                    <i class="fas fa-stethoscope"></i> Run Full Diagnostic
+                <button id="refresh-status" class="btn btn-primary">
+                    <i class="fas fa-sync"></i> Refresh Status
                 </button>
                 <button id="copy-report" class="btn btn-secondary">
-                    <i class="fas fa-copy"></i> Copy Report
-                </button>
-                <button id="refresh-status" class="btn btn-success">
-                    <i class="fas fa-sync"></i> Refresh
+                    <i class="fas fa-copy"></i> Copy Full Report
                 </button>
             </div>
 
@@ -210,9 +241,11 @@
             </div>
         </div>
 
-        <!-- Connection Testing Section -->
+        <!-- API Testing Section -->
         <div class="debug-section">
-            <h2>🔗 Connection Testing</h2>
+            <h2>🔗 API Testing</h2>
+            <p class="info-text">Test specific API endpoints to troubleshoot connection issues. Use the predefined buttons for common tests, or enter a custom endpoint path.</p>
+
             <div class="btn-group">
                 <button id="test-ha-api" class="btn btn-primary">
                     <i class="fas fa-home"></i> Test Home Assistant API
@@ -224,7 +257,28 @@
                     <i class="fas fa-calendar"></i> Test Calendar API
                 </button>
             </div>
-            <div class="response-container" id="connection-results">Click a test button to see results...</div>
+
+            <div class="custom-endpoint-test">
+                <h4>Custom Endpoint Testing</h4>
+                <div class="form-row" style="display: flex; gap: 10px; align-items: flex-end; margin: 10px 0;">
+                    <div class="form-group" style="flex: 1;">
+                        <label for="custom-endpoint">API Endpoint Path</label>
+                        <input type="text" id="custom-endpoint" placeholder="e.g., /api/config, /api/states, /api/chores"
+                               value="/api/config" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                    </div>
+                    <button id="test-custom-endpoint" class="btn btn-secondary">
+                        <i class="fas fa-play"></i> Test
+                    </button>
+                </div>
+                <div class="endpoint-help">
+                    <small style="color: #666;">
+                        <strong>Common endpoints:</strong>
+                        /api/config, /api/weather, /api/calendar, /api/chores, /api/meals, /api/users, /api/diagnostics
+                    </small>
+                </div>
+            </div>
+
+            <div class="response-container" id="api-test-results">Click a test button to see results...</div>
         </div>
 
         <!-- Configuration Section -->
@@ -257,16 +311,7 @@
             </div>
         </div>
 
-        <!-- Raw Diagnostic Data Section -->
-        <div class="debug-section">
-            <h2>📋 Full Diagnostic Report</h2>
-            <div class="btn-group">
-                <button id="generate-report" class="btn btn-danger">
-                    <i class="fas fa-file-alt"></i> Generate Full Report
-                </button>
-            </div>
-            <div class="response-container" id="full-diagnostic-report">Click "Generate Full Report" to see complete diagnostic data...</div>
-        </div>
+
     </div>
 
     <script>
@@ -281,15 +326,21 @@
         });
 
         function setupEventListeners() {
-            document.getElementById('run-full-diagnostic').addEventListener('click', runFullDiagnostic);
-            document.getElementById('copy-report').addEventListener('click', copyDiagnosticReport);
             document.getElementById('refresh-status').addEventListener('click', refreshSystemStatus);
+            document.getElementById('copy-report').addEventListener('click', copyDiagnosticReport);
             document.getElementById('test-ha-api').addEventListener('click', testHomeAssistantAPI);
             document.getElementById('test-weather-api').addEventListener('click', testWeatherAPI);
             document.getElementById('test-calendar-api').addEventListener('click', testCalendarAPI);
+            document.getElementById('test-custom-endpoint').addEventListener('click', testCustomEndpoint);
             document.getElementById('show-config').addEventListener('click', showConfiguration);
             document.getElementById('show-env-vars').addEventListener('click', showEnvironment);
-            document.getElementById('generate-report').addEventListener('click', generateFullReport);
+
+            // Allow Enter key in custom endpoint input
+            document.getElementById('custom-endpoint').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    testCustomEndpoint();
+                }
+            });
         }
 
         async function refreshSystemStatus() {
@@ -396,24 +447,8 @@
             }
         }
 
-        async function runFullDiagnostic() {
-            const button = document.getElementById('run-full-diagnostic');
-            button.disabled = true;
-            button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running...';
-
-            try {
-                await refreshSystemStatus();
-                showSuccess('Full diagnostic completed successfully!');
-            } catch (error) {
-                showError('Diagnostic failed: ' + error.message);
-            } finally {
-                button.disabled = false;
-                button.innerHTML = '<i class="fas fa-stethoscope"></i> Run Full Diagnostic';
-            }
-        }
-
         async function testHomeAssistantAPI() {
-            const resultsElement = document.getElementById('connection-results');
+            const resultsElement = document.getElementById('api-test-results');
             resultsElement.textContent = 'Testing Home Assistant API connection...';
 
             try {
@@ -426,7 +461,7 @@
         }
 
         async function testWeatherAPI() {
-            const resultsElement = document.getElementById('connection-results');
+            const resultsElement = document.getElementById('api-test-results');
             resultsElement.textContent = 'Testing Weather API...';
 
             try {
@@ -438,8 +473,8 @@
             }
         }
 
-        async function testCalendarAPI() {
-            const resultsElement = document.getElementById('connection-results');
+                async function testCalendarAPI() {
+            const resultsElement = document.getElementById('api-test-results');
             resultsElement.textContent = 'Testing Calendar API...';
 
             try {
@@ -448,6 +483,40 @@
                 resultsElement.textContent = JSON.stringify(data, null, 2);
             } catch (error) {
                 resultsElement.textContent = 'Error testing Calendar API: ' + error.message;
+            }
+        }
+
+        async function testCustomEndpoint() {
+            const resultsElement = document.getElementById('api-test-results');
+            const endpointInput = document.getElementById('custom-endpoint');
+            const endpoint = endpointInput.value.trim();
+
+            if (!endpoint) {
+                resultsElement.textContent = 'Please enter an endpoint path to test.';
+                return;
+            }
+
+            // Ensure endpoint starts with /
+            const cleanEndpoint = endpoint.startsWith('/') ? endpoint : '/' + endpoint;
+
+            resultsElement.textContent = `Testing custom endpoint: ${cleanEndpoint}...`;
+
+            try {
+                const response = await fetch(cleanEndpoint);
+
+                // Try to parse as JSON first
+                let data;
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.includes('application/json')) {
+                    data = await response.json();
+                    resultsElement.textContent = `Status: ${response.status} ${response.statusText}\n\n` + JSON.stringify(data, null, 2);
+                } else {
+                    // If not JSON, get as text
+                    const text = await response.text();
+                    resultsElement.textContent = `Status: ${response.status} ${response.statusText}\nContent-Type: ${contentType}\n\n${text}`;
+                }
+            } catch (error) {
+                resultsElement.textContent = `Error testing endpoint ${cleanEndpoint}: ${error.message}`;
             }
         }
 
@@ -484,9 +553,11 @@
             }
         }
 
-        async function generateFullReport() {
-            const reportElement = document.getElementById('full-diagnostic-report');
-            reportElement.textContent = 'Generating comprehensive diagnostic report...';
+                async function copyDiagnosticReport() {
+            const button = document.getElementById('copy-report');
+            const originalText = button.innerHTML;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+            button.disabled = true;
 
             try {
                 // Collect all diagnostic data
@@ -519,23 +590,23 @@
                     }
                 };
 
-                reportElement.textContent = JSON.stringify(fullReport, null, 2);
-            } catch (error) {
-                reportElement.textContent = 'Error generating report: ' + error.message;
-            }
-        }
+                await navigator.clipboard.writeText(JSON.stringify(fullReport, null, 2));
 
-        async function copyDiagnosticReport() {
-            try {
-                const reportElement = document.getElementById('full-diagnostic-report');
-                if (reportElement.textContent.includes('Click')) {
-                    await generateFullReport();
-                }
+                button.innerHTML = '<i class="fas fa-check"></i> Copied!';
+                showSuccess('Full diagnostic report copied to clipboard!');
 
-                await navigator.clipboard.writeText(reportElement.textContent);
-                showSuccess('Diagnostic report copied to clipboard!');
+                setTimeout(() => {
+                    button.innerHTML = originalText;
+                    button.disabled = false;
+                }, 2000);
             } catch (error) {
+                button.innerHTML = '<i class="fas fa-times"></i> Failed';
                 showError('Failed to copy report: ' + error.message);
+
+                setTimeout(() => {
+                    button.innerHTML = originalText;
+                    button.disabled = false;
+                }, 2000);
             }
         }
 

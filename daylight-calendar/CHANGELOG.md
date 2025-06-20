@@ -1,4 +1,39 @@
 # Changelog
+## [1.1.9.4] - 2025-06-17
+
+### Major Improvements
+- **🔧 Complete Debug Page Redesign**: Completely redesigned the debug/diagnostic page to eliminate confusion and redundancy
+- **📊 Clear System Status Dashboard**: Added intuitive status grid with visual indicators for environment, access mode, connections
+- **🎯 Eliminated Port Confusion**: Removed confusing "port mismatch" diagnostics that were irrelevant to end users
+- **🧹 Removed Redundant Sections**: Consolidated multiple sections that tested the same functionality
+- **📱 Modern UI Design**: Implemented clean, organized interface with proper visual hierarchy
+
+### Fixed
+- **Confusing Diagnostics**: Removed irrelevant port mismatch warnings that users couldn't control
+- **Redundant Information**: Eliminated duplicate testing sections and overlapping functionality
+- **Poor User Experience**: Replaced complex, technical jargon with clear, actionable information
+- **Visual Clarity**: Added proper status indicators (✅ success, ⚠️ warning, ❌ error) throughout interface
+
+### Enhanced
+- **Access Mode Clarity**: Clear explanation of Development vs Production vs Ingress modes
+- **Streamlined Testing**: Simplified connection testing with focused, relevant tests
+- **Better Error Reporting**: Improved error messages with actionable solutions
+- **Configuration Display**: Clean presentation of system configuration and environment
+- **Diagnostic Reports**: Comprehensive but organized diagnostic report generation
+
+### Removed
+- **URL Fixer Tool**: Unnecessary tool that added confusion without solving real problems
+- **Complex Authentication Testing**: Overly technical tests that weren't useful for troubleshooting
+- **Redundant API Sections**: Multiple sections testing the same endpoints
+- **Confusing Port Diagnostics**: Misleading information about port mismatches
+
+### Technical Details
+- Reduced debug page from 939 lines to ~400 lines while improving functionality
+- Implemented responsive grid layout for status indicators
+- Added proper error handling and user feedback throughout
+- Simplified JavaScript from complex multi-function approach to focused, single-purpose functions
+- Improved accessibility with better color coding and clear labels
+
 ## [1.1.9.3] - 2025-05-31
 
 ### Fixed
