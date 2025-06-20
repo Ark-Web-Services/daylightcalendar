@@ -211,7 +211,7 @@
                 <button id="copy-report" class="btn btn-secondary">
                     <i class="fas fa-copy"></i> Copy Full Report
                 </button>
-            </div>
+                </div>
 
             <div class="status-grid">
                 <div class="status-item info">
@@ -238,48 +238,50 @@
                     <div class="status-label">Calendar Data</div>
                     <div class="status-value" id="calendar-status">Checking...</div>
                 </div>
+                </div>
             </div>
-        </div>
 
         <!-- API Testing Section -->
         <div class="debug-section">
-            <h2>🔗 API Testing</h2>
-            <p class="info-text">Test specific API endpoints to troubleshoot connection issues. Use the predefined buttons for common tests, or enter a custom endpoint path.</p>
+            <h2>🔗 Home Assistant API Testing</h2>
+            <p class="info-text">Test Home Assistant API endpoints to verify connectivity and authentication. These are the core HA endpoints that provide system data.</p>
 
             <div class="btn-group">
-                <button id="test-ha-api" class="btn btn-primary">
-                    <i class="fas fa-home"></i> Test Home Assistant API
+                <button id="test-ha-config" class="btn btn-primary">
+                    <i class="fas fa-cog"></i> Test HA Config
                 </button>
-                <button id="test-weather-api" class="btn btn-primary">
-                    <i class="fas fa-cloud"></i> Test Weather API
+                <button id="test-ha-states" class="btn btn-primary">
+                    <i class="fas fa-list"></i> Test HA States
                 </button>
-                <button id="test-calendar-api" class="btn btn-primary">
-                    <i class="fas fa-calendar"></i> Test Calendar API
+                <button id="test-ha-services" class="btn btn-primary">
+                    <i class="fas fa-wrench"></i> Test HA Services
                 </button>
             </div>
 
             <div class="custom-endpoint-test">
-                <h4>Custom Endpoint Testing</h4>
+                <h4>Custom Home Assistant Endpoint Testing</h4>
                 <div class="form-row" style="display: flex; gap: 10px; align-items: flex-end; margin: 10px 0;">
                     <div class="form-group" style="flex: 1;">
-                        <label for="custom-endpoint">API Endpoint Path</label>
-                        <input type="text" id="custom-endpoint" placeholder="e.g., /api/config, /api/states, /api/chores"
+                        <label for="ha-custom-endpoint">Home Assistant API Path</label>
+                        <input type="text" id="ha-custom-endpoint" placeholder="e.g., /api/states/weather.home, /api/config"
                                value="/api/config" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
                     </div>
-                    <button id="test-custom-endpoint" class="btn btn-secondary">
-                        <i class="fas fa-play"></i> Test
+                    <button id="test-ha-custom-endpoint" class="btn btn-secondary">
+                        <i class="fas fa-play"></i> Test HA Endpoint
                     </button>
                 </div>
                 <div class="endpoint-help">
                     <small style="color: #666;">
-                        <strong>Common endpoints:</strong>
-                        /api/config, /api/weather, /api/calendar, /api/chores, /api/meals, /api/users, /api/diagnostics
+                        <strong>Common HA endpoints:</strong>
+                        /api/config, /api/states, /api/services, /api/states/weather.your_entity, /api/calendars
                     </small>
                 </div>
             </div>
 
-            <div class="response-container" id="api-test-results">Click a test button to see results...</div>
+            <div class="response-container" id="ha-api-test-results">Click a Home Assistant test button to see results...</div>
         </div>
+
+
 
         <!-- Configuration Section -->
         <div class="debug-section">
@@ -294,23 +296,6 @@
             </div>
             <div class="response-container" id="config-display">Click a button to view configuration...</div>
         </div>
-
-        <!-- Quick Fixes Section -->
-        <div class="debug-section">
-            <h2>🛠️ Quick Fixes</h2>
-            <div id="quick-fixes-content">
-                <div class="info-box">
-                    <h4>🎯 Understanding Access Modes</h4>
-                    <ul>
-                        <li><strong>Development Mode:</strong> Runs on port 8100, uses mock data when Home Assistant isn't available</li>
-                        <li><strong>Home Assistant Addon:</strong> Runs on port 8099, accessed through Home Assistant interface</li>
-                        <li><strong>Ingress Mode:</strong> Accessed through Home Assistant's ingress proxy with special URL path</li>
-                    </ul>
-                </div>
-                <div id="dynamic-fixes"></div>
-            </div>
-        </div>
-
 
     </div>
 
@@ -328,17 +313,17 @@
         function setupEventListeners() {
             document.getElementById('refresh-status').addEventListener('click', refreshSystemStatus);
             document.getElementById('copy-report').addEventListener('click', copyDiagnosticReport);
-            document.getElementById('test-ha-api').addEventListener('click', testHomeAssistantAPI);
-            document.getElementById('test-weather-api').addEventListener('click', testWeatherAPI);
-            document.getElementById('test-calendar-api').addEventListener('click', testCalendarAPI);
-            document.getElementById('test-custom-endpoint').addEventListener('click', testCustomEndpoint);
+            document.getElementById('test-ha-config').addEventListener('click', testHomeAssistantConfig);
+            document.getElementById('test-ha-states').addEventListener('click', testHomeAssistantStates);
+            document.getElementById('test-ha-services').addEventListener('click', testHomeAssistantServices);
+            document.getElementById('test-ha-custom-endpoint').addEventListener('click', testHomeAssistantCustomEndpoint);
             document.getElementById('show-config').addEventListener('click', showConfiguration);
             document.getElementById('show-env-vars').addEventListener('click', showEnvironment);
 
             // Allow Enter key in custom endpoint input
-            document.getElementById('custom-endpoint').addEventListener('keypress', function(e) {
+            document.getElementById('ha-custom-endpoint').addEventListener('keypress', function(e) {
                 if (e.key === 'Enter') {
-                    testCustomEndpoint();
+                    testHomeAssistantCustomEndpoint();
                 }
             });
         }
@@ -381,144 +366,149 @@
             }
         }
 
-        async function updateHomeAssistantStatus() {
-            const statusItem = document.getElementById('ha-connection-status');
-            const statusValue = document.getElementById('ha-status');
+                 async function updateHomeAssistantStatus() {
+             const statusItem = document.getElementById('ha-connection-status');
+             const statusValue = document.getElementById('ha-status');
+
+             try {
+                 const response = await fetch('/api/ha-proxy?endpoint=/api/config');
+                 const data = await response.json();
+
+                 if (data.success) {
+                     statusItem.className = 'status-item success';
+                     statusValue.textContent = '✅ Connected';
+                     statusValue.className = 'status-value success';
+                 } else {
+                     statusItem.className = 'status-item warning';
+                     statusValue.textContent = '⚠️ ' + (data.error || 'Connection issues');
+                     statusValue.className = 'status-value warning';
+                 }
+             } catch (error) {
+                 statusItem.className = 'status-item error';
+                 statusValue.textContent = '❌ Failed to connect';
+                 statusValue.className = 'status-value error';
+             }
+         }
+
+                 async function updateWeatherStatus() {
+             const statusItem = document.getElementById('weather-status-item');
+             const statusValue = document.getElementById('weather-status');
+
+             try {
+                 // Test if we can get weather entity from HA
+                 const response = await fetch('/api/ha-proxy?endpoint=/api/states/weather.forecast_home');
+                 const data = await response.json();
+
+                 if (data.success && data.data) {
+                     statusItem.className = 'status-item success';
+                     statusValue.textContent = '✅ Available';
+                     statusValue.className = 'status-value success';
+                 } else {
+                     statusItem.className = 'status-item warning';
+                     statusValue.textContent = '⚠️ Entity not found';
+                     statusValue.className = 'status-value warning';
+                 }
+             } catch (error) {
+                 statusItem.className = 'status-item error';
+                 statusValue.textContent = '❌ Failed';
+                 statusValue.className = 'status-value error';
+             }
+         }
+
+         async function updateCalendarStatus() {
+             const statusItem = document.getElementById('calendar-status-item');
+             const statusValue = document.getElementById('calendar-status');
+
+             try {
+                 // Test if we can get calendar data from HA
+                 const response = await fetch('/api/ha-proxy?endpoint=/api/calendars');
+                 const data = await response.json();
+
+                 if (data.success && Array.isArray(data.data)) {
+                     statusItem.className = 'status-item success';
+                     statusValue.textContent = `✅ ${data.data.length} calendars`;
+                     statusValue.className = 'status-value success';
+                 } else {
+                     statusItem.className = 'status-item warning';
+                     statusValue.textContent = '⚠️ No calendars';
+                     statusValue.className = 'status-value warning';
+                 }
+             } catch (error) {
+                 statusItem.className = 'status-item error';
+                 statusValue.textContent = '❌ Failed';
+                 statusValue.className = 'status-value error';
+             }
+         }
+
+        async function testHomeAssistantConfig() {
+            const resultsElement = document.getElementById('ha-api-test-results');
+            resultsElement.textContent = 'Testing Home Assistant Config API...';
 
             try {
-                const response = await fetch('/api/ha-proxy');
-                const data = await response.json();
-
-                if (data.success) {
-                    statusItem.className = 'status-item success';
-                    statusValue.textContent = '✅ Connected';
-                    statusValue.className = 'status-value success';
-                } else {
-                    statusItem.className = 'status-item warning';
-                    statusValue.textContent = '⚠️ ' + (data.error || 'Connection issues');
-                    statusValue.className = 'status-value warning';
-                }
-            } catch (error) {
-                statusItem.className = 'status-item error';
-                statusValue.textContent = '❌ Failed to connect';
-                statusValue.className = 'status-value error';
-            }
-        }
-
-        async function updateWeatherStatus() {
-            const statusItem = document.getElementById('weather-status-item');
-            const statusValue = document.getElementById('weather-status');
-
-            try {
-                const response = await fetch('/api/weather');
-                const data = await response.json();
-
-                if (data.error) {
-                    statusItem.className = 'status-item warning';
-                    statusValue.textContent = '⚠️ Using mock data';
-                    statusValue.className = 'status-value warning';
-                } else {
-                    statusItem.className = 'status-item success';
-                    statusValue.textContent = '✅ Live data';
-                    statusValue.className = 'status-value success';
-                }
-            } catch (error) {
-                statusItem.className = 'status-item error';
-                statusValue.textContent = '❌ Failed';
-                statusValue.className = 'status-value error';
-            }
-        }
-
-        async function updateCalendarStatus() {
-            const statusItem = document.getElementById('calendar-status-item');
-            const statusValue = document.getElementById('calendar-status');
-
-            try {
-                const response = await fetch('/api/calendar');
-                const data = await response.json();
-
-                statusItem.className = 'status-item success';
-                statusValue.textContent = `✅ ${Array.isArray(data) ? data.length : 0} events`;
-                statusValue.className = 'status-value success';
-            } catch (error) {
-                statusItem.className = 'status-item error';
-                statusValue.textContent = '❌ Failed';
-                statusValue.className = 'status-value error';
-            }
-        }
-
-        async function testHomeAssistantAPI() {
-            const resultsElement = document.getElementById('api-test-results');
-            resultsElement.textContent = 'Testing Home Assistant API connection...';
-
-            try {
-                const response = await fetch('/api/ha-proxy');
-                const data = await response.json();
-                resultsElement.textContent = JSON.stringify(data, null, 2);
-            } catch (error) {
-                resultsElement.textContent = 'Error testing Home Assistant API: ' + error.message;
-            }
-        }
-
-        async function testWeatherAPI() {
-            const resultsElement = document.getElementById('api-test-results');
-            resultsElement.textContent = 'Testing Weather API...';
-
-            try {
-                const response = await fetch('/api/weather');
+                const response = await fetch('/api/ha-proxy?endpoint=/api/config');
                 const data = await response.json();
                 resultsElement.textContent = JSON.stringify(data, null, 2);
             } catch (error) {
-                resultsElement.textContent = 'Error testing Weather API: ' + error.message;
+                resultsElement.textContent = 'Error testing Home Assistant Config: ' + error.message;
             }
         }
 
-                async function testCalendarAPI() {
-            const resultsElement = document.getElementById('api-test-results');
-            resultsElement.textContent = 'Testing Calendar API...';
+        async function testHomeAssistantStates() {
+            const resultsElement = document.getElementById('ha-api-test-results');
+            resultsElement.textContent = 'Testing Home Assistant States API...';
 
             try {
-                const response = await fetch('/api/calendar');
+                const response = await fetch('/api/ha-proxy?endpoint=/api/states');
                 const data = await response.json();
                 resultsElement.textContent = JSON.stringify(data, null, 2);
             } catch (error) {
-                resultsElement.textContent = 'Error testing Calendar API: ' + error.message;
+                resultsElement.textContent = 'Error testing Home Assistant States: ' + error.message;
             }
         }
 
-        async function testCustomEndpoint() {
-            const resultsElement = document.getElementById('api-test-results');
-            const endpointInput = document.getElementById('custom-endpoint');
+        async function testHomeAssistantServices() {
+            const resultsElement = document.getElementById('ha-api-test-results');
+            resultsElement.textContent = 'Testing Home Assistant Services API...';
+
+            try {
+                const response = await fetch('/api/ha-proxy?endpoint=/api/services');
+                const data = await response.json();
+                resultsElement.textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                resultsElement.textContent = 'Error testing Home Assistant Services: ' + error.message;
+            }
+        }
+
+        async function testHomeAssistantCustomEndpoint() {
+            const resultsElement = document.getElementById('ha-api-test-results');
+            const endpointInput = document.getElementById('ha-custom-endpoint');
             const endpoint = endpointInput.value.trim();
 
             if (!endpoint) {
-                resultsElement.textContent = 'Please enter an endpoint path to test.';
+                resultsElement.textContent = 'Please enter a Home Assistant API endpoint path to test.';
                 return;
             }
 
             // Ensure endpoint starts with /
             const cleanEndpoint = endpoint.startsWith('/') ? endpoint : '/' + endpoint;
 
-            resultsElement.textContent = `Testing custom endpoint: ${cleanEndpoint}...`;
+            resultsElement.textContent = `Testing Home Assistant endpoint: ${cleanEndpoint}...`;
 
             try {
-                const response = await fetch(cleanEndpoint);
+                const response = await fetch(`/api/ha-proxy?endpoint=${encodeURIComponent(cleanEndpoint)}`);
+                const data = await response.json();
 
-                // Try to parse as JSON first
-                let data;
-                const contentType = response.headers.get('content-type');
-                if (contentType && contentType.includes('application/json')) {
-                    data = await response.json();
-                    resultsElement.textContent = `Status: ${response.status} ${response.statusText}\n\n` + JSON.stringify(data, null, 2);
+                if (data.success) {
+                    resultsElement.textContent = `✅ Success - Home Assistant responded:\n\n` + JSON.stringify(data.data, null, 2);
                 } else {
-                    // If not JSON, get as text
-                    const text = await response.text();
-                    resultsElement.textContent = `Status: ${response.status} ${response.statusText}\nContent-Type: ${contentType}\n\n${text}`;
+                    resultsElement.textContent = `❌ Error from Home Assistant:\n\n` + JSON.stringify(data, null, 2);
                 }
             } catch (error) {
-                resultsElement.textContent = `Error testing endpoint ${cleanEndpoint}: ${error.message}`;
+                resultsElement.textContent = `❌ Network error testing Home Assistant endpoint ${cleanEndpoint}: ${error.message}`;
             }
         }
+
+
 
         async function showConfiguration() {
             const configElement = document.getElementById('config-display');
@@ -526,9 +516,9 @@
 
             try {
                 const response = await fetch('/api/config');
-                const data = await response.json();
+                    const data = await response.json();
                 configElement.textContent = JSON.stringify(data, null, 2);
-            } catch (error) {
+                } catch (error) {
                 configElement.textContent = 'Error loading configuration: ' + error.message;
             }
         }
@@ -539,7 +529,7 @@
 
             try {
                 const response = await fetch('/api/diagnostics');
-                const data = await response.json();
+                    const data = await response.json();
 
                 const envInfo = {
                     server: data.server,
@@ -548,7 +538,7 @@
                 };
 
                 configElement.textContent = JSON.stringify(envInfo, null, 2);
-            } catch (error) {
+                } catch (error) {
                 configElement.textContent = 'Error loading environment: ' + error.message;
             }
         }
@@ -568,7 +558,8 @@
 
                 let haTest;
                 try {
-                    haTest = await fetch('/api/ha-proxy').then(r => r.json());
+                    // Use the same endpoint that weather uses, which we know works
+                    haTest = await fetch('/api/ha-proxy?endpoint=/api/states').then(r => r.json());
                 } catch (e) {
                     haTest = { error: e.message };
                 }
@@ -603,10 +594,10 @@
                 button.innerHTML = '<i class="fas fa-times"></i> Failed';
                 showError('Failed to copy report: ' + error.message);
 
-                setTimeout(() => {
+                                setTimeout(() => {
                     button.innerHTML = originalText;
                     button.disabled = false;
-                }, 2000);
+                                }, 2000);
             }
         }
 
