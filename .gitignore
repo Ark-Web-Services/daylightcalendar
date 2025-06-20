@@ -88,3 +88,7 @@ secrets.yaml
 
 *.log
 .dev.diary
+
+# User data files (runtime generated)
+daylight-calendar/data/
+daylight-calendar/options.json
