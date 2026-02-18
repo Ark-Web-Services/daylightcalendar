@@ -17,15 +17,23 @@ fi
 
 # Verify options in configuration using bashio
 bashio::log.info "Verifying configuration options..."
-bashio::config.require 'theme' '"theme" is a required configuration option'
-bashio::config.require 'show_weather' '"show_weather" is a required configuration option'
-bashio::config.require 'locale' '"locale" is a required configuration option'
-bashio::config.require 'time_format' '"time_format" is a required configuration option'
+# Make options optional with defaults for development
+if ! bashio::config.exists 'theme'; then
+  bashio::log.info "theme not set, will use default from options.json"
+fi
+if ! bashio::config.exists 'show_weather'; then
+  bashio::log.info "show_weather not set, will use default from options.json"
+fi
+if ! bashio::config.exists 'locale'; then
+  bashio::log.info "locale not set, will use default from options.json"
+fi
+if ! bashio::config.exists 'time_format'; then
+  bashio::log.info "time_format not set, will use default from options.json"
+fi
 
 # Add kiosk_mode option if not present, defaulting to false (as per your current logic)
 if ! bashio::config.exists 'kiosk_mode'; then
-  bashio::log.info "Adding kiosk_mode option with default value (false)" # Changed default to false based on recent discussions
-  bashio::addon.option kiosk_mode false
+  bashio::log.info "kiosk_mode not set, will use default from options.json"
 fi
 
 # Ensure Node.js dependencies are installed in /app

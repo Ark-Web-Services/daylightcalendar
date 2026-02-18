@@ -243,6 +243,19 @@
 
         <!-- API Testing Section -->
         <div class="debug-section">
+            <h2>🏠 Add-on Diagnostics</h2>
+            <p class="info-text">Diagnostic information for troubleshooting Home Assistant add-on authentication and connectivity issues.</p>
+
+            <div class="btn-group">
+                <button id="test-addon-diagnostics" class="btn btn-primary">
+                    <i class="fas fa-stethoscope"></i> Run Add-on Diagnostics
+                </button>
+            </div>
+
+            <pre id="addon-diagnostics-results" class="results-display"></pre>
+        </div>
+
+        <div class="debug-section">
             <h2>🔗 Home Assistant API Testing</h2>
             <p class="info-text">Test Home Assistant API endpoints to verify connectivity and authentication. These are the core HA endpoints that provide system data.</p>
 
@@ -313,6 +326,7 @@
         function setupEventListeners() {
             document.getElementById('refresh-status').addEventListener('click', refreshSystemStatus);
             document.getElementById('copy-report').addEventListener('click', copyDiagnosticReport);
+            document.getElementById('test-addon-diagnostics').addEventListener('click', testAddonDiagnostics);
             document.getElementById('test-ha-config').addEventListener('click', testHomeAssistantConfig);
             document.getElementById('test-ha-states').addEventListener('click', testHomeAssistantStates);
             document.getElementById('test-ha-services').addEventListener('click', testHomeAssistantServices);
@@ -439,6 +453,27 @@
                  statusValue.className = 'status-value error';
              }
          }
+
+        async function testAddonDiagnostics() {
+            const resultsElement = document.getElementById('addon-diagnostics-results');
+            resultsElement.textContent = 'Running add-on diagnostics...';
+
+            try {
+                const response = await fetch('/api/addon-diagnostics');
+                const data = await response.json();
+
+                if (response.ok) {
+                    resultsElement.textContent = '✅ Add-on Diagnostics Results:\n\n' + JSON.stringify(data, null, 2);
+                    resultsElement.style.color = '#4caf50';
+                } else {
+                    resultsElement.textContent = '❌ Diagnostics Error:\n\n' + JSON.stringify(data, null, 2);
+                    resultsElement.style.color = '#f44336';
+                }
+            } catch (error) {
+                resultsElement.textContent = `❌ Network error running diagnostics: ${error.message}`;
+                resultsElement.style.color = '#f44336';
+            }
+        }
 
         async function testHomeAssistantConfig() {
             const resultsElement = document.getElementById('ha-api-test-results');

@@ -107,13 +107,18 @@
   </div>
 
   <div class="settings-section">
-    <h2>User Profiles</h2>
+    <h2>Home Assistant Integration</h2>
     <div class="settings-card">
-      <div class="profile-management">
-        <div class="profile-list-settings" id="profile-list-settings">
-          <!-- Profiles will be populated by JavaScript -->
+      <h3>User Management</h3>
+      <p class="setting-description">
+        <i class="material-icons">info</i>
+        User management is handled by Home Assistant. This app uses your HA user accounts and preferences automatically.
+      </p>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Current HA User</label>
+          <span id="current-ha-user">Loading...</span>
         </div>
-        <button id="add-profile-button" class="btn btn-primary"><i class="material-icons">person_add</i> Add Profile</button>
       </div>
     </div>
   </div>

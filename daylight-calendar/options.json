@@ -5,6 +5,7 @@
   "locale": "en-US",
   "time_format": "12h",
   "kiosk_mode": false,
+  "development_mode": true,
   "display_settings": {
     "autoNightMode": true,
     "nightModeStart": "20:00",

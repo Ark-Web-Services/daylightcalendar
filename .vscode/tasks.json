@@ -14,7 +14,50 @@
         "panel": "new"
       },
       "problemMatcher": []
+    },
+    {
+      "label": "Bootstrap Dev Environment",
+      "type": "shell",
+      "command": "bash ${workspaceFolder}/.devcontainer/bootstrap-dev.sh",
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Start Addon Dev Server",
+      "type": "shell",
+      "command": "cd ${workspaceFolder}/daylight-calendar && npm run dev",
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Check Auth Token",
+      "type": "shell",
+      "command": "cd ${workspaceFolder}/daylight-calendar && node scripts/auth-flow.js --check",
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Standalone Dev (No HA)",
+      "type": "shell",
+      "command": "cd ${workspaceFolder}/daylight-calendar && STANDALONE_DEV=true npm run dev",
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "problemMatcher": []
     }
   ]
 }
-

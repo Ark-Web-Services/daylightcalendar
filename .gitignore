@@ -1,21 +1,38 @@
-# Node.js dependencies and build artifacts
-node_modules/
+# User data files (runtime generated)
+daylight-calendar/data/
+daylight-calendar/options.json
+
+# Development test scripts
+daylight-calendar/test-ha-storage.js
+
+# VS Code
+.vscode/
+!.vscode/settings.default.json
+!.vscode/tasks.json
+!.vscode/extensions.json
+!.vscode/launch.json
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-package-lock.json
+.dev.diary
+
+# OS
+.DS_Store
+
+# Node
+node_modules/
 dist/
-build/
 .npm/
-.node_repl_history
 
-# Webpack
-.webpack/
-.hot-update.*
-*.hot-update.js
-*.hot-update.json
-
-# Home Assistant specific
+# Home Assistant
 .storage/
 .cloud/
 .google.token
@@ -27,68 +44,16 @@ www/
 .supervisor/
 .addons/
 
-# App specific
-/config/
-/data/
-options.json
-__pycache__/
-*.py[cod]
-*$py.class
-
-# Temporary files
-*.tmp
-*.bak
-*.swp
-*~
-\#*\#
-.\#*
-
-# OS specific files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# IDE and editor files
-.idea/
-
-*.sublime-project
-*.sublime-workspace
-.project
-.classpath
-.c9/
-*.launch
-.settings/
-*.code-workspace
-
-# Build process
-.buildx/
-*.tar.gz
+# Build
+build/
+.webpack/
+*.hot-update.*
 
 # Docker
 docker-compose.override.yml
 .dockerignore
 
-# Private/sensitive information
-*.pem
-*.key
-*.p12
-*.pfx
-*.crt
-*.cer
-*.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-secrets.yaml
-
-*.log
-.dev.diary
-
-# User data files (runtime generated)
-daylight-calendar/data/
-daylight-calendar/options.json
+# Python
+__pycache__/
+*.py[cod]
+*$py.class

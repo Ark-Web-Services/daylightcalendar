@@ -288,9 +288,9 @@ class PageLoader {
 
         case 'settings':
           console.log("Initializing settings functionality...");
-          setTimeout(() => {
+          setTimeout(async () => {
             try {
-              this.attachSettingsEventListeners();
+              await this.attachSettingsEventListeners();
             } catch (error) {
               console.error("Error initializing settings:", error);
             }
@@ -530,8 +530,42 @@ class PageLoader {
   /**
    * Attach event listeners for settings page
    */
-  attachSettingsEventListeners() {
+  async attachSettingsEventListeners() {
     console.log("Attaching settings event listeners");
+
+    // First, try to load the saved theme from Home Assistant, then localStorage
+    try {
+      // First try to get theme from Home Assistant
+      const haResponse = await fetch('/api/user/theme');
+      if (haResponse.ok) {
+        const haData = await haResponse.json();
+        if (haData.theme) {
+          console.log(`Loading saved theme from Home Assistant: ${haData.theme}`);
+          document.body.className = `theme-${haData.theme}`;
+        }
+      } else {
+        // Fallback to localStorage if HA is not available
+        console.log('Home Assistant theme not available, trying localStorage...');
+        const savedTheme = localStorage.getItem('daylight-theme');
+        if (savedTheme) {
+          console.log(`Loading saved theme from localStorage: ${savedTheme}`);
+          document.body.className = `theme-${savedTheme}`;
+        }
+      }
+    } catch (error) {
+      console.warn("Could not load theme from Home Assistant, trying localStorage fallback:", error);
+      // Fallback to localStorage
+      try {
+        const savedTheme = localStorage.getItem('daylight-theme');
+        if (savedTheme) {
+          console.log(`Loading saved theme from localStorage: ${savedTheme}`);
+          document.body.className = `theme-${savedTheme}`;
+        }
+      } catch (localError) {
+        console.warn("Could not load theme from localStorage either:", localError);
+      }
+    }
+
     // Theme buttons
     document.querySelectorAll('.theme-button').forEach(button => {
       // Set active state on current theme
@@ -542,23 +576,36 @@ class PageLoader {
         button.classList.add('active');
       }
 
-      // Add click event listener
-      button.addEventListener('click', (e) => {
+            button.addEventListener('click', async (e) => {
         const theme = e.currentTarget.dataset.theme;
         console.log(`Theme button clicked: ${theme}`);
         document.body.className = `theme-${theme}`;
 
-        // Set active state on this button and remove from others
+        // Update active button
         document.querySelectorAll('.theme-button').forEach(btn => {
           btn.classList.remove('active');
         });
         e.currentTarget.classList.add('active');
 
-        // Save theme to localStorage
+        // Save theme to Home Assistant instead of localStorage
         try {
-          localStorage.setItem('daylight-theme', theme);
+          const response = await fetch('/api/user/theme', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ theme: theme })
+          });
+
+          if (response.ok) {
+            console.log(`Theme ${theme} saved to Home Assistant`);
+          } else {
+            console.warn(`Failed to save theme to Home Assistant, falling back to localStorage`);
+            localStorage.setItem('daylight-theme', theme);
+          }
         } catch (error) {
-          console.warn("Could not save theme to localStorage:", error);
+          console.warn("Could not save theme to Home Assistant, using localStorage fallback:", error);
+          localStorage.setItem('daylight-theme', theme);
         }
       });
     });
@@ -627,25 +674,6 @@ class PageLoader {
       });
     } else {
       console.warn("Microphone control buttons not found");
-    }
-
-    // Try to load the saved theme from localStorage
-    try {
-      const savedTheme = localStorage.getItem('daylight-theme');
-      if (savedTheme) {
-        console.log(`Loading saved theme: ${savedTheme}`);
-        document.body.className = `theme-${savedTheme}`;
-
-        // Update active button
-        document.querySelectorAll('.theme-button').forEach(btn => {
-          btn.classList.remove('active');
-          if (btn.dataset.theme === savedTheme) {
-            btn.classList.add('active');
-          }
-        });
-      }
-    } catch (error) {
-      console.warn("Could not load theme from localStorage:", error);
     }
   }
 

@@ -1,0 +1,36 @@
+{
+  "users": [
+    {
+      "id": "dev-user-1",
+      "name": "Mom",
+      "avatar": "👩",
+      "color": "#e91e63",
+      "role": "admin"
+    },
+    {
+      "id": "dev-user-2",
+      "name": "Dad",
+      "avatar": "👨",
+      "color": "#2196f3",
+      "role": "admin"
+    },
+    {
+      "id": "dev-user-3",
+      "name": "Emma",
+      "avatar": "👧",
+      "color": "#9c27b0",
+      "role": "child",
+      "age": 10,
+      "rewards_points": 42
+    },
+    {
+      "id": "dev-user-4",
+      "name": "Jake",
+      "avatar": "👦",
+      "color": "#4caf50",
+      "role": "child",
+      "age": 7,
+      "rewards_points": 28
+    }
+  ]
+}

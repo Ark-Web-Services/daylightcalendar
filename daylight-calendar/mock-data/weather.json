@@ -1,0 +1,57 @@
+{
+  "current": {
+    "entity_id": "weather.forecast_home",
+    "state": "sunny",
+    "attributes": {
+      "temperature": 72,
+      "temperature_unit": "°F",
+      "humidity": 45,
+      "pressure": 30.1,
+      "wind_speed": 8,
+      "wind_bearing": 180,
+      "friendly_name": "Home"
+    }
+  },
+  "forecast": [
+    {
+      "datetime": "2026-02-18T12:00:00+00:00",
+      "condition": "sunny",
+      "temperature": 72,
+      "templow": 55,
+      "precipitation_probability": 0,
+      "wind_speed": 8
+    },
+    {
+      "datetime": "2026-02-19T12:00:00+00:00",
+      "condition": "partlycloudy",
+      "temperature": 68,
+      "templow": 52,
+      "precipitation_probability": 10,
+      "wind_speed": 12
+    },
+    {
+      "datetime": "2026-02-20T12:00:00+00:00",
+      "condition": "cloudy",
+      "temperature": 64,
+      "templow": 48,
+      "precipitation_probability": 30,
+      "wind_speed": 15
+    },
+    {
+      "datetime": "2026-02-21T12:00:00+00:00",
+      "condition": "rainy",
+      "temperature": 58,
+      "templow": 45,
+      "precipitation_probability": 80,
+      "wind_speed": 18
+    },
+    {
+      "datetime": "2026-02-22T12:00:00+00:00",
+      "condition": "sunny",
+      "temperature": 74,
+      "templow": 56,
+      "precipitation_probability": 5,
+      "wind_speed": 6
+    }
+  ]
+}

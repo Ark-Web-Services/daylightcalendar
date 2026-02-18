@@ -1,0 +1,36 @@
+# Docker Compose Dev Environment for Daylight Calendar
+# Works without VS Code — use from any editor/terminal (including Antigravity)
+#
+# Usage:
+#   docker compose -f docker-compose.dev.yml up        # Start everything
+#   docker compose -f docker-compose.dev.yml down -v    # Tear down completely
+#   docker compose -f docker-compose.dev.yml up --build # Rebuild from scratch
+#
+# This uses the SAME official HA addon devcontainer image that includes
+# Supervisor + HA Core. Regular HA Docker images do NOT support addons.
+
+services:
+  ha-addon-dev:
+    image: ghcr.io/home-assistant/devcontainer:2-addons
+    container_name: daylight-ha-dev
+    privileged: true
+    ports:
+      - "7123:8123"   # Home Assistant UI
+      - "8099:8099"   # Addon frontend (when running npm run dev)
+      - "8100:8100"   # Addon backend dev port
+    volumes:
+      # Mount the entire project into the addon directory so HA discovers it
+      - .:/mnt/supervisor/addons/local/daylight:cached
+      # Named volumes for Docker-in-Docker and Supervisor persistence
+      - docker-data:/var/lib/docker
+      - supervisor-data:/mnt/supervisor
+    environment:
+      - WORKSPACE_DIRECTORY=/mnt/supervisor/addons/local/daylight
+    tty: true
+    stdin_open: true
+    # Bootstrap starts supervisor_run (foreground/blocking) + auth setup (background)
+    command: bash /mnt/supervisor/addons/local/daylight/.devcontainer/bootstrap-dev.sh
+
+volumes:
+  docker-data:
+  supervisor-data:

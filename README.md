@@ -4,33 +4,48 @@
 
 # Daylight Calendar for Home Assistant
 
-This repository contains the Daylight Calendar add-on for Home Assistant, which provides a beautiful fullscreen calendar display for your Home Assistant touchscreen.
-
-## Installation
-
-1. Navigate to the Home Assistant Supervisor panel
-2. Go to the Add-on Store tab
-3. Click the three dots in the upper right corner and select "Repositories"
-4. Add this repository URL: `https://github.com/Ark-Web-Services/daylightcalendar`
-5. Find the "Daylight Calendar" add-on in the store and click "Install"
+A beautiful, modern, fullscreen calendar and dashboard add-on for Home Assistant. Turn any touchscreen into a powerful family organizer.
 
 ## Features
 
-- Beautiful fullscreen calendar with clean, modern design
-- Automatically switches command line interface to calendar display
-- Shows upcoming events from your Home Assistant calendars
-- Optional weather integration
-- Light and dark themes available
-- Customizable appearance and settings
-- Kiosk mode for dedicated displays
+- **Calendar:** Fullscreen weekly/monthly views with event details
+- **Chores:** Kanban-style board for family task management
+- **Meals:** Weekly meal planning and recipe book
+- **Games:** curated HTML5 games with playtime limits
+- **Kiosk Mode:** Auto-launch on dedicated displays
+- **Weather:** Integrated local weather forecast
+- **Themes:** Light/Dark modes + custom themes (Pastel, Forest, Ocean, Sunset)
 
-## Screenshot
+## Installation
 
-![Daylight Calendar Screenshot](daylight-calendar/screenshot.png)
+1. **Add Repository:**
+   Go to **Settings → Add-ons → Add-on Store → Repositories** and add:
+   `https://github.com/Ark-Web-Services/daylightcalendar`
+
+2. **Install:**
+   Find "Daylight Calendar" in the store and click **Install**.
+
+3. **Configure:**
+   Check the "Configuration" tab for options (weather, locale, theme).
+
+4. **Start:**
+   Click **Start** and open the Web UI.
+
+## Development
+
+We have a fully automated, zero-touch development environment.
+
+- **One-Command Start:** `docker compose -f docker-compose.dev.yml up`
+- **Mock Data Mode:** Develop UI without Home Assistant using `STANDALONE_DEV=true`
+- **VS Code:** Full DevContainer support with HA Supervisor
+
+See [DEVELOPMENT.md](DEVELOPMENT.md) for the complete guide.
 
 ## Documentation
 
-For detailed documentation, see the [add-on README](daylight-calendar/README.md).
+- [User Guide (Add-on)](daylight-calendar/README.md)
+- [Feature Status](daylight-calendar/FEATURES.md)
+- [Development Guide](DEVELOPMENT.md)
 
 ## License
 

@@ -76,10 +76,17 @@ This document tracks the implementation status of all requested features for the
 | Deadlines | ⚠️ Partial | Due dates exist but need better visualization |
 | Notifications | ❌ Not Started | Need to implement notification system |
 
+## Development Environment
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Automated Setup | ✅ Implemented | Zero-touch `docker compose up` environment |
+| Mock Data Mode | ✅ Implemented | Standalone UI development without HA |
+| Hot Reloading | ✅ Implemented | Frontend updates instantly |
+| HA Integration | ✅ Implemented | Auth flow & API proxy working perfectly |
+
 ## Next Steps
 
-1. Implement better integration with Home Assistant for weather and user accounts
-2. Improve the chore system with repeating chores and the household chore bucket
-3. Implement proper drag-and-drop functionality for chore assignment
-4. Enhance reward tracking with a visual interface
-5. Improve the meals page for better meal management 
+1. **Calendar Tab:** Fix NetworkError issues and ensure reliable data fetching.
+2. **User Management:** Implement UI for creating/managing local users.
+3. **Refinement:** Polish UI and ensure responsiveness on all devices. 

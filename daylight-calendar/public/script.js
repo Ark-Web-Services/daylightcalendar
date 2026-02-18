@@ -17,7 +17,7 @@ let displaySettings = {
 };
 
 // Initial setup
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
   console.log('[INFO] DOM Content Loaded');
 
   // Load configuration first
@@ -58,14 +58,14 @@ function setupTurboFrameListeners() {
   console.log('[DEBUG] Setting up Turbo frame event listeners...');
 
   // Listen for turbo frame loads
-  document.addEventListener('turbo:frame-load', function(event) {
+  document.addEventListener('turbo:frame-load', function (event) {
     const frame = event.target;
     console.log('[DEBUG] Turbo frame loaded:', frame.id);
 
     // Re-setup modals for any new content
     setupModals();
 
-    switch(frame.id) {
+    switch (frame.id) {
       case 'calendar-content':
         console.log('[DEBUG] Initializing calendar content...');
         initializeCalendarPage();
@@ -96,7 +96,7 @@ function setupTurboFrameListeners() {
   });
 
   // Also listen for regular frame loads in case turbo events don't fire
-  document.addEventListener('DOMContentLoaded', function() {
+  document.addEventListener('DOMContentLoaded', function () {
     console.log('[DEBUG] DOM fully loaded, checking for existing frames...');
 
     // Check if any frames are already loaded
@@ -108,7 +108,7 @@ function setupTurboFrameListeners() {
         // Re-setup modals for existing content
         setupModals();
         // Initialize the frame content
-        switch(frameId) {
+        switch (frameId) {
           case 'calendar-content':
             initializeCalendarPage();
             break;
@@ -213,13 +213,36 @@ function initializeChoresPage() {
     }
 
     if (addChoreForm) {
-      addChoreForm.addEventListener('submit', (e) => {
+      addChoreForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         console.log('[INFO] Add chore form submitted');
         const formData = new FormData(addChoreForm);
-        console.log('[INFO] Chore data:', Object.fromEntries(formData));
-        addChoreModal.classList.remove('show');
-        addChoreForm.reset();
+        const choreData = Object.fromEntries(formData);
+
+        try {
+          const response = await fetch('/api/chores', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              item: choreData.choreName
+            })
+          });
+
+          if (response.ok) {
+            console.log('[INFO] Chore added successfully');
+            addChoreModal.classList.remove('show');
+            addChoreForm.reset();
+            fetchAndDisplayChores(); // Refresh list
+          } else {
+            console.error('[ERROR] Failed to add chore');
+            alert('Failed to add chore. Please try again.');
+          }
+        } catch (error) {
+          console.error('[ERROR] Error adding chore:', error);
+          alert('Error adding chore: ' + error.message);
+        }
       });
       console.log('[DEBUG] Add chore form listener added');
     }
@@ -411,7 +434,7 @@ function initializeSettingsPage() {
     });
 
     if (screenBurnProtection) {
-      screenBurnProtection.addEventListener('change', function(e) {
+      screenBurnProtection.addEventListener('change', function (e) {
         displaySettings.screenBurnProtection = e.target.checked;
         console.log('[INFO] Screen burn protection:', e.target.checked);
         if (displaySettings.screenBurnProtection) {
@@ -427,7 +450,7 @@ function initializeSettingsPage() {
     }
 
     if (dimAfterMinutes) {
-      dimAfterMinutes.addEventListener('change', function(e) {
+      dimAfterMinutes.addEventListener('change', function (e) {
         displaySettings.dimAfterMinutes = parseInt(e.target.value, 10);
         console.log('[INFO] Dim after minutes:', displaySettings.dimAfterMinutes);
         resetInactivityTimer();
@@ -436,7 +459,7 @@ function initializeSettingsPage() {
     }
 
     if (displayClock) {
-      displayClock.addEventListener('change', function(e) {
+      displayClock.addEventListener('change', function (e) {
         displaySettings.displayClock = e.target.checked;
         console.log('[INFO] Display clock:', e.target.checked);
         const clockDisplay = document.getElementById('clock-display');
@@ -583,26 +606,14 @@ function initializeSettingsPage() {
       console.log('[DEBUG] Microphone button listeners added');
     }
 
-    // Setup add profile button
-    const addProfileBtn = document.getElementById('add-profile-button');
-    if (addProfileBtn) {
-      addProfileBtn.addEventListener('click', () => {
-        console.log('[INFO] Add profile button clicked');
-        const profileName = prompt('Enter profile name:');
-        if (profileName) {
-          console.log('[INFO] Adding profile:', profileName);
-          // This would normally add the profile to the system
-        }
-      });
-      console.log('[DEBUG] Add profile button listener added');
-    }
+    // Profile management is now handled by Home Assistant
 
     // Re-setup modals for settings page
     setupModals();
     console.log('[DEBUG] Modals re-setup for settings page');
 
-    loadProfilesForSettings();
     fetchDisplaySettings();
+    loadCurrentHAUser();
 
     console.log('[DEBUG] Settings page initialization complete');
   }, 100);
@@ -621,7 +632,7 @@ function initializeSidebar() {
   const app = document.getElementById('app');
 
   if (sidebarToggle) {
-    sidebarToggle.addEventListener('click', function() {
+    sidebarToggle.addEventListener('click', function () {
       app.classList.toggle('sidebar-collapsed');
 
       // If we have a calendar instance, update its size after sidebar animation completes
@@ -789,14 +800,14 @@ function setupCalendar() {
       height: 'auto',
       aspectRatio: 1.35,
       events: '/api/calendar',
-      eventClick: function(info) {
+      eventClick: function (info) {
         console.log('[DEBUG] Event clicked:', info.event);
       },
-      eventDidMount: function(info) {
+      eventDidMount: function (info) {
         // Add weather icons if available
         updateEventWeather(info);
       },
-      loading: function(isLoading) {
+      loading: function (isLoading) {
         console.log('[DEBUG] Calendar loading:', isLoading);
       },
       eventDisplay: 'block',
@@ -1230,28 +1241,30 @@ function loadUserToggles() {
   }
 }
 
-function fetchAndDisplayChores() {
+async function fetchAndDisplayChores() {
   console.log('[INFO] fetchAndDisplayChores called - fetching and displaying chores');
 
   const choreBoard = document.getElementById('chore-board');
-  if (choreBoard) {
-    // Create kanban board lanes
-    const lanes = [
-      { id: 'todo', title: 'To Do', color: '#6c757d' },
-      { id: 'in-progress', title: 'In Progress', color: '#ffc107' },
-      { id: 'done', title: 'Done', color: '#28a745' }
-    ];
+  if (!choreBoard) return;
 
-    // Sample chores
-    const sampleChores = [
-      { id: '1', title: 'Take out trash', assignee: 'Alex', lane: 'todo', dueDate: moment().add(1, 'day').format('YYYY-MM-DD') },
-      { id: '2', title: 'Do laundry', assignee: 'Jordan', lane: 'in-progress', dueDate: moment().format('YYYY-MM-DD') },
-      { id: '3', title: 'Clean kitchen', assignee: 'Casey', lane: 'done', dueDate: moment().subtract(1, 'day').format('YYYY-MM-DD') }
+  try {
+    const response = await fetch('/api/chores');
+    if (!response.ok) throw new Error('Failed to fetch chores');
+
+    const data = await response.json();
+    const chores = data.items || [];
+    const entityId = data.entityId;
+
+    // Create kanban board lanes
+    // HA Todo items have status: 'needs_action' or 'completed'
+    const lanes = [
+      { id: 'needs_action', title: 'To Do', color: '#6c757d' },
+      { id: 'completed', title: 'Done', color: '#28a745' }
     ];
 
     let boardHTML = '';
     lanes.forEach(lane => {
-      const laneChores = sampleChores.filter(chore => chore.lane === lane.id);
+      const laneChores = chores.filter(chore => chore.status === lane.id);
 
       boardHTML += `
         <div class="kanban-lane" data-lane="${lane.id}">
@@ -1261,11 +1274,15 @@ function fetchAndDisplayChores() {
           </div>
           <div class="lane-content">
             ${laneChores.map(chore => `
-              <div class="chore-card" data-chore-id="${chore.id}">
-                <div class="chore-title">${chore.title}</div>
+              <div class="chore-card" data-chore-id="${chore.uid || chore.summary}" data-status="${chore.status}">
+                <div class="chore-header">
+                  <div class="chore-title">${chore.summary}</div>
+                  <button class="chore-toggle-btn" onclick="toggleChoreStatus('${chore.uid || chore.summary}', '${chore.status}', '${entityId}')">
+                    <i class="material-icons">${chore.status === 'completed' ? 'check_box' : 'check_box_outline_blank'}</i>
+                  </button>
+                </div>
                 <div class="chore-meta">
-                  <span class="chore-assignee">${chore.assignee}</span>
-                  <span class="chore-due">Due: ${moment(chore.dueDate).format('MMM D')}</span>
+                  ${chore.due ? `<span class="chore-due">Due: ${moment(chore.due).format('MMM D')}</span>` : ''}
                 </div>
               </div>
             `).join('')}
@@ -1275,7 +1292,46 @@ function fetchAndDisplayChores() {
     });
 
     choreBoard.innerHTML = boardHTML;
-    console.log('[INFO] Chore board populated with sample data');
+    console.log('[INFO] Chore board populated with real data');
+
+    // Add global function for toggle if not exists
+    if (!window.toggleChoreStatus) {
+      window.toggleChoreStatus = async function (itemId, currentStatus, entityId) {
+        const newStatus = currentStatus === 'completed' ? 'needs_action' : 'completed';
+        console.log(`[INFO] Toggling chore ${itemId} to ${newStatus}`);
+
+        // Optimistic update
+        const card = document.querySelector(`.chore-card[data-chore-id="${itemId}"]`);
+        if (card) {
+          card.style.opacity = '0.5';
+        }
+
+        try {
+          const response = await fetch(`/api/chores/${itemId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              status: newStatus,
+              entityId: entityId
+            })
+          });
+
+          if (response.ok) {
+            fetchAndDisplayChores(); // Refresh to move card
+          } else {
+            console.error('Failed to update chore');
+            if (card) card.style.opacity = '1';
+          }
+        } catch (error) {
+          console.error('Error updating chore:', error);
+          if (card) card.style.opacity = '1';
+        }
+      };
+    }
+
+  } catch (error) {
+    console.error('[ERROR] Error fetching chores:', error);
+    choreBoard.innerHTML = `<div class="error-message">Failed to load chores: ${error.message}</div>`;
   }
 }
 
@@ -1323,8 +1379,8 @@ function fetchAndDisplayMeals() {
         <div class="meal-row">
           <div class="meal-time-label">${mealType}</div>
           ${days.map((day, dayIndex) => {
-            const meal = sampleMeals.find(m => m.day === dayIndex && m.type === mealType);
-            return `
+        const meal = sampleMeals.find(m => m.day === dayIndex && m.type === mealType);
+        return `
               <div class="meal-slot" data-day="${dayIndex}" data-meal-type="${mealType}">
                 ${meal ? `
                   <div class="meal-item">
@@ -1338,7 +1394,7 @@ function fetchAndDisplayMeals() {
                 `}
               </div>
             `;
-          }).join('')}
+      }).join('')}
         </div>
       `;
     });
@@ -1375,57 +1431,33 @@ function fetchAndDisplayMeals() {
   }
 }
 
-function loadProfilesForSettings() {
-  console.log('[INFO] loadProfilesForSettings called - loading user profiles');
+async function loadCurrentHAUser() {
+  console.log('[INFO] Loading current Home Assistant user');
 
-  const profileListSettings = document.getElementById('profile-list-settings');
-  if (profileListSettings) {
-    // Sample profiles for settings
-    const profiles = [
-      { id: 'alex', name: 'Alex', color: '#4285f4', playtime: 30 },
-      { id: 'jordan', name: 'Jordan', color: '#34a853', playtime: 45 },
-      { id: 'casey', name: 'Casey', color: '#fbbc05', playtime: 20 },
-      { id: 'taylor', name: 'Taylor', color: '#ea4335', playtime: 35 }
-    ];
-
-    profileListSettings.innerHTML = profiles.map(profile => `
-      <div class="profile-settings-item" data-profile-id="${profile.id}">
-        <div class="profile-avatar" style="background-color: ${profile.color};">
-          ${profile.name.charAt(0)}
-        </div>
-        <div class="profile-details">
-          <div class="profile-name">${profile.name}</div>
-          <div class="profile-playtime">Daily playtime: ${profile.playtime} minutes</div>
-        </div>
-        <div class="profile-actions">
-          <button class="btn btn-sm btn-secondary edit-profile" data-profile-id="${profile.id}">
-            <i class="material-icons">edit</i>
-          </button>
-          <button class="btn btn-sm btn-danger delete-profile" data-profile-id="${profile.id}">
-            <i class="material-icons">delete</i>
-          </button>
-        </div>
-      </div>
-    `).join('');
-
-    // Add event listeners for profile actions
-    profileListSettings.addEventListener('click', (e) => {
-      if (e.target.closest('.edit-profile')) {
-        const profileId = e.target.closest('.edit-profile').dataset.profileId;
-        console.log('[INFO] Edit profile clicked:', profileId);
-        // This would open an edit profile modal
-      }
-
-      if (e.target.closest('.delete-profile')) {
-        const profileId = e.target.closest('.delete-profile').dataset.profileId;
-        if (confirm('Are you sure you want to delete this profile?')) {
-          console.log('[INFO] Delete profile confirmed:', profileId);
-          // This would delete the profile
+  const currentUserSpan = document.getElementById('current-ha-user');
+  if (currentUserSpan) {
+    try {
+      // Try to get current HA user info
+      const response = await fetch('/api/ha-proxy?endpoint=/api/config');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.data) {
+          const haConfig = data.data;
+          currentUserSpan.textContent = `Connected to: ${haConfig.location_name || 'Home Assistant'}`;
+          currentUserSpan.style.color = '#4caf50';
+        } else {
+          currentUserSpan.textContent = 'Unable to connect to Home Assistant';
+          currentUserSpan.style.color = '#f44336';
         }
+      } else {
+        currentUserSpan.textContent = 'Home Assistant connection error';
+        currentUserSpan.style.color = '#f44336';
       }
-    });
-
-    console.log('[INFO] Profiles loaded in settings');
+    } catch (error) {
+      console.error('[ERROR] Failed to load HA user info:', error);
+      currentUserSpan.textContent = 'Error loading user info';
+      currentUserSpan.style.color = '#f44336';
+    }
   }
 }
 

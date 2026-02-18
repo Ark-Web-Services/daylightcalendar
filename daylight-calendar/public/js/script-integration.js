@@ -107,8 +107,8 @@ function initSettingsPage() {
   initializeNightModeSettings();
   initializeScreenProtectionSettings();
 
-  // Load user profiles
-  loadProfilesForSettings();
+  // Load current HA user info
+  loadCurrentHAUser();
 
   // Initialize media testing
   initializeCameraTest();
