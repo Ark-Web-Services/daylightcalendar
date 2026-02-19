@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -17,54 +18,81 @@
             overflow-x: hidden;
             overflow-y: auto;
         }
+
         .debug-container {
             padding: 20px;
             max-width: 1200px;
             margin: 0 auto;
         }
+
         .debug-section {
-            background-color: var(--card-bg, rgba(255,255,255,0.9));
+            background-color: var(--card-bg, rgba(255, 255, 255, 0.9));
             border-radius: 8px;
             padding: 20px;
             margin-bottom: 20px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
         }
+
         .debug-section h2 {
             margin-top: 0;
             color: var(--primary-color, #2196F3);
             border-bottom: 2px solid var(--primary-color, #2196F3);
             padding-bottom: 10px;
         }
+
         .status-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
             gap: 15px;
             margin: 15px 0;
         }
+
         .status-item {
             background: var(--code-bg, #f8f9fa);
             padding: 12px;
             border-radius: 6px;
             border-left: 4px solid var(--border-color, #ddd);
         }
-        .status-item.success { border-left-color: #4caf50; }
-        .status-item.error { border-left-color: #f44336; }
-        .status-item.warning { border-left-color: #ff9800; }
-        .status-item.info { border-left-color: #2196F3; }
+
+        .status-item.success {
+            border-left-color: #4caf50;
+        }
+
+        .status-item.error {
+            border-left-color: #f44336;
+        }
+
+        .status-item.warning {
+            border-left-color: #ff9800;
+        }
+
+        .status-item.info {
+            border-left-color: #2196F3;
+        }
 
         .status-label {
             font-weight: 600;
             margin-bottom: 5px;
             color: var(--text-color, #333);
         }
+
         .status-value {
             font-family: 'Courier New', monospace;
             font-size: 0.9em;
             word-break: break-all;
         }
-        .status-value.success { color: #4caf50; }
-        .status-value.error { color: #f44336; }
-        .status-value.warning { color: #ff9800; }
+
+        .status-value.success {
+            color: #4caf50;
+        }
+
+        .status-value.error {
+            color: #f44336;
+        }
+
+        .status-value.warning {
+            color: #ff9800;
+        }
 
         .btn-group {
             display: flex;
@@ -72,6 +100,7 @@
             margin: 15px 0;
             flex-wrap: wrap;
         }
+
         .btn {
             padding: 10px 16px;
             border: none;
@@ -84,11 +113,31 @@
             gap: 8px;
             transition: all 0.2s;
         }
-        .btn-primary { background: #2196F3; color: white; }
-        .btn-secondary { background: #6c757d; color: white; }
-        .btn-success { background: #28a745; color: white; }
-        .btn-danger { background: #dc3545; color: white; }
-        .btn:hover { opacity: 0.9; transform: translateY(-1px); }
+
+        .btn-primary {
+            background: #2196F3;
+            color: white;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
 
         .response-container {
             background: var(--code-bg, #f8f9fa);
@@ -110,14 +159,17 @@
             padding: 15px;
             margin: 15px 0;
         }
+
         .info-box.warning {
             background: #fff3e0;
             border-color: #ff9800;
         }
+
         .info-box.success {
             background: #e8f5e8;
             border-color: #4caf50;
         }
+
         .info-box.error {
             background: #ffebee;
             border-color: #f44336;
@@ -132,11 +184,13 @@
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
+
         .environment-badge.development {
             background: #fff3e0;
             color: #ef6c00;
             border: 1px solid #ff9800;
         }
+
         .environment-badge.production {
             background: #e8f5e8;
             color: #2e7d32;
@@ -150,10 +204,12 @@
             border-radius: 8px;
             margin-bottom: 20px;
         }
+
         .diagnostic-summary h1 {
             margin: 0 0 10px 0;
             font-size: 1.8em;
         }
+
         .diagnostic-summary .subtitle {
             opacity: 0.9;
             font-size: 1.1em;
@@ -194,6 +250,7 @@
         }
     </style>
 </head>
+
 <body>
     <div class="debug-container">
         <div class="diagnostic-summary">
@@ -211,7 +268,7 @@
                 <button id="copy-report" class="btn btn-secondary">
                     <i class="fas fa-copy"></i> Copy Full Report
                 </button>
-                </div>
+            </div>
 
             <div class="status-grid">
                 <div class="status-item info">
@@ -238,13 +295,14 @@
                     <div class="status-label">Calendar Data</div>
                     <div class="status-value" id="calendar-status">Checking...</div>
                 </div>
-                </div>
             </div>
+        </div>
 
         <!-- API Testing Section -->
         <div class="debug-section">
             <h2>🏠 Add-on Diagnostics</h2>
-            <p class="info-text">Diagnostic information for troubleshooting Home Assistant add-on authentication and connectivity issues.</p>
+            <p class="info-text">Diagnostic information for troubleshooting Home Assistant add-on authentication and
+                connectivity issues.</p>
 
             <div class="btn-group">
                 <button id="test-addon-diagnostics" class="btn btn-primary">
@@ -257,7 +315,8 @@
 
         <div class="debug-section">
             <h2>🔗 Home Assistant API Testing</h2>
-            <p class="info-text">Test Home Assistant API endpoints to verify connectivity and authentication. These are the core HA endpoints that provide system data.</p>
+            <p class="info-text">Test Home Assistant API endpoints to verify connectivity and authentication. These are
+                the core HA endpoints that provide system data.</p>
 
             <div class="btn-group">
                 <button id="test-ha-config" class="btn btn-primary">
@@ -276,8 +335,9 @@
                 <div class="form-row" style="display: flex; gap: 10px; align-items: flex-end; margin: 10px 0;">
                     <div class="form-group" style="flex: 1;">
                         <label for="ha-custom-endpoint">Home Assistant API Path</label>
-                        <input type="text" id="ha-custom-endpoint" placeholder="e.g., /api/states/weather.home, /api/config"
-                               value="/api/config" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        <input type="text" id="ha-custom-endpoint"
+                            placeholder="e.g., /api/states/weather.home, /api/config" value="/api/config"
+                            style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
                     </div>
                     <button id="test-ha-custom-endpoint" class="btn btn-secondary">
                         <i class="fas fa-play"></i> Test HA Endpoint
@@ -291,7 +351,8 @@
                 </div>
             </div>
 
-            <div class="response-container" id="ha-api-test-results">Click a Home Assistant test button to see results...</div>
+            <div class="response-container" id="ha-api-test-results">Click a Home Assistant test button to see
+                results...</div>
         </div>
 
 
@@ -317,7 +378,7 @@
         let diagnosticData = {};
 
         // Initialize page
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             console.log('[DEBUG] Debug page loaded');
             refreshSystemStatus();
             setupEventListeners();
@@ -335,7 +396,7 @@
             document.getElementById('show-env-vars').addEventListener('click', showEnvironment);
 
             // Allow Enter key in custom endpoint input
-            document.getElementById('ha-custom-endpoint').addEventListener('keypress', function(e) {
+            document.getElementById('ha-custom-endpoint').addEventListener('keypress', function (e) {
                 if (e.key === 'Enter') {
                     testHomeAssistantCustomEndpoint();
                 }
@@ -347,8 +408,14 @@
                 console.log('[DEBUG] Refreshing system status...');
 
                 // Get basic system info
-                const response = await fetch('/api/diagnostics');
-                const data = await response.json();
+                const response = await fetch('api/diagnostics');
+                let data;
+                try {
+                    data = await response.json();
+                } catch (e) {
+                    console.error("Failed to parse diagnostics JSON", e);
+                    throw new Error("Invalid API response (Backend may be restarting)");
+                }
                 diagnosticData = data;
 
                 // Update environment status
@@ -360,7 +427,7 @@
                 // Update access mode
                 const accessElement = document.getElementById('access-mode');
                 const accessMode = data.server.isIngressMode ? 'Home Assistant Ingress' :
-                                 isProduction ? 'Direct Access (Addon)' : 'Standalone Development';
+                    isProduction ? 'Direct Access (Addon)' : 'Standalone Development';
                 accessElement.textContent = accessMode;
 
                 // Update server port
@@ -380,86 +447,86 @@
             }
         }
 
-                 async function updateHomeAssistantStatus() {
-             const statusItem = document.getElementById('ha-connection-status');
-             const statusValue = document.getElementById('ha-status');
+        async function updateHomeAssistantStatus() {
+            const statusItem = document.getElementById('ha-connection-status');
+            const statusValue = document.getElementById('ha-status');
 
-             try {
-                 const response = await fetch('/api/ha-proxy?endpoint=/api/config');
-                 const data = await response.json();
+            try {
+                const response = await fetch('api/ha-proxy?endpoint=/api/config');
+                const data = await response.json();
 
-                 if (data.success) {
-                     statusItem.className = 'status-item success';
-                     statusValue.textContent = '✅ Connected';
-                     statusValue.className = 'status-value success';
-                 } else {
-                     statusItem.className = 'status-item warning';
-                     statusValue.textContent = '⚠️ ' + (data.error || 'Connection issues');
-                     statusValue.className = 'status-value warning';
-                 }
-             } catch (error) {
-                 statusItem.className = 'status-item error';
-                 statusValue.textContent = '❌ Failed to connect';
-                 statusValue.className = 'status-value error';
-             }
-         }
+                if (data.success) {
+                    statusItem.className = 'status-item success';
+                    statusValue.textContent = '✅ Connected';
+                    statusValue.className = 'status-value success';
+                } else {
+                    statusItem.className = 'status-item warning';
+                    statusValue.textContent = '⚠️ ' + (data.error || 'Connection issues');
+                    statusValue.className = 'status-value warning';
+                }
+            } catch (error) {
+                statusItem.className = 'status-item error';
+                statusValue.textContent = '❌ Failed to connect';
+                statusValue.className = 'status-value error';
+            }
+        }
 
-                 async function updateWeatherStatus() {
-             const statusItem = document.getElementById('weather-status-item');
-             const statusValue = document.getElementById('weather-status');
+        async function updateWeatherStatus() {
+            const statusItem = document.getElementById('weather-status-item');
+            const statusValue = document.getElementById('weather-status');
 
-             try {
-                 // Test if we can get weather entity from HA
-                 const response = await fetch('/api/ha-proxy?endpoint=/api/states/weather.forecast_home');
-                 const data = await response.json();
+            try {
+                // Test if we can get weather entity from HA
+                const response = await fetch('api/ha-proxy?endpoint=/api/states/weather.forecast_home');
+                const data = await response.json();
 
-                 if (data.success && data.data) {
-                     statusItem.className = 'status-item success';
-                     statusValue.textContent = '✅ Available';
-                     statusValue.className = 'status-value success';
-                 } else {
-                     statusItem.className = 'status-item warning';
-                     statusValue.textContent = '⚠️ Entity not found';
-                     statusValue.className = 'status-value warning';
-                 }
-             } catch (error) {
-                 statusItem.className = 'status-item error';
-                 statusValue.textContent = '❌ Failed';
-                 statusValue.className = 'status-value error';
-             }
-         }
+                if (data.success && data.data) {
+                    statusItem.className = 'status-item success';
+                    statusValue.textContent = '✅ Available';
+                    statusValue.className = 'status-value success';
+                } else {
+                    statusItem.className = 'status-item warning';
+                    statusValue.textContent = '⚠️ Entity not found';
+                    statusValue.className = 'status-value warning';
+                }
+            } catch (error) {
+                statusItem.className = 'status-item error';
+                statusValue.textContent = '❌ Failed';
+                statusValue.className = 'status-value error';
+            }
+        }
 
-         async function updateCalendarStatus() {
-             const statusItem = document.getElementById('calendar-status-item');
-             const statusValue = document.getElementById('calendar-status');
+        async function updateCalendarStatus() {
+            const statusItem = document.getElementById('calendar-status-item');
+            const statusValue = document.getElementById('calendar-status');
 
-             try {
-                 // Test if we can get calendar data from HA
-                 const response = await fetch('/api/ha-proxy?endpoint=/api/calendars');
-                 const data = await response.json();
+            try {
+                // Test if we can get calendar data from HA
+                const response = await fetch('api/ha-proxy?endpoint=/api/calendars');
+                const data = await response.json();
 
-                 if (data.success && Array.isArray(data.data)) {
-                     statusItem.className = 'status-item success';
-                     statusValue.textContent = `✅ ${data.data.length} calendars`;
-                     statusValue.className = 'status-value success';
-                 } else {
-                     statusItem.className = 'status-item warning';
-                     statusValue.textContent = '⚠️ No calendars';
-                     statusValue.className = 'status-value warning';
-                 }
-             } catch (error) {
-                 statusItem.className = 'status-item error';
-                 statusValue.textContent = '❌ Failed';
-                 statusValue.className = 'status-value error';
-             }
-         }
+                if (data.success && Array.isArray(data.data)) {
+                    statusItem.className = 'status-item success';
+                    statusValue.textContent = `✅ ${data.data.length} calendars`;
+                    statusValue.className = 'status-value success';
+                } else {
+                    statusItem.className = 'status-item warning';
+                    statusValue.textContent = '⚠️ No calendars';
+                    statusValue.className = 'status-value warning';
+                }
+            } catch (error) {
+                statusItem.className = 'status-item error';
+                statusValue.textContent = '❌ Failed';
+                statusValue.className = 'status-value error';
+            }
+        }
 
         async function testAddonDiagnostics() {
             const resultsElement = document.getElementById('addon-diagnostics-results');
             resultsElement.textContent = 'Running add-on diagnostics...';
 
             try {
-                const response = await fetch('/api/addon-diagnostics');
+                const response = await fetch('api/addon-diagnostics');
                 const data = await response.json();
 
                 if (response.ok) {
@@ -480,7 +547,7 @@
             resultsElement.textContent = 'Testing Home Assistant Config API...';
 
             try {
-                const response = await fetch('/api/ha-proxy?endpoint=/api/config');
+                const response = await fetch('api/ha-proxy?endpoint=/api/config');
                 const data = await response.json();
                 resultsElement.textContent = JSON.stringify(data, null, 2);
             } catch (error) {
@@ -493,7 +560,7 @@
             resultsElement.textContent = 'Testing Home Assistant States API...';
 
             try {
-                const response = await fetch('/api/ha-proxy?endpoint=/api/states');
+                const response = await fetch('api/ha-proxy?endpoint=/api/states');
                 const data = await response.json();
                 resultsElement.textContent = JSON.stringify(data, null, 2);
             } catch (error) {
@@ -506,7 +573,7 @@
             resultsElement.textContent = 'Testing Home Assistant Services API...';
 
             try {
-                const response = await fetch('/api/ha-proxy?endpoint=/api/services');
+                const response = await fetch('api/ha-proxy?endpoint=/api/services');
                 const data = await response.json();
                 resultsElement.textContent = JSON.stringify(data, null, 2);
             } catch (error) {
@@ -530,7 +597,7 @@
             resultsElement.textContent = `Testing Home Assistant endpoint: ${cleanEndpoint}...`;
 
             try {
-                const response = await fetch(`/api/ha-proxy?endpoint=${encodeURIComponent(cleanEndpoint)}`);
+                const response = await fetch(`api/ha-proxy?endpoint=${encodeURIComponent(cleanEndpoint)}`);
                 const data = await response.json();
 
                 if (data.success) {
@@ -550,10 +617,10 @@
             configElement.textContent = 'Loading configuration...';
 
             try {
-                const response = await fetch('/api/config');
-                    const data = await response.json();
+                const response = await fetch('api/config');
+                const data = await response.json();
                 configElement.textContent = JSON.stringify(data, null, 2);
-                } catch (error) {
+            } catch (error) {
                 configElement.textContent = 'Error loading configuration: ' + error.message;
             }
         }
@@ -563,8 +630,8 @@
             configElement.textContent = 'Loading environment information...';
 
             try {
-                const response = await fetch('/api/diagnostics');
-                    const data = await response.json();
+                const response = await fetch('api/diagnostics');
+                const data = await response.json();
 
                 const envInfo = {
                     server: data.server,
@@ -573,12 +640,12 @@
                 };
 
                 configElement.textContent = JSON.stringify(envInfo, null, 2);
-                } catch (error) {
+            } catch (error) {
                 configElement.textContent = 'Error loading environment: ' + error.message;
             }
         }
 
-                async function copyDiagnosticReport() {
+        async function copyDiagnosticReport() {
             const button = document.getElementById('copy-report');
             const originalText = button.innerHTML;
             button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
@@ -586,15 +653,15 @@
 
             try {
                 // Collect all diagnostic data
-                const diagnostics = await fetch('/api/diagnostics').then(r => r.json());
-                const config = await fetch('/api/config').then(r => r.json());
-                const weather = await fetch('/api/weather').then(r => r.json());
-                const calendar = await fetch('/api/calendar').then(r => r.json());
+                const diagnostics = await fetch('api/diagnostics').then(r => r.json());
+                const config = await fetch('api/config').then(r => r.json());
+                const weather = await fetch('api/weather').then(r => r.json());
+                const calendar = await fetch('api/calendar').then(r => r.json());
 
                 let haTest;
                 try {
                     // Use the same endpoint that weather uses, which we know works
-                    haTest = await fetch('/api/ha-proxy?endpoint=/api/states').then(r => r.json());
+                    haTest = await fetch('api/ha-proxy?endpoint=/api/states').then(r => r.json());
                 } catch (e) {
                     haTest = { error: e.message };
                 }
@@ -629,10 +696,10 @@
                 button.innerHTML = '<i class="fas fa-times"></i> Failed';
                 showError('Failed to copy report: ' + error.message);
 
-                                setTimeout(() => {
+                setTimeout(() => {
                     button.innerHTML = originalText;
                     button.disabled = false;
-                                }, 2000);
+                }, 2000);
             }
         }
 
@@ -647,4 +714,5 @@
         }
     </script>
 </body>
+
 </html>

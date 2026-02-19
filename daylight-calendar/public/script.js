@@ -21,7 +21,7 @@ document.addEventListener('DOMContentLoaded', function () {
   console.log('[INFO] DOM Content Loaded');
 
   // Load configuration first
-  fetch('/api/config')
+  fetch('api/config')
     .then(response => response.json())
     .then(config => {
       window.appConfig = config;
@@ -220,7 +220,7 @@ function initializeChoresPage() {
         const choreData = Object.fromEntries(formData);
 
         try {
-          const response = await fetch('/api/chores', {
+          const response = await fetch('api/chores', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json'
@@ -606,14 +606,34 @@ function initializeSettingsPage() {
       console.log('[DEBUG] Microphone button listeners added');
     }
 
-    // Profile management is now handled by Home Assistant
+    // Validates if settings page elements exist before attaching listeners
+    const addUserBtn = document.getElementById('add-user-btn');
+    if (addUserBtn) {
+      const modal = document.getElementById('add-user-modal');
+      const form = document.getElementById('add-user-form');
 
-    // Re-setup modals for settings page
+      addUserBtn.addEventListener('click', () => {
+        modal.classList.add('show');
+        const input = document.getElementById('new-user-name');
+        if (input) input.focus();
+      });
+
+      if (form && typeof handleCreateUser === 'function') {
+        form.addEventListener('submit', handleCreateUser);
+      }
+
+      // Initial fetch
+      if (typeof fetchUsers === 'function') {
+        fetchUsers();
+      }
+    }
+
+    // Re-setup modals for settings page (generic closers)
     setupModals();
     console.log('[DEBUG] Modals re-setup for settings page');
 
     fetchDisplaySettings();
-    loadCurrentHAUser();
+    // loadCurrentHAUser(); // Removed in favor of fetchUsers logic above
 
     console.log('[DEBUG] Settings page initialization complete');
   }, 100);
@@ -799,7 +819,7 @@ function setupCalendar() {
       allDaySlot: true,
       height: 'auto',
       aspectRatio: 1.35,
-      events: '/api/calendar',
+      events: 'api/calendar',
       eventClick: function (info) {
         console.log('[DEBUG] Event clicked:', info.event);
       },
@@ -910,7 +930,7 @@ function wakeScreen() {
 // Fetch display settings
 async function fetchDisplaySettings() {
   try {
-    const response = await fetch('/api/display-settings');
+    const response = await fetch('api/user/display-settings');
     if (!response.ok) throw new Error(`Failed to load display settings: ${response.status}`);
 
     const settings = await response.json();
@@ -996,7 +1016,7 @@ function fetchWeather() {
     weatherContainerElement.innerHTML = '<div class="loading"><i class="material-icons spin">refresh</i> Loading weather...</div>';
   }
 
-  fetch('/api/weather')
+  fetch('api/weather')
     .then(response => {
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -1248,7 +1268,7 @@ async function fetchAndDisplayChores() {
   if (!choreBoard) return;
 
   try {
-    const response = await fetch('/api/chores');
+    const response = await fetch('api/chores');
     if (!response.ok) throw new Error('Failed to fetch chores');
 
     const data = await response.json();
@@ -1307,7 +1327,7 @@ async function fetchAndDisplayChores() {
         }
 
         try {
-          const response = await fetch(`/api/chores/${itemId}`, {
+          const response = await fetch(`api/chores/${itemId}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1438,7 +1458,7 @@ async function loadCurrentHAUser() {
   if (currentUserSpan) {
     try {
       // Try to get current HA user info
-      const response = await fetch('/api/ha-proxy?endpoint=/api/config');
+      const response = await fetch('api/ha-proxy?endpoint=/api/config');
       if (response.ok) {
         const data = await response.json();
         if (data.success && data.data) {
@@ -1498,3 +1518,88 @@ function updateEventWeather(info) {
   }
 }
 
+
+// ── USER MANAGEMENT (SETTINGS PAGE) ──────────────────────────────────────
+
+async function fetchUsers() {
+  const listContainer = document.getElementById('user-list');
+  if (!listContainer) return;
+
+  try {
+    const resp = await fetch('api/users');
+    if (!resp.ok) throw new Error('Failed to fetch users');
+    const users = await resp.json();
+
+    if (users.length === 0) {
+      listContainer.innerHTML = '<div class="no-users">No users found.</div>';
+      return;
+    }
+
+    let html = '';
+    users.forEach(user => {
+      const initials = user.name ? user.name.substring(0, 2).toUpperCase() : '??';
+      const avatarUrl = user.picture || user.entity_picture;
+
+      let avatarHtml;
+      if (avatarUrl) {
+        avatarHtml = `<img src="${avatarUrl}" alt="${user.name}" class="user-avatar-img">`;
+      } else {
+        avatarHtml = `<div class="user-avatar-placeholder">${initials}</div>`;
+      }
+
+      html += `
+        <div class="user-item">
+          <div class="user-avatar">
+            ${avatarHtml}
+          </div>
+          <div class="user-info">
+            <div class="user-name">${user.name || 'Unknown'}</div>
+            <div class="user-id">ID: ${user.id}</div>
+          </div>
+        </div>
+      `;
+    });
+    listContainer.innerHTML = html;
+
+  } catch (err) {
+    console.error('Error fetching users:', err);
+    listContainer.innerHTML = '<div class="error-users">Failed to load users</div>';
+  }
+}
+
+async function handleCreateUser(e) {
+  e.preventDefault();
+  const nameInput = document.getElementById('new-user-name');
+  const name = nameInput.value.trim();
+  if (!name) return;
+
+  const btn = e.target.querySelector('button[type="submit"]');
+  const originalText = btn.textContent;
+  btn.textContent = 'Creating...';
+  btn.disabled = true;
+
+  try {
+    const resp = await fetch('api/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    });
+
+    if (!resp.ok) {
+      const errData = await resp.json();
+      throw new Error(errData.error || 'Creation failed');
+    }
+
+    // Success
+    document.getElementById('add-user-modal').classList.remove('show');
+    nameInput.value = '';
+    fetchUsers(); // Refresh list
+    alert(`User "${name}" created successfully!`);
+
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    btn.textContent = originalText;
+    btn.disabled = false;
+  }
+}

@@ -536,7 +536,7 @@ class PageLoader {
     // First, try to load the saved theme from Home Assistant, then localStorage
     try {
       // First try to get theme from Home Assistant
-      const haResponse = await fetch('/api/user/theme');
+      const haResponse = await fetch('api/user/theme');
       if (haResponse.ok) {
         const haData = await haResponse.json();
         if (haData.theme) {
@@ -589,7 +589,7 @@ class PageLoader {
 
         // Save theme to Home Assistant instead of localStorage
         try {
-          const response = await fetch('/api/user/theme', {
+          const response = await fetch('api/user/theme', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json'

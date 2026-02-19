@@ -11,6 +11,7 @@ const path = require('path');
 const fs = require('fs');
 const { exec } = require('child_process');
 const axios = require('axios');
+const WebSocket = require('ws'); // Added for HA WebSocket API
 
 // Main initialization function to handle async imports
 async function initializeApp() {
@@ -176,86 +177,114 @@ async function initializeApp() {
   /**
    * Helper function to make HA API calls using axios
    */
+  /**
+   * Helper function to make HA API calls using axios with robust retry logic
+   */
   async function callHaApi(apiPath, fetchOptions = {}) {
-    const url = hassApiUrl + apiPath; // apiPath should start with a slash
+    // Define all possible base URLs to try
+    const primaryUrl = hassApiUrl;
+
+    // Alternative URLs to try if the primary fails
+    // Note: In add-on environment, 'supervisor' is the hostname for the supervisor proxy
+    const alternativeBaseUrls = [
+      'http://supervisor/core/api',          // Standard Core Proxy
+      'http://supervisor/homeassistant/api', // Legacy Core Proxy
+      'http://homeassistant:8123/api'        // Direct access (rarely works with supervisor token but worth a shot)
+    ];
+
+    // Filter out the primary URL from alternatives to avoid duplicates
+    const candidates = [
+      primaryUrl,
+      ...alternativeBaseUrls.filter(u => u !== primaryUrl && u !== primaryUrl.replace(/\/$/, ''))
+    ];
+
+    // Method to use
     const method = fetchOptions.method || 'GET';
-
-    // Get the token with additional debugging
     const token = process.env.SUPERVISOR_TOKEN || process.env.HASS_TOKEN || '';
-    const tokenType = process.env.SUPERVISOR_TOKEN ? 'SUPERVISOR_TOKEN' :
-      process.env.HASS_TOKEN ? 'HASS_TOKEN' : 'NO TOKEN';
 
-    // Create headers based on environment
-    let headers = {
-      'Content-Type': 'application/json',
-      ...(fetchOptions.headers || {}),
-    };
+    // Request body
+    const requestData = fetchOptions.body
+      ? (typeof fetchOptions.body === 'string' ? fetchOptions.body : fetchOptions.body)
+      : undefined;
 
-    // In production (add-on mode), use supervisor token with X-Supervisor-Token header
-    if (isProduction && process.env.SUPERVISOR_TOKEN) {
-      headers['X-Supervisor-Token'] = process.env.SUPERVISOR_TOKEN;
-      console.log(`[INFO] Using supervisor token authentication`);
-    } else if (token) {
-      // In development or ingress mode, use Bearer token
-      headers['Authorization'] = `Bearer ${token}`;
-      console.log(`[INFO] Using Bearer token authentication`);
-    } else {
-      console.warn(`[WARN] No authentication token available!`);
-    }
+    // Helper to attempt a request
+    const attemptRequest = async (baseUrl, useLegacyHeader = false) => {
+      const url = baseUrl + apiPath; // apiPath starts with /
 
-    // Create axios config
-    const axiosConfig = {
-      method: method,
-      url: url,
-      headers: headers
-    };
+      const headers = {
+        'Content-Type': 'application/json',
+        ...(fetchOptions.headers || {}),
+      };
 
-    // Add data if present (axios uses 'data' instead of 'body')
-    if (fetchOptions.body) {
-      axiosConfig.data = typeof fetchOptions.body === 'string'
-        ? fetchOptions.body
-        : fetchOptions.body;
-    }
-
-    console.log(`[INFO] Fetching from HA API: ${method} ${url}`);
-    console.log(`[INFO] Using token type: ${tokenType}, length: ${token.length}`);
-
-    if (axiosConfig.data) {
-      console.log(`[DEBUG] Request data: ${typeof axiosConfig.data === 'string' ? axiosConfig.data : JSON.stringify(axiosConfig.data)}`);
-    }
-
-    try {
-      const response = await axios(axiosConfig);
-      return response.data;
-    } catch (error) {
-      console.error(`[ERROR] Home Assistant API request to ${apiPath} failed:`, error.message);
-      if (error.response) {
-        console.error(`[ERROR] Status: ${error.response.status} ${error.response.statusText}`);
-        console.error(`[ERROR] Response data:`, error.response.data);
-
-        // If we get 401 with supervisor token, try different approaches
-        if (error.response.status === 401 && isProduction) {
-          console.log(`[INFO] 401 error in production - trying alternative authentication methods`);
-
-          // Log current environment for debugging
-          console.log(`[DEBUG] Environment variables:`, {
-            SUPERVISOR_TOKEN: process.env.SUPERVISOR_TOKEN ? `${process.env.SUPERVISOR_TOKEN.substring(0, 10)}...` : 'undefined',
-            HASSIO_TOKEN: process.env.HASSIO_TOKEN ? `${process.env.HASSIO_TOKEN.substring(0, 10)}...` : 'undefined',
-            HOME_ASSISTANT_API: process.env.HOME_ASSISTANT_API || 'undefined'
-          });
-
-          // Try alternative API endpoints for add-ons
-          const alternativeUrls = [
-            'http://homeassistant:8123/api',
-            'http://supervisor/core/api',
-            'http://hassio/homeassistant/api'
-          ];
-
-          console.log(`[INFO] Will try alternative endpoints: ${alternativeUrls.join(', ')}`);
+      // Set auth header
+      if (token) {
+        if (useLegacyHeader && isProduction) {
+          headers['X-Supervisor-Token'] = token;
+          headers['Authorization'] = undefined; // Clear conflicting header
+        } else {
+          headers['Authorization'] = `Bearer ${token}`;
+          headers['X-Supervisor-Token'] = undefined;
         }
       }
-      throw error;
+
+      const axiosConfig = {
+        method,
+        url,
+        headers,
+        data: requestData,
+        validateStatus: status => status < 500 // Resolve even on 4xx to handle auth errors manually
+      };
+
+      console.log(`[INFO] Trying HA API: ${method} ${url} (Legacy Header: ${useLegacyHeader})`);
+
+      try {
+        const response = await axios(axiosConfig);
+
+        // If we got a 401/403, throw to trigger next attempt
+        if (response.status === 401 || response.status === 403) {
+          throw {
+            response,
+            message: `Request failed with status ${response.status}`,
+            isAuthError: true
+          };
+        }
+
+        return response.data;
+      } catch (error) {
+        throw error;
+      }
+    };
+
+    // Retry loop
+    let lastError = null;
+
+    for (const baseUrl of candidates) {
+      // Try with Bearer Token first (Standard)
+      try {
+        return await attemptRequest(baseUrl, false);
+      } catch (error) {
+        lastError = error;
+        // Check if we should try legacy header on this same URL
+        if (error.isAuthError && isProduction) {
+          try {
+            console.log(`[INFO] Auth failed with Bearer token, retrying with X-Supervisor-Token on ${baseUrl}`);
+            return await attemptRequest(baseUrl, true);
+          } catch (legacyError) {
+            lastError = legacyError;
+          }
+        }
+        // Continue to next URL
+        console.warn(`[WARN] Failed to connect to ${baseUrl}${apiPath}: ${error.message}`);
+      }
     }
+
+    // If we get here, all attempts failed
+    console.error(`[ERROR] All HA API attempts failed for ${apiPath}`);
+    if (lastError && lastError.response) {
+      console.error(`[ERROR] Final Status: ${lastError.response.status}`);
+      console.error(`[ERROR] Final Response:`, lastError.response.data);
+    }
+    throw lastError || new Error('Failed to connect to Home Assistant API');
   }
 
   /**
@@ -596,6 +625,152 @@ async function initializeApp() {
     };
   }
 
+  // ─────────────────────────────────────────────────────────────────────────────
+  // HA WebSocket Client for Advanced APIs (Person/User Management)
+  // ─────────────────────────────────────────────────────────────────────────────
+  class HaWebSocketClient {
+    constructor(url, token) {
+      this.url = url.replace('http', 'ws') + '/websocket';
+      this.token = token;
+      this.ws = null;
+      this.idCounter = 1;
+      this.pendingCommands = new Map();
+      this.isConnected = false;
+      this.connectPromise = null;
+    }
+
+    async connect() {
+      if (this.isConnected) return;
+      if (this.connectPromise) return this.connectPromise;
+
+      this.connectPromise = new Promise((resolve, reject) => {
+        try {
+          console.log(`[WS] Connecting to HA WebSocket: ${this.url}`);
+          this.ws = new WebSocket(this.url);
+
+          this.ws.on('open', () => {
+            console.log('[WS] Connection opened, waiting for auth...');
+          });
+
+          this.ws.on('message', (data) => {
+            const msg = JSON.parse(data);
+
+            if (msg.type === 'auth_required') {
+              console.log('[WS] Auth required, sending token...');
+              this.ws.send(JSON.stringify({
+                type: 'auth',
+                access_token: this.token
+              }));
+            } else if (msg.type === 'auth_ok') {
+              console.log('[WS] Auth successful!');
+              this.isConnected = true;
+              resolve();
+            } else if (msg.type === 'auth_invalid') {
+              console.error('[WS] Auth failed:', msg.message);
+              this.isConnected = false;
+              reject(new Error(msg.message));
+            } else if (msg.type === 'result') {
+              const handler = this.pendingCommands.get(msg.id);
+              if (handler) {
+                if (msg.success) handler.resolve(msg.result);
+                else handler.reject(new Error(msg.error ? msg.error.message : 'Unknown error'));
+                this.pendingCommands.delete(msg.id);
+              }
+            }
+          });
+
+          this.ws.on('error', (err) => {
+            console.error('[WS] Error:', err.message);
+            this.isConnected = false;
+            this.connectPromise = null;
+            reject(err);
+          });
+
+          this.ws.on('close', () => {
+            console.log('[WS] Connection closed');
+            this.isConnected = false;
+            this.connectPromise = null;
+          });
+
+        } catch (err) {
+          reject(err);
+        }
+      });
+
+      return this.connectPromise;
+    }
+
+    async sendCommand(type, payload = {}) {
+      if (!this.isConnected) await this.connect();
+
+      return new Promise((resolve, reject) => {
+        const id = this.idCounter++;
+        this.pendingCommands.set(id, { resolve, reject });
+
+        const command = { id, type, ...payload };
+        console.log(`[WS] Sending command: ${type} (ID: ${id})`);
+        this.ws.send(JSON.stringify(command));
+      });
+    }
+  }
+
+  // Initialize generic WS client
+  let haWsClient = null;
+  function getHaWsClient() {
+    if (!haWsClient) {
+      const token = process.env.SUPERVISOR_TOKEN || process.env.HASS_TOKEN;
+      if (!hassApiUrl || !token) {
+        console.error('[WS] Cannot init client: missing URL or Token');
+        return null;
+      }
+      // WebSocket URL is base API URL without /api
+      const baseUrl = hassApiUrl.replace(/\/api$/, '');
+      haWsClient = new HaWebSocketClient(baseUrl + '/api', token);
+    }
+    return haWsClient;
+  }
+
+  // Helper: Fetch HA Users (Persons)
+  async function fetchHaUsers() {
+    if (isStandaloneDev) {
+      const mockPath = path.join(__dirname, 'mock-data', 'users.json');
+      try {
+        const data = JSON.parse(fs.readFileSync(mockPath, 'utf8'));
+        return data.users.map(u => ({
+          id: u.id,
+          name: u.name,
+          user_id: u.id, // Mock mapping
+          picture: u.avatar // Use avatar as picture for mock
+        }));
+      } catch (e) { return []; }
+    }
+
+    const client = getHaWsClient();
+    if (!client) return [];
+
+    try {
+      const result = await client.sendCommand('person/list');
+      return result.storage || [];
+    } catch (err) {
+      console.error('[WS] Failed to fetch users:', err.message);
+      return [];
+    }
+  }
+
+  // Helper: Create HA User (Person)
+  async function createHaUser(name) {
+    if (isStandaloneDev) {
+      console.log(`[MOCK] Created user: ${name}`);
+      return { id: 'mock_' + Date.now(), name };
+    }
+
+    const client = getHaWsClient();
+    if (!client) throw new Error('WS Client not available');
+
+    // Create person
+    return await client.sendCommand('person/create', { name });
+  }
+
   // Socket.io connection handling
   io.on('connection', (socket) => {
     console.log('[INFO] Client connected to socket.io');
@@ -626,6 +801,31 @@ async function initializeApp() {
   });
 
   // ROUTES SECTION
+
+  // API: Get Users
+  app.get('/api/users', async (req, res) => {
+    try {
+      const users = await fetchHaUsers();
+      res.json(users);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // API: Create User
+  app.post('/api/users', express.json(), async (req, res) => {
+    try {
+      const { name } = req.body;
+      if (!name) return res.status(400).json({ error: 'Name required' });
+
+      const newUser = await createHaUser(name);
+      res.json(newUser);
+    } catch (err) {
+      console.error('Create user failed:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Basic routes
   app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
