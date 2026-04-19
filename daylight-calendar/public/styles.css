@@ -67,11 +67,11 @@
   --md-font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', Oxygen, Ubuntu, Cantarell, 'Open Sans', sans-serif;
 
   /* Elevation and shadows */
-  --md-shadow-1: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
-  --md-shadow-2: 0 3px 6px rgba(0,0,0,0.16), 0 3px 6px rgba(0,0,0,0.23);
-  --md-shadow-3: 0 10px 20px rgba(0,0,0,0.19), 0 6px 6px rgba(0,0,0,0.23);
-  --md-shadow-4: 0 14px 28px rgba(0,0,0,0.25), 0 10px 10px rgba(0,0,0,0.22);
-  --md-shadow-5: 0 19px 38px rgba(0,0,0,0.30), 0 15px 12px rgba(0,0,0,0.22);
+  --md-shadow-1: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24);
+  --md-shadow-2: 0 3px 6px rgba(0, 0, 0, 0.16), 0 3px 6px rgba(0, 0, 0, 0.23);
+  --md-shadow-3: 0 10px 20px rgba(0, 0, 0, 0.19), 0 6px 6px rgba(0, 0, 0, 0.23);
+  --md-shadow-4: 0 14px 28px rgba(0, 0, 0, 0.25), 0 10px 10px rgba(0, 0, 0, 0.22);
+  --md-shadow-5: 0 19px 38px rgba(0, 0, 0, 0.30), 0 15px 12px rgba(0, 0, 0, 0.22);
 
   /* Shape */
   --md-shape-small: 4px;
@@ -181,11 +181,11 @@
   --md-surface-5: #747775;
 
   /* Elevation and shadows */
-  --md-shadow-1: 0 1px 3px rgba(0,0,0,0.24), 0 1px 2px rgba(0,0,0,0.36);
-  --md-shadow-2: 0 3px 6px rgba(0,0,0,0.32), 0 3px 6px rgba(0,0,0,0.46);
-  --md-shadow-3: 0 10px 20px rgba(0,0,0,0.38), 0 6px 6px rgba(0,0,0,0.46);
-  --md-shadow-4: 0 14px 28px rgba(0,0,0,0.50), 0 10px 10px rgba(0,0,0,0.44);
-  --md-shadow-5: 0 19px 38px rgba(0,0,0,0.60), 0 15px 12px rgba(0,0,0,0.44);
+  --md-shadow-1: 0 1px 3px rgba(0, 0, 0, 0.24), 0 1px 2px rgba(0, 0, 0, 0.36);
+  --md-shadow-2: 0 3px 6px rgba(0, 0, 0, 0.32), 0 3px 6px rgba(0, 0, 0, 0.46);
+  --md-shadow-3: 0 10px 20px rgba(0, 0, 0, 0.38), 0 6px 6px rgba(0, 0, 0, 0.46);
+  --md-shadow-4: 0 14px 28px rgba(0, 0, 0, 0.50), 0 10px 10px rgba(0, 0, 0, 0.44);
+  --md-shadow-5: 0 19px 38px rgba(0, 0, 0, 0.60), 0 15px 12px rgba(0, 0, 0, 0.44);
 
   /* Legacy variables mapped to MD3 */
   --bg-color: var(--md-background);
@@ -264,11 +264,11 @@
   --md-surface-5: #f0d5d8;
 
   /* Elevation and shadows */
-  --md-shadow-1: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.12);
-  --md-shadow-2: 0 3px 6px rgba(0,0,0,0.10), 0 3px 6px rgba(0,0,0,0.14);
-  --md-shadow-3: 0 10px 20px rgba(0,0,0,0.12), 0 6px 6px rgba(0,0,0,0.14);
-  --md-shadow-4: 0 14px 28px rgba(0,0,0,0.15), 0 10px 10px rgba(0,0,0,0.12);
-  --md-shadow-5: 0 19px 38px rgba(0,0,0,0.18), 0 15px 12px rgba(0,0,0,0.14);
+  --md-shadow-1: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.12);
+  --md-shadow-2: 0 3px 6px rgba(0, 0, 0, 0.10), 0 3px 6px rgba(0, 0, 0, 0.14);
+  --md-shadow-3: 0 10px 20px rgba(0, 0, 0, 0.12), 0 6px 6px rgba(0, 0, 0, 0.14);
+  --md-shadow-4: 0 14px 28px rgba(0, 0, 0, 0.15), 0 10px 10px rgba(0, 0, 0, 0.12);
+  --md-shadow-5: 0 19px 38px rgba(0, 0, 0, 0.18), 0 15px 12px rgba(0, 0, 0, 0.14);
 
   /* Legacy variables mapped to MD3 */
   --bg-color: var(--md-background);
@@ -523,7 +523,8 @@
 }
 
 /* Base typography & layout */
-body, html {
+body,
+html {
   margin: 0;
   padding: 0;
   height: 100%;
@@ -547,7 +548,12 @@ body, html {
 }
 
 /* Typography */
-h1, h2, h3, h4, h5, h6 {
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
   margin-top: 0;
   color: var(--md-on-background);
   font-weight: 400;
@@ -983,7 +989,8 @@ main {
   border-radius: var(--md-shape-medium);
 }
 
-.fc-theme-standard td, .fc-theme-standard th {
+.fc-theme-standard td,
+.fc-theme-standard th {
   border-color: var(--md-outline-variant);
 }
 
@@ -1200,11 +1207,11 @@ footer {
 }
 
 #calendar-content header {
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 #calendar-content footer {
-  box-shadow: 0 -2px 4px rgba(0,0,0,0.1);
+  box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.1);
 }
 
 #calendar-content main {
@@ -1279,6 +1286,7 @@ footer {
     transform: scale(0.9);
     opacity: 0;
   }
+
   100% {
     transform: scale(1);
     opacity: 1;
@@ -1628,45 +1636,56 @@ footer {
 }
 
 /* Font Awesome Icon Size Adjustments */
-.fas, .fab, .far {
-  font-size: 1rem; /* Default size for all icons */
+.fas,
+.fab,
+.far {
+  font-size: 1rem;
+  /* Default size for all icons */
 }
 
 .tab-item i {
-  font-size: 1.25rem; /* Sidebar icons slightly larger */
+  font-size: 1.25rem;
+  /* Sidebar icons slightly larger */
   margin-right: var(--md-space-3);
 }
 
 .btn i {
-  font-size: 0.875rem; /* Button icons should be slightly smaller */
+  font-size: 0.875rem;
+  /* Button icons should be slightly smaller */
   margin-right: 0.25rem;
 }
 
 .weather .condition i {
-  font-size: 1.5rem; /* Weather condition icon */
+  font-size: 1.5rem;
+  /* Weather condition icon */
 }
 
 .day-weather-icon i {
-  font-size: 1rem; /* Calendar day weather icons */
+  font-size: 1rem;
+  /* Calendar day weather icons */
 }
 
 .item-actions i,
 .profile-edit-btn i,
 .modal-close i {
-  font-size: 0.875rem; /* Action button icons */
+  font-size: 0.875rem;
+  /* Action button icons */
 }
 
 header i,
 .header-actions i {
-  font-size: 1rem; /* Header icons */
+  font-size: 1rem;
+  /* Header icons */
 }
 
 #sidebar-logo i {
-  font-size: 1.5rem; /* Sidebar logo icon */
+  font-size: 1.5rem;
+  /* Sidebar logo icon */
 }
 
 .toggle-icon {
-  font-size: 1rem !important; /* Force sidebar toggle icon size */
+  font-size: 1rem !important;
+  /* Force sidebar toggle icon size */
 }
 
 /* Add a spin animation for Material Icons */
@@ -1675,8 +1694,13 @@ header i,
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 /* Material Icons in buttons */
@@ -1910,20 +1934,25 @@ header i,
 }
 
 #settings-content.tab-content {
-  display: none; /* Hidden by default */
+  display: none;
+  /* Hidden by default */
   flex-direction: column;
   height: 100%;
   width: 100%;
   overflow-y: auto;
   background-color: var(--md-background);
   color: var(--md-on-surface);
-  position: relative; /* Add this to ensure proper stacking */
-  z-index: 1; /* Ensure content is on top */
-  visibility: visible !important; /* Force visibility */
+  position: relative;
+  /* Add this to ensure proper stacking */
+  z-index: 1;
+  /* Ensure content is on top */
+  visibility: visible !important;
+  /* Force visibility */
 }
 
 #settings-content.tab-content.active-content {
-  display: flex !important; /* Shown when active - use !important to override any other styles */
+  display: flex !important;
+  /* Shown when active - use !important to override any other styles */
   visibility: visible !important;
   opacity: 1 !important;
 }
@@ -1996,4 +2025,245 @@ header i,
   display: flex;
   gap: var(--md-space-3);
   margin-top: var(--md-space-3);
+}
+
+/* ── CalDAV Account Management ────────────────────────────────────────── */
+
+.caldav-accounts-list {
+  margin-bottom: var(--md-space-4);
+}
+
+.caldav-account-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--md-space-3) var(--md-space-4);
+  background-color: var(--md-surface-2);
+  border-radius: var(--md-shape-medium);
+  margin-bottom: var(--md-space-2);
+  transition: background-color var(--md-transition-standard);
+}
+
+.caldav-account-item:hover {
+  background-color: var(--md-surface-3);
+}
+
+.caldav-account-info {
+  display: flex;
+  align-items: center;
+  gap: var(--md-space-3);
+}
+
+.caldav-account-icon {
+  font-size: 1.5rem;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--md-surface-3);
+  border-radius: 50%;
+}
+
+.caldav-account-email {
+  font-weight: 500;
+  color: var(--md-on-surface);
+  font-size: 0.95rem;
+}
+
+.caldav-account-meta {
+  font-size: 0.8rem;
+  color: var(--md-on-surface-variant);
+  margin-top: 2px;
+}
+
+.caldav-connect-form {
+  margin-top: var(--md-space-3);
+  padding-top: var(--md-space-3);
+  border-top: 1px solid var(--md-outline-variant);
+}
+
+.caldav-connect-status {
+  margin-top: var(--md-space-3);
+  padding: var(--md-space-2) var(--md-space-3);
+  border-radius: var(--md-shape-small);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.caldav-connect-status.success {
+  background-color: var(--md-tertiary-container);
+  color: var(--md-on-tertiary-container);
+}
+
+.caldav-connect-status.error {
+  background-color: var(--md-error-container);
+  color: var(--md-on-error-container);
+}
+
+.caldav-connect-status.info {
+  background-color: var(--md-secondary-container);
+  color: var(--md-on-secondary-container);
+}
+
+.btn-small {
+  padding: var(--md-space-1) var(--md-space-3);
+  min-height: 30px;
+  font-size: 0.75rem;
+}
+
+.caldav-disconnect-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+/* ── User List Items ──────────────────────────────────────────────────── */
+
+.user-list-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-space-2);
+}
+
+.user-item {
+  display: flex;
+  align-items: center;
+  gap: var(--md-space-3);
+  padding: var(--md-space-3) var(--md-space-4);
+  background-color: var(--md-surface-2);
+  border-radius: var(--md-shape-medium);
+  transition: all var(--md-transition-standard);
+}
+
+.user-item:hover {
+  background-color: var(--md-surface-3);
+  box-shadow: var(--md-shadow-1);
+}
+
+.user-avatar {
+  flex-shrink: 0;
+}
+
+.user-avatar-img {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.user-avatar-placeholder {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background-color: var(--md-primary);
+  color: var(--md-on-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 500;
+  font-size: 0.875rem;
+}
+
+.user-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.user-name {
+  font-weight: 500;
+  color: var(--md-on-surface);
+  font-size: 0.95rem;
+}
+
+.user-details {
+  font-size: 0.8rem;
+  color: var(--md-on-surface-variant);
+  margin-top: 2px;
+}
+
+.user-calendar-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.user-edit-icon {
+  flex-shrink: 0;
+  color: var(--md-on-surface-variant);
+  opacity: 0.5;
+  transition: opacity var(--md-transition-standard);
+}
+
+.user-item:hover .user-edit-icon {
+  opacity: 1;
+}
+
+.user-edit-icon i {
+  font-size: 20px;
+}
+
+.loading-users,
+.loading-accounts,
+.no-users,
+.no-accounts,
+.error-users,
+.error-accounts {
+  padding: var(--md-space-3);
+  text-align: center;
+  color: var(--md-on-surface-variant);
+  font-size: 0.9rem;
+}
+
+/* User Profile Settings UI */
+.color-selector,
+.icon-selector {
+  display: flex;
+  gap: 10px;
+  margin-top: 5px;
+}
+
+.color-option {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.2s, border-color 0.2s;
+  padding: 0;
+}
+
+.color-option:hover {
+  transform: scale(1.1);
+}
+
+.color-option.active {
+  border-color: var(--text-color, #333);
+  transform: scale(1.15);
+  box-shadow: 0 0 5px rgba(0, 0, 0, 0.3);
+}
+
+.icon-option {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #ddd);
+  background-color: var(--card-bg, #fff);
+  color: var(--text-color, #333);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.icon-option.active {
+  border-color: var(--primary-color, #4285f4);
+  background-color: rgba(66, 133, 244, 0.1);
+  color: var(--primary-color, #4285f4);
+}
+
+.icon-option:hover {
+  background-color: var(--hover-color, #f5f5f5);
 }

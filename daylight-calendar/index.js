@@ -12,6 +12,7 @@ const fs = require('fs');
 const { exec } = require('child_process');
 const axios = require('axios');
 const WebSocket = require('ws'); // Added for HA WebSocket API
+const caldavService = require('./scripts/caldav-service');
 
 // Main initialization function to handle async imports
 async function initializeApp() {
@@ -38,6 +39,7 @@ async function initializeApp() {
   const supervisorOptionsPath = '/data/options.json';
   const isProduction = process.env.SUPERVISOR_TOKEN !== undefined;
   const isIngressMode = isProduction && process.env.INGRESS_PORT !== undefined;
+  const DATA_DIR = isProduction ? '/data' : path.join(__dirname, 'data');
 
   if (isIngressMode) {
     console.log(`[INFO] Running in Home Assistant ingress mode on port ${process.env.INGRESS_PORT}`);
@@ -437,42 +439,124 @@ async function initializeApp() {
     return await storeDataInHASensor('sensor.daylight_display_settings', settings);
   }
 
-  // Function to fetch calendar data
+  // Helper to read user mappings
+  function readUserMappings() {
+    const mappingFile = path.join(DATA_DIR, 'user_mappings.json');
+    if (fs.existsSync(mappingFile)) {
+      try {
+        return JSON.parse(fs.readFileSync(mappingFile, 'utf8'));
+      } catch (err) {
+        console.error('Error reading user mappings:', err);
+      }
+    }
+    return {};
+  }
+
+  // Function to fetch calendar data (HA + CalDAV merged)
   async function fetchCalendarData() {
-    // In standalone mode, return mock data
+    let haEvents = [];
+    let caldavEvents = [];
+
+    // In standalone mode, return mock data mixed with real CalDAV data
     if (isStandaloneDev) {
       try {
         const mockPath = path.join(__dirname, 'mock-data', 'calendar.json');
         const mockData = JSON.parse(fs.readFileSync(mockPath, 'utf8'));
-        console.log(`[MOCK] Returning ${mockData.events.length} mock calendar events`);
-        return mockData.events;
+        console.log(`[MOCK] Loaded ${mockData.events.length} mock HA calendar events`);
+        haEvents = mockData.events;
       } catch (e) {
         console.warn('[MOCK] Could not load mock calendar data:', e.message);
-        return [];
+      }
+
+      // Try to fetch REAL CalDAV events first
+      try {
+        caldavEvents = await caldavService.fetchAllEvents(config.calendar_days_to_show || 7);
+        console.log(`[INFO] (Standalone) Fetched ${caldavEvents.length} Real CalDAV events`);
+      } catch (error) {
+        console.error('[ERROR] Error fetching Real CalDAV events in standalone mode:', error.message);
+        // Fallback to mock events ONLY if real fetch fails completely and we have no accounts?
+        // Actually, let's just log it. If the user wants real CalDAV, they need to connect.
+      }
+
+      return [...haEvents, ...caldavEvents];
+    }
+
+    // Fetch HA calendar events
+    if (config.calendar_entity_id) {
+      try {
+        const now = new Date();
+        const start_time = now.toISOString();
+        const end_time = new Date(now.getTime() + (config.calendar_days_to_show || 7) * 24 * 60 * 60 * 1000).toISOString();
+        const apiPath = "/calendars/" + config.calendar_entity_id + "?start=" + start_time + "&end=" + end_time;
+
+        console.log("[INFO] Fetching calendar data from: " + hassApiUrl + apiPath);
+        const data = await callHaApi(apiPath);
+        haEvents = (data || []).map(e => ({
+          ...e,
+          source: 'ha',
+          calendar_entity_id: config.calendar_entity_id
+        }));
+        console.log('[INFO] Successfully fetched HA calendar data.');
+      } catch (error) {
+        console.error('[ERROR] Error fetching HA calendar data:', error.message);
       }
     }
 
-    if (!config.calendar_entity_id) {
-      console.log('[INFO] No calendar_entity_id configured, skipping calendar data fetch.');
-      return [];
-    }
+    // Fetch CalDAV events
     try {
-      const now = new Date();
-      const start_time = now.toISOString();
-      const end_time = new Date(now.getTime() + (config.calendar_days_to_show || 7) * 24 * 60 * 60 * 1000).toISOString();
-      const apiPath = "/calendars/" + config.calendar_entity_id + "?start=" + start_time + "&end=" + end_time;
-
-      console.log("[INFO] Fetching calendar data from: " + hassApiUrl + apiPath);
-
-      const data = await callHaApi(apiPath);
-      console.log('[INFO] Successfully fetched calendar data.');
-      return data || []; // Return empty array if data is null/undefined
+      caldavEvents = await caldavService.fetchAllEvents(config.calendar_days_to_show || 7);
+      console.log(`[INFO] Fetched ${caldavEvents.length} CalDAV events`);
     } catch (error) {
-      console.error('[ERROR] Error fetching calendar data:', error.message);
-      console.error("[ERROR] Calendar API Response Status: " + (error.status || 'N/A'));
-      console.error("[ERROR] Calendar API Response Data: " + (error.data || 'N/A'));
-      return []; // Return empty array on error
+      console.error('[ERROR] Error fetching CalDAV events:', error.message);
     }
+
+    const mergedEvents = [...haEvents, ...caldavEvents];
+    const userMappings = readUserMappings();
+
+    let validUserIds = [];
+    try {
+      const haUsers = await fetchHaUsers();
+      validUserIds = haUsers.map(u => u.id);
+    } catch (err) {
+      console.error('[ERROR] Could not fetch valid HA users for event mapping:', err.message);
+    }
+
+    // Assign proper userId to events so frontend filtering works
+    mergedEvents.forEach(e => {
+      // Validate HA userIds that were assigned inside fetchCalendarData if any
+      if (e.userId && !validUserIds.includes(e.userId)) {
+        e.userId = null;
+      }
+
+      if (e.source === 'caldav') {
+        const calEntityId = `caldav_${e.accountId}_${e.calendarUrl}`;
+        e.calendar_entity_id = calEntityId; // Stamp entity ID for counts
+        const userMapping = Object.entries(userMappings).find(([id, data]) => {
+          if (Array.isArray(data.calendar_entity_id)) {
+            return data.calendar_entity_id.includes(calEntityId);
+          }
+          return data.calendar_entity_id === calEntityId;
+        });
+
+        if (userMapping && validUserIds.includes(userMapping[0])) {
+          e.userId = userMapping[0]; // Assign to the linked user
+        }
+      } else if (e.source === 'ha') {
+        // Find if HA calendar is mapped to a user
+        const userMapping = Object.entries(userMappings).find(([id, data]) => {
+          if (Array.isArray(data.calendar_entity_id)) {
+            return data.calendar_entity_id.includes(e.calendar_entity_id);
+          }
+          return data.calendar_entity_id === e.calendar_entity_id;
+        });
+
+        if (userMapping && validUserIds.includes(userMapping[0])) {
+          e.userId = userMapping[0];
+        }
+      }
+    });
+
+    return mergedEvents;
   }
 
   // Function to fetch weather data
@@ -528,8 +612,30 @@ async function initializeApp() {
 
         console.log(`[INFO] Successfully fetched weather state for ${weatherEntityId}`);
 
-        // Extract forecast from the entity's attributes
-        const forecast = currentState.attributes?.forecast || [];
+        // Extract forecast from the entity's attributes (Legacy)
+        let forecast = currentState.attributes?.forecast || [];
+
+        // If forecast is empty, try the new weather.get_forecasts service (Modern HA)
+        if (forecast.length === 0) {
+          console.log(`[INFO] Legacy forecast attribute empty, trying weather.get_forecasts service for ${weatherEntityId}`);
+          try {
+            const serviceResponse = await callHaApi(`/services/weather/get_forecasts`, {
+              method: 'POST',
+              body: JSON.stringify({
+                entity_id: weatherEntityId,
+                type: 'daily'
+              })
+            });
+
+            // Service response format: { "weather.entity_id": { "forecast": [...] } }
+            if (serviceResponse && serviceResponse[weatherEntityId]) {
+              forecast = serviceResponse[weatherEntityId].forecast || [];
+              console.log(`[INFO] Successfully fetched ${forecast.length} forecast items via service call.`);
+            }
+          } catch (serviceError) {
+            console.warn(`[WARN] Failed to fetch forecast via service call: ${serviceError.message}`);
+          }
+        }
 
         // Return both current state and forecast
         return {
@@ -730,17 +836,155 @@ async function initializeApp() {
     return haWsClient;
   }
 
+  // Helper to save user mappings (calendar/notify) locally
+  async function saveUserMapping(userId, data) {
+    const mappingFile = path.join(DATA_DIR, 'user_mappings.json');
+    try {
+      // Ensure data dir exists
+      if (!fs.existsSync(DATA_DIR)) {
+        fs.mkdirSync(DATA_DIR, { recursive: true });
+      }
+
+      let mappings = {};
+      if (fs.existsSync(mappingFile)) {
+        mappings = JSON.parse(fs.readFileSync(mappingFile, 'utf8'));
+      }
+
+      mappings[userId] = { ...mappings[userId], ...data };
+
+      fs.writeFileSync(mappingFile, JSON.stringify(mappings, null, 2));
+      return mappings[userId];
+    } catch (err) {
+      console.error('Error saving user mapping:', err);
+      throw err;
+    }
+  }
+
+  // Helper to get user mappings
+  function getUserMappings() {
+    const mappingFile = path.join(DATA_DIR, 'user_mappings.json');
+    try {
+      if (fs.existsSync(mappingFile)) {
+        return JSON.parse(fs.readFileSync(mappingFile, 'utf8'));
+      }
+    } catch (err) {
+      console.error('Error reading user mappings:', err);
+    }
+    return {};
+  }
+
+  // Helper to fetch HA Calendars + CalDAV Calendars
+  async function fetchHaCalendars() {
+    let haCalendars = [];
+    let caldavCalendars = [];
+
+    if (isStandaloneDev) {
+      haCalendars = [
+        { entity_id: 'calendar.civil_holidays', name: 'Holidays', source: 'ha' },
+        { entity_id: 'calendar.icloud_personal', name: 'iCloud Personal', source: 'ha' },
+        { entity_id: 'calendar.google_family', name: 'Google Family', source: 'ha' },
+        { entity_id: 'calendar.work_outlook', name: 'Work Outlook', source: 'ha' }
+      ];
+      // Add mock CalDAV calendars
+      const mockAccounts = caldavService.getMockAccounts();
+      mockAccounts.forEach(acc => {
+        (acc.calendars || []).forEach(cal => {
+          caldavCalendars.push({
+            entity_id: `caldav_${acc.id}_${cal.url}`,
+            name: `🍎 ${cal.displayName}`,
+            source: 'caldav',
+            accountId: acc.id,
+            calendarUrl: cal.url,
+            color: cal.color
+          });
+        });
+      });
+    } else {
+      try {
+        const states = await callHaApi('/states');
+        haCalendars = states
+          .filter(entity => entity.entity_id.startsWith('calendar.'))
+          .map(entity => ({
+            entity_id: entity.entity_id,
+            name: entity.attributes.friendly_name || entity.entity_id,
+            source: 'ha'
+          }));
+      } catch (err) {
+        console.error('Failed to fetch HA calendars:', err);
+      }
+
+      // Add CalDAV calendars
+      try {
+        const accounts = caldavService.getAccounts();
+        accounts.forEach(acc => {
+          (acc.calendars || []).forEach(cal => {
+            // Apple renames dead/legacy shared calendars with a warning sign.
+            // Filter these out so users don't see duplicate, empty calendars in the dropdown.
+            if (cal.displayName && (cal.displayName.includes('⚠️') || cal.displayName.includes('⚠'))) {
+              return;
+            }
+
+            caldavCalendars.push({
+              entity_id: `caldav_${acc.id}_${cal.url}`,
+              name: `🍎 ${cal.displayName}`,
+              source: 'caldav',
+              accountId: acc.id,
+              calendarUrl: cal.url,
+              color: cal.color
+            });
+          });
+        });
+      } catch (err) {
+        console.error('Failed to fetch CalDAV calendars:', err);
+      }
+    }
+
+    return [...haCalendars, ...caldavCalendars];
+  }
+
+  // Helper to fetch HA Notify Services
+  async function fetchHaNotifyServices() {
+    if (isStandaloneDev) {
+      return [
+        { service: 'notify.mobile_app_iphone', name: 'iPhone' },
+        { service: 'notify.mobile_app_ipad', name: 'iPad' }
+      ];
+    }
+
+    try {
+      const services = await callHaApi('/services');
+      const notifyDomain = services.find(d => d.domain === 'notify');
+
+      if (!notifyDomain || !notifyDomain.services) return [];
+
+      // Return all notification services available to HA
+      return Object.keys(notifyDomain.services)
+        .map(serviceName => ({
+          service: `notify.${serviceName}`,
+          name: serviceName.replace(/_/g, ' ')
+        }));
+    } catch (err) {
+      console.error('Failed to fetch HA notify services:', err);
+      return [];
+    }
+  }
+
   // Helper: Fetch HA Users (Persons)
   async function fetchHaUsers() {
+    // Standalone Mode Mock Data
     if (isStandaloneDev) {
       const mockPath = path.join(__dirname, 'mock-data', 'users.json');
       try {
         const data = JSON.parse(fs.readFileSync(mockPath, 'utf8'));
+        const mappings = getUserMappings();
         return data.users.map(u => ({
           id: u.id,
           name: u.name,
-          user_id: u.id, // Mock mapping
-          picture: u.avatar // Use avatar as picture for mock
+          user_id: u.id,
+          picture: u.avatar,
+          // Merge local mapping data
+          calendar_entity_id: mappings[u.id]?.calendar_entity_id || null,
+          notify_service: mappings[u.id]?.notify_service || null
         }));
       } catch (e) { return []; }
     }
@@ -750,7 +994,20 @@ async function initializeApp() {
 
     try {
       const result = await client.sendCommand('person/list');
-      return result.storage || [];
+      const persons = result.storage || [];
+      const mappings = getUserMappings();
+
+      return persons.map(person => ({
+        id: person.id,
+        name: person.name,
+        picture: person.picture,
+        user_id: person.user_id,
+        // Merge local mapping data
+        calendar_entity_id: mappings[person.id]?.calendar_entity_id || null,
+        notify_service: mappings[person.id]?.notify_service || null,
+        color: mappings[person.id]?.color || '#4285f4', // Default blue
+        icon: mappings[person.id]?.icon || 'person'
+      }));
     } catch (err) {
       console.error('[WS] Failed to fetch users:', err.message);
       return [];
@@ -802,6 +1059,28 @@ async function initializeApp() {
 
   // ROUTES SECTION
 
+  // API: Get HA Calendars
+  app.get('/api/ha/calendars', async (req, res) => {
+    try {
+      const calendars = await fetchHaCalendars();
+      res.json(calendars);
+    } catch (err) {
+      console.error('Fetch HA calendars failed:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // API: Get HA Notify Services
+  app.get('/api/ha/notify-services', async (req, res) => {
+    try {
+      const services = await fetchHaNotifyServices();
+      res.json(services);
+    } catch (err) {
+      console.error('Fetch HA notify services failed:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // API: Get Users
   app.get('/api/users', async (req, res) => {
     try {
@@ -815,13 +1094,119 @@ async function initializeApp() {
   // API: Create User
   app.post('/api/users', express.json(), async (req, res) => {
     try {
-      const { name } = req.body;
+      const { name, calendar_entity_id, notify_service, color, icon } = req.body;
       if (!name) return res.status(400).json({ error: 'Name required' });
 
       const newUser = await createHaUser(name);
+
+      // Save local mapping
+      await saveUserMapping(newUser.id, { calendar_entity_id, notify_service, color, icon });
+
+      // Merge local data for response
+      newUser.calendar_entity_id = calendar_entity_id;
+      newUser.notify_service = notify_service;
+      newUser.color = color;
+      newUser.icon = icon;
+
       res.json(newUser);
     } catch (err) {
       console.error('Create user failed:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // API: Update User (Local Mapping Only)
+  app.put('/api/users/:id', express.json(), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { calendar_entity_id, notify_service, color, icon } = req.body;
+
+      await saveUserMapping(id, { calendar_entity_id, notify_service, color, icon });
+
+      res.json({ success: true, id, calendar_entity_id, notify_service, color, icon });
+    } catch (err) {
+      console.error('Update user failed:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ── CalDAV API Routes ──────────────────────────────────────────────────
+
+  // API: Connect Apple Calendar
+  app.post('/api/caldav/connect', express.json(), async (req, res) => {
+    try {
+      const { appleId, appPassword, userId } = req.body;
+      if (!appleId || !appPassword || !userId) {
+        return res.status(400).json({ error: 'Apple ID, app-specific password, and user assignment are required' });
+      }
+
+      // if (isStandaloneDev) {
+      //   // Mock connection in dev mode
+      //   // const mockAccounts = caldavService.getMockAccounts();
+      //   // return res.json(mockAccounts[0]);
+      // }
+
+      const account = await caldavService.connectAppleCalendar(appleId, appPassword, userId);
+      res.json(account);
+    } catch (err) {
+      console.error('CalDAV connect failed:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // API: List Connected CalDAV Accounts
+  app.get('/api/caldav/accounts', (req, res) => {
+    try {
+      // if (isStandaloneDev) {
+      //   return res.json(caldavService.getMockAccounts());
+      // }
+      res.json(caldavService.getAccounts());
+    } catch (err) {
+      console.error('CalDAV list accounts failed:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // API: Remove CalDAV Account
+  app.delete('/api/caldav/accounts/:id', (req, res) => {
+    try {
+      // if (isStandaloneDev) {
+      //   return res.json({ success: true });
+      // }
+      caldavService.removeAccount(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      console.error('CalDAV remove account failed:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // API: Fetch Calendars for a CalDAV Account
+  app.get('/api/caldav/calendars/:accountId', async (req, res) => {
+    try {
+      // if (isStandaloneDev) {
+      //   const mockAccounts = caldavService.getMockAccounts();
+      //   const acc = mockAccounts.find(a => a.id === req.params.accountId);
+      //   return res.json(acc ? acc.calendars : []);
+      // }
+      const calendars = await caldavService.fetchCalendars(req.params.accountId);
+      res.json(calendars);
+    } catch (err) {
+      console.error('CalDAV fetch calendars failed:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // API: Fetch CalDAV Events
+  app.get('/api/caldav/events', async (req, res) => {
+    try {
+      // if (isStandaloneDev) {
+      //   return res.json(caldavService.getMockEvents());
+      // }
+      const events = await caldavService.fetchAllEvents(config.calendar_days_to_show || 7);
+      res.json(events);
+    } catch (err) {
+      console.error('CalDAV fetch events failed:', err);
       res.status(500).json({ error: err.message });
     }
   });
@@ -1536,6 +1921,43 @@ async function initializeApp() {
         error: 'Failed to generate diagnostics',
         message: error.message
       });
+    }
+  });
+
+  // API: Force Sync CalDAV Accounts
+  app.post('/api/caldav/sync', express.json(), async (req, res) => {
+    try {
+      const caldavService = require('./scripts/caldav-service');
+      const accounts = caldavService.getAccounts();
+      const results = [];
+      let totalEvents = 0;
+
+      for (const account of accounts) {
+        try {
+          await caldavService.fetchCalendars(account.id);
+        } catch (e) {
+          results.push(`[ERROR] Account ${account.appleId}: Failed fetching calendar list - ${e.message}`);
+        }
+      }
+
+      const allEvents = await caldavService.fetchAllEvents(config.calendar_days_to_show || 7);
+      const counts = allEvents.reduce((acc, ev) => {
+        acc[ev.calendarName] = (acc[ev.calendarName] || 0) + 1;
+        return acc;
+      }, {});
+
+      for (const [calName, count] of Object.entries(counts)) {
+        results.push(`[SUCCESS] Synced ${count} events from "${calName}"`);
+      }
+
+      if (allEvents.length === 0) {
+        results.push(`[WARNING] Synced 0 events across all calendars.`);
+      }
+
+      res.json({ success: true, logs: results, total: allEvents.length });
+    } catch (err) {
+      console.error('CalDAV Sync Error:', err);
+      res.status(500).json({ success: false, error: err.message, logs: [`[FATAL] ${err.message}`] });
     }
   });
 

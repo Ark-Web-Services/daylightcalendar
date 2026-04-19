@@ -112,12 +112,70 @@
     </div>
 
     <div class="settings-section">
+      <h2>Calendar Accounts</h2>
+      <div class="settings-card">
+        <h3><i class="material-icons" style="vertical-align: middle; margin-right: 8px;">event</i>Apple Calendar
+          (iCloud)</h3>
+        <p class="setting-description">
+          Connect your Apple Calendar to see iCloud events in Daylight.
+          Requires an <a href="https://appleid.apple.com/account/manage" target="_blank" rel="noopener">app-specific
+            password</a>.
+        </p>
+
+        <div id="caldav-accounts-list" class="caldav-accounts-list">
+          <!-- Connected accounts will be populated here -->
+          <div class="loading-accounts">Loading accounts...</div>
+        </div>
+
+        <div class="caldav-connect-form" id="caldav-connect-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="caldav-apple-id">Apple ID (Email)</label>
+              <input type="email" id="caldav-apple-id" placeholder="you@icloud.com" autocomplete="email">
+            </div>
+            <div class="form-group">
+              <label for="caldav-app-password">App-Specific Password</label>
+              <input type="password" id="caldav-app-password" placeholder="xxxx-xxxx-xxxx-xxxx" autocomplete="off">
+            </div>
+            <div class="form-group">
+              <label for="caldav-user-select">Assign to User *</label>
+              <select id="caldav-user-select" required>
+                <option value="">-- Select User (Required) --</option>
+                <option disabled>Loading users...</option>
+              </select>
+              <p class="setting-description" style="font-size: 0.8rem; margin-top: 4px;">Associate this calendar account
+                with a specific user profile.</p>
+            </div>
+          </div>
+          <button id="caldav-connect-btn" class="btn btn-primary">
+            <i class="material-icons">link</i> Connect Apple Calendar
+          </button>
+          <div id="caldav-connect-status" class="caldav-connect-status" style="display:none;"></div>
+        </div>
+
+        <div style="margin-top: 2rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1.5rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h4 style="margin: 0; color: #fff;">Manual Synchronization</h4>
+            <button id="caldav-sync-btn" class="btn btn-secondary"
+              style="display: flex; align-items: center; gap: 8px;">
+              <i class="material-icons" style="font-size: 18px;">sync</i> Sync Now
+            </button>
+          </div>
+          <p class="setting-description" style="margin-top: 0;">Force an immediate re-sync of all iCloud events and view
+            connection logs.</p>
+          <pre id="caldav-sync-logs"
+            style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 12px; color: #a1b2c3; font-size: 13px; max-height: 200px; overflow-y: auto; display: none; white-space: pre-wrap; font-family: monospace;"></pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-section">
       <h2>Home Assistant Integration</h2>
       <div class="settings-card">
         <h3>User Management</h3>
         <p class="setting-description">
           <i class="material-icons">info</i>
-          Manage household members. Valid Home Assistant "Persons" will appear here.
+          Manage household members. Click a user to edit their linked calendar and notification device.
         </p>
 
         <div id="user-list" class="user-list-container">
@@ -146,9 +204,125 @@
             <label for="new-user-name">Name</label>
             <input type="text" id="new-user-name" required placeholder="e.g. John Doe">
           </div>
+          <div class="form-group">
+            <label>Calendar(s)</label>
+            <div id="new-user-calendar" class="calendar-checkbox-list"
+              style="max-height: 150px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 8px; background: rgba(0,0,0,0.2);">
+              <div class="loading-calendars" style="padding: 4px;">Loading...</div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="new-user-notify">Notification Service</label>
+            <select id="new-user-notify">
+              <option value="">-- None --</option>
+              <option disabled>Loading...</option>
+            </select>
+            <p class="setting-description" style="font-size: 0.8rem; margin-top: 4px;">Link an HA service or push device
+              to send notifications to this user.</p>
+          </div>
+          <div class="form-row">
+            <div class="form-group" style="width: 50%;">
+              <label>Profile Color</label>
+              <div class="color-selector" id="new-user-color-selector">
+                <button type="button" class="color-option active" data-color="#4285f4"
+                  style="background-color: #4285f4;"></button>
+                <button type="button" class="color-option" data-color="#34a853"
+                  style="background-color: #34a853;"></button>
+                <button type="button" class="color-option" data-color="#fbbc05"
+                  style="background-color: #fbbc05;"></button>
+                <button type="button" class="color-option" data-color="#ea4335"
+                  style="background-color: #ea4335;"></button>
+                <button type="button" class="color-option" data-color="#9c27b0"
+                  style="background-color: #9c27b0;"></button>
+                <button type="button" class="color-option" data-color="#009688"
+                  style="background-color: #009688;"></button>
+              </div>
+              <input type="hidden" id="new-user-color" value="#4285f4">
+            </div>
+            <div class="form-group" style="width: 50%;">
+              <label>Icon</label>
+              <div class="icon-selector" id="new-user-icon-selector">
+                <button type="button" class="icon-option active" data-icon="person"><i
+                    class="material-icons">person</i></button>
+                <button type="button" class="icon-option" data-icon="face"><i class="material-icons">face</i></button>
+                <button type="button" class="icon-option" data-icon="pets"><i class="material-icons">pets</i></button>
+                <button type="button" class="icon-option" data-icon="sports_esports"><i
+                    class="material-icons">sports_esports</i></button>
+              </div>
+              <input type="hidden" id="new-user-icon" value="person">
+            </div>
+          </div>
           <div class="form-actions">
             <button type="button" class="btn btn-secondary modal-cancel">Cancel</button>
             <button type="submit" class="btn btn-primary">Create User</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit User Modal -->
+  <div id="edit-user-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Edit User</h3>
+        <button class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>Update calendar and notification settings for <strong id="edit-user-display-name"></strong></p>
+        <input type="hidden" id="edit-user-id">
+        <form id="edit-user-form">
+          <div class="form-group">
+            <label>Calendar(s)</label>
+            <div id="edit-user-calendar" class="calendar-checkbox-list"
+              style="max-height: 150px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 8px; background: rgba(0,0,0,0.2);">
+              <div class="loading-calendars" style="padding: 4px;">Loading...</div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="edit-user-notify">Notification Service</label>
+            <select id="edit-user-notify">
+              <option value="">-- None --</option>
+              <option disabled>Loading...</option>
+            </select>
+            <p class="setting-description" style="font-size: 0.8rem; margin-top: 4px;">Link an HA service or push device
+              to send notifications to this user.</p>
+          </div>
+          <div class="form-row">
+            <div class="form-group" style="width: 50%;">
+              <label>Profile Color</label>
+              <div class="color-selector" id="edit-user-color-selector">
+                <button type="button" class="color-option active" data-color="#4285f4"
+                  style="background-color: #4285f4;"></button>
+                <button type="button" class="color-option" data-color="#34a853"
+                  style="background-color: #34a853;"></button>
+                <button type="button" class="color-option" data-color="#fbbc05"
+                  style="background-color: #fbbc05;"></button>
+                <button type="button" class="color-option" data-color="#ea4335"
+                  style="background-color: #ea4335;"></button>
+                <button type="button" class="color-option" data-color="#9c27b0"
+                  style="background-color: #9c27b0;"></button>
+                <button type="button" class="color-option" data-color="#009688"
+                  style="background-color: #009688;"></button>
+              </div>
+              <input type="hidden" id="edit-user-color" value="#4285f4">
+            </div>
+            <div class="form-group" style="width: 50%;">
+              <label>Icon</label>
+              <div class="icon-selector" id="edit-user-icon-selector">
+                <button type="button" class="icon-option active" data-icon="person"><i
+                    class="material-icons">person</i></button>
+                <button type="button" class="icon-option" data-icon="face"><i class="material-icons">face</i></button>
+                <button type="button" class="icon-option" data-icon="pets"><i class="material-icons">pets</i></button>
+                <button type="button" class="icon-option" data-icon="sports_esports"><i
+                    class="material-icons">sports_esports</i></button>
+              </div>
+              <input type="hidden" id="edit-user-icon" value="person">
+            </div>
+          </div>
+          <div class="form-actions">
+            <button type="button" class="btn btn-secondary modal-cancel">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save Changes</button>
           </div>
         </form>
       </div>

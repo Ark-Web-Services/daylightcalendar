@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "concurrently \"nodemon index.js\" \"webpack serve --mode development\"",
+    "dev": "concurrently \"PORT=3004 nodemon index.js\" \"webpack serve --mode development\"",
     "build": "webpack --mode production --env production",
     "clean": "bash ../.devcontainer/scripts/cleanup.sh",
     "validate": "bash ../.devcontainer/scripts/validate.sh",
@@ -28,7 +28,8 @@
     "dotenv": "^16.6.1",
     "express": "^4.18.2",
     "node-fetch": "^3.3.2",
-    "socket.io": "^4.7.2"
+    "socket.io": "^4.7.2",
+    "tsdav": "^2.1.8"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",

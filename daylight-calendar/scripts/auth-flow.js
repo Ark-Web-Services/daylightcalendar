@@ -294,15 +294,25 @@ PORT=8100
                     // ── Step 5: Configure weather integration ─────────────
                     console.log('🌤️  Configuring weather integration...');
                     try {
-                        ws.send(JSON.stringify({
-                            id: 2,
-                            type: 'config/entries/flow',
-                            handler: ['homeassistant'],
-                        }));
-                        // The met integration may auto-discover; skip if it fails
-                        console.log('✓ Weather integration request sent (may auto-configure)');
+                        const flowResp = await axios.post(`${HA_URL}/api/config/config_entries/flow`, {
+                            handler: 'met'
+                        }, {
+                            headers: { 'Authorization': `Bearer ${longLivedToken}` }
+                        });
+
+                        if (flowResp.data && flowResp.data.flow_id) {
+                            await axios.post(`${HA_URL}/api/config/config_entries/flow/${flowResp.data.flow_id}`, {
+                                name: "Home",
+                                latitude: 40.7128,
+                                longitude: -74.0060,
+                                elevation: 10
+                            }, {
+                                headers: { 'Authorization': `Bearer ${longLivedToken}` }
+                            });
+                            console.log('✓ Weather integration successfully configured');
+                        }
                     } catch (weatherErr) {
-                        console.log('⚠️  Weather integration may need manual setup');
+                        console.log('⚠️  Weather integration may need manual setup:', weatherErr.message);
                     }
 
                     // Small delay to let weather request process
@@ -311,8 +321,21 @@ PORT=8100
                     process.exit(0);
                 } else {
                     console.error('❌ Failed to generate token:', msg.error);
+                    console.log('⚠️  Falling back to temporary access token:');
+                    console.log(token);
                     ws.close();
-                    process.exit(1);
+                    // Don't exit with error, let us use this token
+                    const envContent = `# Development environment configuration
+# Generated automatically by auth-flow.js (Fallback Temp Token)
+# Regenerate: node scripts/auth-flow.js
+HASS_API_URL=${HA_URL}/api
+HASS_TOKEN=${token}
+NODE_ENV=development
+PORT=8100
+`;
+                    fs.writeFileSync(ENV_PATH, envContent);
+                    console.log(`✓ .env.local written with TEMP token to ${ENV_PATH}`);
+                    process.exit(0);
                 }
             }
         });

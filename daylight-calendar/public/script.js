@@ -8,6 +8,8 @@ let dimmerCountdownTimer;
 let dimmerCountdown = 30;
 let weatherForecastData = [];
 let calendar;
+let allCalendarUsers = [];
+let activeCalendarUsers = new Set();
 
 // Display settings (default values)
 let displaySettings = {
@@ -21,7 +23,7 @@ document.addEventListener('DOMContentLoaded', function () {
   console.log('[INFO] DOM Content Loaded');
 
   // Load configuration first
-  fetch('api/config')
+  fetch('/api/config')
     .then(response => response.json())
     .then(config => {
       window.appConfig = config;
@@ -220,7 +222,7 @@ function initializeChoresPage() {
         const choreData = Object.fromEntries(formData);
 
         try {
-          const response = await fetch('api/chores', {
+          const response = await fetch('/api/chores', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json'
@@ -614,6 +616,7 @@ function initializeSettingsPage() {
 
       addUserBtn.addEventListener('click', () => {
         modal.classList.add('show');
+        populateUserDropdowns();
         const input = document.getElementById('new-user-name');
         if (input) input.focus();
       });
@@ -628,12 +631,17 @@ function initializeSettingsPage() {
       }
     }
 
+    // Initialize CalDAV settings (accounts list, connect button, edit form)
+    if (typeof initializeCalDAVSettings === 'function') {
+      initializeCalDAVSettings();
+    }
+
     // Re-setup modals for settings page (generic closers)
     setupModals();
+    setupColorAndIconSelectors();
     console.log('[DEBUG] Modals re-setup for settings page');
 
     fetchDisplaySettings();
-    // loadCurrentHAUser(); // Removed in favor of fetchUsers logic above
 
     console.log('[DEBUG] Settings page initialization complete');
   }, 100);
@@ -685,6 +693,13 @@ function initializeSidebar() {
       if (contentFrame) {
         contentFrame.classList.add('active-content');
         contentFrame.style.display = 'block';
+
+        // Force FullCalendar to recalculate its dimensions now that container is visible
+        if (target === 'calendar-page' && typeof calendar !== 'undefined' && calendar) {
+          setTimeout(() => {
+            calendar.updateSize();
+          }, 50);
+        }
       }
     });
   });
@@ -739,6 +754,36 @@ function setupModals() {
   document.querySelectorAll('.modal').forEach(modal => {
     modal.removeEventListener('click', handleModalBackdropClick);
     modal.addEventListener('click', handleModalBackdropClick);
+  });
+}
+
+function setupColorAndIconSelectors() {
+  document.querySelectorAll('.color-selector').forEach(selector => {
+    const input = selector.parentElement.querySelector('input[type="hidden"]');
+    if (!input) return;
+    const btns = selector.querySelectorAll('.color-option');
+    btns.forEach(btn => {
+      btn.onclick = (e) => {
+        e.preventDefault();
+        btns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        input.value = btn.dataset.color;
+      };
+    });
+  });
+
+  document.querySelectorAll('.icon-selector').forEach(selector => {
+    const input = selector.parentElement.querySelector('input[type="hidden"]');
+    if (!input) return;
+    const btns = selector.querySelectorAll('.icon-option');
+    btns.forEach(btn => {
+      btn.onclick = (e) => {
+        e.preventDefault();
+        btns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        input.value = btn.dataset.icon;
+      };
+    });
   });
 }
 
@@ -819,7 +864,38 @@ function setupCalendar() {
       allDaySlot: true,
       height: 'auto',
       aspectRatio: 1.35,
-      events: 'api/calendar',
+      events: function (fetchInfo, successCallback, failureCallback) {
+        const url = `/api/calendar?start=${fetchInfo.startStr}&end=${fetchInfo.endStr}`;
+        fetch(url)
+          .then(res => {
+            if (!res.ok) throw new Error('Network response was not ok');
+            return res.json();
+          })
+          .then(events => {
+            const filtered = events.filter(e => {
+              // Strictly hide events that aren't mapped to a user profile
+              if (!e.userId) return false;
+              return activeCalendarUsers.has(e.userId);
+            });
+
+            // Color code events according to the user's color
+            filtered.forEach(e => {
+              if (e.userId) {
+                const user = allCalendarUsers.find(u => u.id === e.userId);
+                if (user && user.color) {
+                  e.backgroundColor = user.color;
+                  e.borderColor = user.color;
+                }
+              }
+            });
+
+            successCallback(filtered);
+          })
+          .catch(err => {
+            console.error('[ERROR] Failed to fetch calendar events:', err);
+            failureCallback(err);
+          });
+      },
       eventClick: function (info) {
         console.log('[DEBUG] Event clicked:', info.event);
       },
@@ -853,6 +929,13 @@ function setupCalendar() {
         console.log('[DEBUG] Calendar size updated after render');
       }
     }, 100);
+
+    // Watch for window resizes and fix smuishing issues automatically
+    window.addEventListener('resize', () => {
+      if (calendar) {
+        calendar.updateSize();
+      }
+    });
 
   } catch (error) {
     console.error('[ERROR] Failed to initialize FullCalendar:', error);
@@ -930,7 +1013,7 @@ function wakeScreen() {
 // Fetch display settings
 async function fetchDisplaySettings() {
   try {
-    const response = await fetch('api/user/display-settings');
+    const response = await fetch('/api/user/display-settings');
     if (!response.ok) throw new Error(`Failed to load display settings: ${response.status}`);
 
     const settings = await response.json();
@@ -1016,7 +1099,7 @@ function fetchWeather() {
     weatherContainerElement.innerHTML = '<div class="loading"><i class="material-icons spin">refresh</i> Loading weather...</div>';
   }
 
-  fetch('api/weather')
+  fetch('/api/weather')
     .then(response => {
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -1047,6 +1130,12 @@ function fetchWeather() {
       if (apiResponse.current && typeof apiResponse.current === 'object') {
         haStateObject = apiResponse.current;
         console.log('[DEBUG] Using apiResponse.current as haStateObject:', JSON.stringify(haStateObject, null, 2));
+
+        // Check if the entity is simply missing from Home Assistant
+        if (haStateObject.message === 'Entity not found.') {
+          displayWeatherError(`Setup Weather Integration in HA`);
+          return;
+        }
 
         // Check if current state is error or unavailable
         if (haStateObject.state === 'unavailable' || haStateObject.state === 'error') {
@@ -1214,50 +1303,73 @@ function updateCurrentWeatherDisplay(temp, condition) {
 function fetchCalendarEvents() {
   console.log('[INFO] fetchCalendarEvents called - fetching calendar events');
 
-  // Simulate fetching calendar events
+  // Events are loaded directly by FullCalendar via the events URL configuration:
+  // events: 'api/calendar'
+
   if (calendar) {
-    // Add some sample events for demonstration
-    const sampleEvents = [
-      {
-        id: '1',
-        title: 'Team Meeting',
-        start: moment().startOf('day').add(9, 'hours').toDate(),
-        end: moment().startOf('day').add(10, 'hours').toDate(),
-        backgroundColor: '#4285f4'
-      },
-      {
-        id: '2',
-        title: 'Lunch Break',
-        start: moment().startOf('day').add(12, 'hours').toDate(),
-        end: moment().startOf('day').add(13, 'hours').toDate(),
-        backgroundColor: '#34a853'
-      },
-      {
-        id: '3',
-        title: 'Project Review',
-        start: moment().startOf('day').add(1, 'day').add(14, 'hours').toDate(),
-        end: moment().startOf('day').add(1, 'day').add(15, 'hours').toDate(),
-        backgroundColor: '#ea4335'
-      }
-    ];
-
-    // Add events to calendar
-    sampleEvents.forEach(event => {
-      calendar.addEvent(event);
-    });
-
-    console.log('[INFO] Added sample calendar events');
+    calendar.refetchEvents();
+    console.log('[INFO] Triggered calendar event refetch');
   }
 }
 
-function loadUserToggles() {
+async function loadUserToggles() {
   console.log('[INFO] loadUserToggles called - loading user toggles');
 
-  // Setup calendar view toggles if they exist
-  const calendarContainer = document.querySelector('#calendar-content');
-  if (calendarContainer) {
-    // Add any calendar-specific toggle buttons or settings
-    console.log('[INFO] Calendar toggles loaded');
+  const userTogglesContainer = document.getElementById('user-toggles');
+  if (!userTogglesContainer) return;
+
+  try {
+    const res = await fetch('/api/users');
+    if (!res.ok) throw new Error('Failed to load users');
+
+    allCalendarUsers = await res.json();
+
+    // Automatically enable all users initially if none are set
+    if (activeCalendarUsers.size === 0 && allCalendarUsers.length > 0) {
+      allCalendarUsers.forEach(u => activeCalendarUsers.add(u.id));
+    }
+
+    userTogglesContainer.innerHTML = '';
+
+    if (allCalendarUsers.length === 0) {
+      userTogglesContainer.innerHTML = '<span class="no-users-msg" style="font-size: 0.9em; opacity: 0.7;">No users found</span>';
+      return;
+    }
+
+    allCalendarUsers.forEach(user => {
+      const btn = document.createElement('button');
+      const isActive = activeCalendarUsers.has(user.id);
+
+      btn.className = 'user-toggle ' + (isActive ? 'active' : '');
+      btn.innerHTML = `<i class="material-icons">${user.icon || 'person'}</i>`;
+      btn.title = user.name;
+      btn.style.backgroundColor = isActive ? user.color : 'transparent';
+      btn.style.color = isActive ? '#fff' : user.color;
+      btn.style.borderColor = user.color || '#ccc';
+
+      btn.addEventListener('click', () => {
+        if (activeCalendarUsers.has(user.id)) {
+          activeCalendarUsers.delete(user.id);
+          btn.classList.remove('active');
+          btn.style.backgroundColor = 'transparent';
+          btn.style.color = user.color;
+        } else {
+          activeCalendarUsers.add(user.id);
+          btn.classList.add('active');
+          btn.style.backgroundColor = user.color;
+          btn.style.color = '#fff';
+        }
+
+        // Trigger calendar refetch to apply filters
+        if (calendar) {
+          calendar.refetchEvents();
+        }
+      });
+
+      userTogglesContainer.appendChild(btn);
+    });
+  } catch (err) {
+    console.error('[ERROR] Error loading user toggles:', err);
   }
 }
 
@@ -1268,7 +1380,7 @@ async function fetchAndDisplayChores() {
   if (!choreBoard) return;
 
   try {
-    const response = await fetch('api/chores');
+    const response = await fetch('/api/chores');
     if (!response.ok) throw new Error('Failed to fetch chores');
 
     const data = await response.json();
@@ -1458,7 +1570,7 @@ async function loadCurrentHAUser() {
   if (currentUserSpan) {
     try {
       // Try to get current HA user info
-      const response = await fetch('api/ha-proxy?endpoint=/api/config');
+      const response = await fetch('/api/ha-proxy?endpoint=/api/config');
       if (response.ok) {
         const data = await response.json();
         if (data.success && data.data) {
@@ -1521,12 +1633,113 @@ function updateEventWeather(info) {
 
 // ── USER MANAGEMENT (SETTINGS PAGE) ──────────────────────────────────────
 
+async function populateUserDropdowns() {
+  const calendarSelect = document.getElementById('new-user-calendar');
+  const notifySelect = document.getElementById('new-user-notify');
+
+  if (!calendarSelect || !notifySelect) return;
+
+  try {
+    // parallel fetch
+    const [calResp, evResp, notifyResp] = await Promise.all([
+      fetch('/api/ha/calendars'),
+      fetch('/api/calendar'),
+      fetch('/api/ha/notify-services')
+    ]);
+
+    let eventCounts = {};
+    if (evResp.ok) {
+      const allEvents = await evResp.json();
+      eventCounts = allEvents.reduce((acc, ev) => {
+        if (ev.calendar_entity_id) {
+          acc[ev.calendar_entity_id] = (acc[ev.calendar_entity_id] || 0) + 1;
+        }
+        return acc;
+      }, {});
+    }
+
+    if (calResp.ok) {
+      const calendars = await calResp.json();
+      calendarSelect.innerHTML = calendars.map(c => {
+        const count = eventCounts[c.entity_id] || 0;
+        return `
+          <label style="display:flex; align-items:center; margin-bottom: 6px; cursor: pointer; color: #fff; font-size: 14px;">
+            <input type="checkbox" value="${c.entity_id}" class="cal-checkbox" style="margin-right: 8px;">
+            <span style="flex-grow: 1;">${c.name}</span>
+            <span style="background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 12px; font-size: 11px;">${count}</span>
+          </label>
+        `;
+      }).join('') || '<div style="color: #a1b2c3;">No calendars found</div>';
+    }
+
+    if (notifyResp.ok) {
+      const services = await notifyResp.json();
+      notifySelect.innerHTML = '<option value="">-- None --</option>' +
+        services.map(s => `<option value="${s.service}">${s.name}</option>`).join('');
+    }
+  } catch (err) {
+    console.error('Failed to populate dropdowns', err);
+  }
+}
+
+async function populateEditDropdowns(currentCalendar, currentNotify) {
+  const calendarSelect = document.getElementById('edit-user-calendar');
+  const notifySelect = document.getElementById('edit-user-notify');
+
+  if (!calendarSelect || !notifySelect) return;
+
+  try {
+    const [calResp, evResp, notifyResp] = await Promise.all([
+      fetch('api/ha/calendars'),
+      fetch('api/calendar'),
+      fetch('api/ha/notify-services')
+    ]);
+
+    let eventCounts = {};
+    if (evResp.ok) {
+      const allEvents = await evResp.json();
+      eventCounts = allEvents.reduce((acc, ev) => {
+        if (ev.calendar_entity_id) {
+          acc[ev.calendar_entity_id] = (acc[ev.calendar_entity_id] || 0) + 1;
+        }
+        return acc;
+      }, {});
+    }
+
+    if (calResp.ok) {
+      const calendars = await calResp.json();
+      const currentCals = (currentCalendar || '').split(',');
+      calendarSelect.innerHTML = calendars.map(c => {
+        const count = eventCounts[c.entity_id] || 0;
+        const isChecked = currentCals.includes(c.entity_id) ? 'checked' : '';
+        return `
+          <label style="display:flex; align-items:center; margin-bottom: 6px; cursor: pointer; color: #fff; font-size: 14px;">
+            <input type="checkbox" value="${c.entity_id}" class="cal-checkbox" style="margin-right: 8px;" ${isChecked}>
+            <span style="flex-grow: 1;">${c.name}</span>
+            <span style="background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 12px; font-size: 11px;">${count}</span>
+          </label>
+        `;
+      }).join('') || '<div style="color: #a1b2c3;">No calendars found</div>';
+    }
+
+    if (notifyResp.ok) {
+      const services = await notifyResp.json();
+      notifySelect.innerHTML = '<option value="">-- None --</option>' +
+        services.map(s =>
+          `<option value="${s.service}" ${s.service === currentNotify ? 'selected' : ''}>${s.name}</option>`
+        ).join('');
+    }
+  } catch (err) {
+    console.error('Failed to populate edit dropdowns', err);
+  }
+}
+
 async function fetchUsers() {
   const listContainer = document.getElementById('user-list');
   if (!listContainer) return;
 
   try {
-    const resp = await fetch('api/users');
+    const resp = await fetch('/api/users');
     if (!resp.ok) throw new Error('Failed to fetch users');
     const users = await resp.json();
 
@@ -1547,14 +1760,21 @@ async function fetchUsers() {
         avatarHtml = `<div class="user-avatar-placeholder">${initials}</div>`;
       }
 
+      const calLabel = user.calendar_entity_id
+        ? `<span class="user-calendar-label"><i class="material-icons" style="font-size:14px;vertical-align:middle;">event</i> ${user.calendar_entity_id}</span>`
+        : '<span class="user-calendar-label" style="opacity:0.5;">No calendar linked</span>';
+
       html += `
-        <div class="user-item">
+        <div class="user-item" data-user-id="${user.id}" data-user-name="${user.name || ''}" data-calendar="${user.calendar_entity_id || ''}" data-notify="${user.notify_service || ''}" style="cursor:pointer;" onclick="openEditUserModal('${user.id}', '${(user.name || '').replace(/'/g, "\\'")}', '${user.calendar_entity_id || ''}', '${user.notify_service || ''}', '${user.color || '#4285f4'}', '${user.icon || 'person'}')">
           <div class="user-avatar">
             ${avatarHtml}
           </div>
           <div class="user-info">
             <div class="user-name">${user.name || 'Unknown'}</div>
-            <div class="user-id">ID: ${user.id}</div>
+            <div class="user-details">${calLabel}</div>
+          </div>
+          <div class="user-edit-icon">
+            <i class="material-icons">edit</i>
           </div>
         </div>
       `;
@@ -1564,6 +1784,76 @@ async function fetchUsers() {
   } catch (err) {
     console.error('Error fetching users:', err);
     listContainer.innerHTML = '<div class="error-users">Failed to load users</div>';
+  }
+}
+
+function openEditUserModal(userId, userName, currentCalendar, currentNotify, currentColor, currentIcon) {
+  const modal = document.getElementById('edit-user-modal');
+  if (!modal) return;
+
+  document.getElementById('edit-user-id').value = userId;
+  document.getElementById('edit-user-display-name').textContent = userName;
+
+  const colorInput = document.getElementById('edit-user-color');
+  if (colorInput) {
+    colorInput.value = currentColor || '#4285f4';
+    document.querySelectorAll('#edit-user-color-selector .color-option').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.color === colorInput.value);
+    });
+  }
+
+  const iconInput = document.getElementById('edit-user-icon');
+  if (iconInput) {
+    iconInput.value = currentIcon || 'person';
+    document.querySelectorAll('#edit-user-icon-selector .icon-option').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.icon === iconInput.value);
+    });
+  }
+
+  populateEditDropdowns(currentCalendar, currentNotify);
+
+  modal.classList.add('show');
+}
+
+async function handleUpdateUser(e) {
+  e.preventDefault();
+  const userId = document.getElementById('edit-user-id').value;
+  const calendarEntityId = Array.from(document.getElementById('edit-user-calendar').selectedOptions)
+    .map(opt => opt.value)
+    .filter(v => v !== '');
+  const notifyService = document.getElementById('edit-user-notify').value || null;
+  const color = document.getElementById('edit-user-color')?.value || '#4285f4';
+  const icon = document.getElementById('edit-user-icon')?.value || 'person';
+
+  const btn = e.target.querySelector('button[type="submit"]');
+  const originalText = btn.textContent;
+  btn.textContent = 'Saving...';
+  btn.disabled = true;
+
+  try {
+    const resp = await fetch(`/api/users/${userId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        calendar_entity_id: calendarEntityId,
+        notify_service: notifyService,
+        color: color,
+        icon: icon
+      })
+    });
+
+    if (!resp.ok) {
+      const errData = await resp.json();
+      throw new Error(errData.error || 'Update failed');
+    }
+
+    document.getElementById('edit-user-modal').classList.remove('show');
+    fetchUsers(); // Refresh list
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    btn.textContent = originalText;
+    btn.disabled = false;
   }
 }
 
@@ -1579,10 +1869,18 @@ async function handleCreateUser(e) {
   btn.disabled = true;
 
   try {
-    const resp = await fetch('api/users', {
+    const resp = await fetch('/api/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name })
+      body: JSON.stringify({
+        name,
+        calendar_entity_id: Array.from(document.getElementById('new-user-calendar').selectedOptions)
+          .map(opt => opt.value)
+          .filter(v => v !== ''),
+        notify_service: document.getElementById('new-user-notify').value || null,
+        color: document.getElementById('new-user-color')?.value || '#4285f4',
+        icon: document.getElementById('new-user-icon')?.value || 'person'
+      })
     });
 
     if (!resp.ok) {
@@ -1601,5 +1899,217 @@ async function handleCreateUser(e) {
   } finally {
     btn.textContent = originalText;
     btn.disabled = false;
+  }
+}
+
+// ── CALDAV ACCOUNT MANAGEMENT ────────────────────────────────────────────
+
+async function fetchCalDAVAccounts() {
+  const container = document.getElementById('caldav-accounts-list');
+  if (!container) return;
+
+  try {
+    const resp = await fetch('/api/caldav/accounts');
+    if (!resp.ok) throw new Error('Failed to fetch accounts');
+    const accounts = await resp.json();
+
+    if (accounts.length === 0) {
+      container.innerHTML = '<div class="no-accounts" style="padding: 10px; opacity: 0.6;">No calendar accounts connected yet.</div>';
+      return;
+    }
+
+    let html = '';
+    accounts.forEach(acc => {
+      const calCount = (acc.calendars || []).length;
+      html += `
+        <div class="caldav-account-item" data-account-id="${acc.id}">
+          <div class="caldav-account-info">
+            <div class="caldav-account-icon">🍎</div>
+            <div class="caldav-account-details">
+              <div class="caldav-account-email">${acc.appleId}</div>
+              <div class="caldav-account-meta">${calCount} calendar${calCount !== 1 ? 's' : ''} · Connected ${new Date(acc.connectedAt).toLocaleDateString()}</div>
+            </div>
+          </div>
+          <button class="btn btn-small btn-danger caldav-disconnect-btn" onclick="disconnectCalDAVAccount('${acc.id}')">
+            <i class="material-icons" style="font-size:16px;">link_off</i> Disconnect
+          </button>
+        </div>
+      `;
+    });
+    container.innerHTML = html;
+  } catch (err) {
+    console.error('Error fetching CalDAV accounts:', err);
+    container.innerHTML = '<div class="error-accounts">Failed to load accounts</div>';
+  }
+}
+
+async function connectAppleCalendar() {
+  const appleIdInput = document.getElementById('caldav-apple-id');
+  const passwordInput = document.getElementById('caldav-app-password');
+  const statusEl = document.getElementById('caldav-connect-status');
+  const connectBtn = document.getElementById('caldav-connect-btn');
+
+  const appleId = appleIdInput.value.trim();
+  const appPassword = passwordInput.value.trim();
+  const userId = document.getElementById('caldav-user-select').value;
+
+  if (!appleId || !appPassword || !userId) {
+    statusEl.textContent = 'Please enter Apple ID, app-specific password, and select a user.';
+    statusEl.className = 'caldav-connect-status error';
+    statusEl.style.display = 'block';
+    return;
+  }
+
+  connectBtn.disabled = true;
+  connectBtn.innerHTML = '<i class="material-icons">hourglass_empty</i> Connecting...';
+  statusEl.textContent = 'Connecting to Apple Calendar...';
+  statusEl.className = 'caldav-connect-status info';
+  statusEl.style.display = 'block';
+
+  try {
+    const resp = await fetch('/api/caldav/connect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ appleId, appPassword, userId })
+    });
+
+    if (!resp.ok) {
+      const errData = await resp.json();
+      throw new Error(errData.error || 'Connection failed');
+    }
+
+    const account = await resp.json();
+    const calCount = (account.calendars || []).length;
+
+    statusEl.textContent = `✓ Connected! Found ${calCount} calendar${calCount !== 1 ? 's' : ''}.`;
+    statusEl.className = 'caldav-connect-status success';
+
+    // Clear inputs
+    appleIdInput.value = '';
+    passwordInput.value = '';
+
+    // Refresh accounts list
+    fetchCalDAVAccounts();
+
+    // Hide success message after 3 seconds
+    setTimeout(() => {
+      statusEl.style.display = 'none';
+    }, 3000);
+
+  } catch (err) {
+    statusEl.textContent = `✗ ${err.message}`;
+    statusEl.className = 'caldav-connect-status error';
+  } finally {
+    connectBtn.disabled = false;
+    connectBtn.innerHTML = '<i class="material-icons">link</i> Connect Apple Calendar';
+  }
+}
+
+async function disconnectCalDAVAccount(accountId) {
+  if (!confirm('Disconnect this calendar account? Events from this account will no longer appear.')) {
+    return;
+  }
+
+  try {
+    const resp = await fetch(`/api/caldav/accounts/${accountId}`, {
+      method: 'DELETE'
+    });
+
+    if (!resp.ok) {
+      const errData = await resp.json();
+      throw new Error(errData.error || 'Failed to disconnect');
+    }
+
+    fetchCalDAVAccounts(); // Refresh
+  } catch (err) {
+    alert('Error disconnecting: ' + err.message);
+  }
+}
+
+// ── SETTINGS PAGE CALDAV INITIALIZATION ──────────────────────────────────
+
+function initializeCalDAVSettings() {
+  // Load connected accounts
+  fetchCalDAVAccounts();
+
+  // Wire up connect button
+  const connectBtn = document.getElementById('caldav-connect-btn');
+  if (connectBtn) {
+    connectBtn.addEventListener('click', connectAppleCalendar);
+  }
+
+  // Wire up sync button
+  const syncBtn = document.getElementById('caldav-sync-btn');
+  if (syncBtn) {
+    syncBtn.addEventListener('click', handleCalDAVSync);
+  }
+}
+
+async function handleCalDAVSync() {
+  const syncBtn = document.getElementById('caldav-sync-btn');
+  const logsEl = document.getElementById('caldav-sync-logs');
+
+  if (!syncBtn || !logsEl) return;
+
+  logsEl.style.display = 'block';
+  logsEl.textContent = 'Initiating manual CalDAV synchronization...\nFetching accounts and contacting iCloud servers...';
+  syncBtn.disabled = true;
+  syncBtn.innerHTML = '<i class="material-icons rotating">sync</i> Syncing...';
+
+  try {
+    const res = await fetch('/api/caldav/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    const data = await res.json();
+
+    if (data.success) {
+      logsEl.textContent += '\n\n' + data.logs.join('\n');
+      logsEl.textContent += `\n\n[DONE] Synchronization complete. ${data.total} total events currently stored. Refreshing calendar...`;
+      if (calendar) calendar.refetchEvents();
+    } else {
+      logsEl.textContent += '\n\n[ERROR] Sync failed: ' + (data.error || 'Unknown error');
+      if (data.logs) {
+        logsEl.textContent += '\n' + data.logs.join('\n');
+      }
+    }
+  } catch (err) {
+    logsEl.textContent += '\n\n[FATAL ERROR] ' + err.message;
+  } finally {
+    syncBtn.disabled = false;
+    syncBtn.innerHTML = '<i class="material-icons" style="font-size: 18px;">sync</i> Sync Now';
+  }
+
+  // Wire up edit user form
+  const editForm = document.getElementById('edit-user-form');
+  if (editForm) {
+    editForm.addEventListener('submit', handleUpdateUser);
+  }
+
+  // Populate user dropdown for CalDAV
+  populateCalDAVUserDropdown();
+}
+
+async function populateCalDAVUserDropdown() {
+  const select = document.getElementById('caldav-user-select');
+  if (!select) return;
+
+  try {
+    const resp = await fetch('api/users');
+    if (!resp.ok) throw new Error('Failed to fetch users');
+    const users = await resp.json();
+
+    if (users.length === 0) {
+      select.innerHTML = '<option value="">No users found</option>';
+      return;
+    }
+
+    select.innerHTML = '<option value="">-- Select User (Required) --</option>' +
+      users.map(u => `<option value="${u.id}">${u.name}</option>`).join('');
+
+  } catch (err) {
+    console.error('Failed to populate CalDAV user dropdown:', err);
+    select.innerHTML = '<option value="">Error loading users</option>';
   }
 }
