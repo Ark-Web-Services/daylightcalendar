@@ -1101,6 +1101,10 @@ function setupCalendar() {
       allDaySlot: true,
       height: 'auto',
       aspectRatio: 1.35,
+      loading: function (isLoading) {
+        const el = document.getElementById('calendar');
+        if (el) el.classList.toggle('calendar-loading', !!isLoading);
+      },
       events: function (fetchInfo, successCallback, failureCallback) {
         const url = `api/calendar?start=${fetchInfo.startStr}&end=${fetchInfo.endStr}`;
         fetch(url)

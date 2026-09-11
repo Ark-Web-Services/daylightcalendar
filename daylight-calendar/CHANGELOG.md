@@ -1,4 +1,26 @@
 # Changelog
+## [1.1.9.10] - 2026-09-11
+
+### Fixed
+- **Recurring events never appeared on their repeat dates.** `parseICalEvent` is a regex VEVENT
+  reader with no `RRULE`, `EXDATE` or `RECURRENCE-ID` handling — it emits one event at the
+  original `DTSTART`, so a weekly event that began months ago was invisible today. CalDAV queries
+  now request server-side recurrence expansion (`expand: true`), which also handles deleted and
+  individually-edited occurrences correctly. Falls back to the unexpanded query if a server
+  doesn't support expansion.
+- **Events appeared to vanish on refresh.** There was no loading feedback, so the gap between
+  render and data arriving looked like data loss. Added an "Updating…" indicator via
+  FullCalendar's `loading` callback, and existing events now dim rather than disappear while the
+  next fetch is in flight.
+- **Meal description field overflowed its dialog.** `.meal-input-group` had no CSS at all, so the
+  input and "Select Recipe" button laid out at natural width and escaped the 600px modal.
+
+### Changed
+- **The Recipe Book is not implemented**, and now says so instead of showing a spinner forever.
+  `loadRecipes()` is called in three places but defined nowhere, and there are no recipe API
+  endpoints. The "Select Recipe" button, which had no handler at all, is now visibly disabled with
+  an explanation rather than silently doing nothing.
+
 ## [1.1.9.9] - 2026-09-11
 
 ### Fixed

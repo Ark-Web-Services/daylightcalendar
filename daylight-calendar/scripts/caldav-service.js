@@ -290,13 +290,28 @@ async function fetchAllEvents(range) {
 
             for (const cal of davCalendars) {
                 try {
-                    const calObjects = await client.fetchCalendarObjects({
-                        calendar: cal,
-                        timeRange: {
-                            start: start.toISOString(),
-                            end: end.toISOString(),
-                        },
-                    });
+                    const timeRange = {
+                        start: start.toISOString(),
+                        end: end.toISOString(),
+                    };
+
+                    // Ask the server to expand recurrences. The local parser reads a
+                    // single DTSTART per VEVENT and has no RRULE/EXDATE/RECURRENCE-ID
+                    // handling, so without expansion a weekly event appears only on its
+                    // original start date and is invisible in every later week.
+                    let calObjects;
+                    try {
+                        calObjects = await client.fetchCalendarObjects({
+                            calendar: cal,
+                            timeRange,
+                            expand: true,
+                        });
+                    } catch (expandErr) {
+                        // Not every CalDAV server implements expand; fall back to the
+                        // unexpanded query rather than losing the calendar entirely.
+                        console.warn(`[CalDAV] expand unsupported for ${cal.displayName}, falling back: ${expandErr.message}`);
+                        calObjects = await client.fetchCalendarObjects({ calendar: cal, timeRange });
+                    }
 
                     for (const obj of calObjects) {
                         const parsed = parseICalEvent(obj.data, cal, account);
