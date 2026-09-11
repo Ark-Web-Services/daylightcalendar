@@ -1,4 +1,14 @@
 # Changelog
+## [1.1.9.8] - 2026-09-11
+
+### Fixed
+- **Connected iCloud/CalDAV accounts were wiped by every add-on update.** Accounts were saved to
+  `/app/data/caldav_accounts.json`, which lives in the container's writable image layer and is
+  destroyed whenever the add-on is rebuilt. Home Assistant only persists `/data`. Account storage
+  now uses `/data` in production, matching the `DATA_DIR` logic already used in `index.js`, and
+  migrates any accounts found at the old path on first load. User mappings and calendar settings
+  were unaffected — they already used `/data`.
+
 ## [1.1.9.7] - 2026-09-11
 
 ### Added

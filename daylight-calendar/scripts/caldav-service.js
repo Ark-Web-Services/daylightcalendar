@@ -9,19 +9,44 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const ACCOUNTS_FILE = path.join(__dirname, '..', 'data', 'caldav_accounts.json');
+// Home Assistant only persists /data across add-on rebuilds. Anything written
+// elsewhere in the container (such as /app/data) is in the writable image layer
+// and is destroyed on every update — which silently wiped connected iCloud
+// accounts. Matches the DATA_DIR logic in index.js.
+const IS_PRODUCTION = process.env.SUPERVISOR_TOKEN !== undefined;
+const DATA_DIR = IS_PRODUCTION ? '/data' : path.join(__dirname, '..', 'data');
+const ACCOUNTS_FILE = path.join(DATA_DIR, 'caldav_accounts.json');
+
+// Pre-1.1.9.8 location, inside the ephemeral image layer.
+const LEGACY_ACCOUNTS_FILE = path.join(__dirname, '..', 'data', 'caldav_accounts.json');
 
 // ── Account Storage ──────────────────────────────────────────────────────
 
 function ensureDataDir() {
-    const dataDir = path.dirname(ACCOUNTS_FILE);
-    if (!fs.existsSync(dataDir)) {
-        fs.mkdirSync(dataDir, { recursive: true });
+    if (!fs.existsSync(DATA_DIR)) {
+        fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+}
+
+// One-time move of accounts written to the old ephemeral path, for installs that
+// update before their container is rebuilt.
+function migrateLegacyAccounts() {
+    try {
+        if (ACCOUNTS_FILE === LEGACY_ACCOUNTS_FILE) return;
+        if (fs.existsSync(ACCOUNTS_FILE)) return;
+        if (!fs.existsSync(LEGACY_ACCOUNTS_FILE)) return;
+
+        ensureDataDir();
+        fs.copyFileSync(LEGACY_ACCOUNTS_FILE, ACCOUNTS_FILE);
+        console.log(`[CalDAV] Migrated accounts from ${LEGACY_ACCOUNTS_FILE} to ${ACCOUNTS_FILE}`);
+    } catch (err) {
+        console.error('[CalDAV] Could not migrate legacy accounts file:', err.message);
     }
 }
 
 function loadAccounts() {
     try {
+        migrateLegacyAccounts();
         if (fs.existsSync(ACCOUNTS_FILE)) {
             return JSON.parse(fs.readFileSync(ACCOUNTS_FILE, 'utf8'));
         }
