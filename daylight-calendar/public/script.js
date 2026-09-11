@@ -23,7 +23,7 @@ document.addEventListener('DOMContentLoaded', function () {
   console.log('[INFO] DOM Content Loaded');
 
   // Load configuration first
-  fetch('/api/config')
+  fetch('api/config')
     .then(response => response.json())
     .then(config => {
       window.appConfig = config;
@@ -222,7 +222,7 @@ function initializeChoresPage() {
         const choreData = Object.fromEntries(formData);
 
         try {
-          const response = await fetch('/api/chores', {
+          const response = await fetch('api/chores', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json'
@@ -1013,7 +1013,7 @@ function wakeScreen() {
 // Fetch display settings
 async function fetchDisplaySettings() {
   try {
-    const response = await fetch('/api/user/display-settings');
+    const response = await fetch('api/user/display-settings');
     if (!response.ok) throw new Error(`Failed to load display settings: ${response.status}`);
 
     const settings = await response.json();
@@ -1099,7 +1099,7 @@ function fetchWeather() {
     weatherContainerElement.innerHTML = '<div class="loading"><i class="material-icons spin">refresh</i> Loading weather...</div>';
   }
 
-  fetch('/api/weather')
+  fetch('api/weather')
     .then(response => {
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -1319,7 +1319,7 @@ async function loadUserToggles() {
   if (!userTogglesContainer) return;
 
   try {
-    const res = await fetch('/api/users');
+    const res = await fetch('api/users');
     if (!res.ok) throw new Error('Failed to load users');
 
     allCalendarUsers = await res.json();
@@ -1380,7 +1380,7 @@ async function fetchAndDisplayChores() {
   if (!choreBoard) return;
 
   try {
-    const response = await fetch('/api/chores');
+    const response = await fetch('api/chores');
     if (!response.ok) throw new Error('Failed to fetch chores');
 
     const data = await response.json();
@@ -1570,7 +1570,7 @@ async function loadCurrentHAUser() {
   if (currentUserSpan) {
     try {
       // Try to get current HA user info
-      const response = await fetch('/api/ha-proxy?endpoint=/api/config');
+      const response = await fetch('api/ha-proxy?endpoint=/api/config');
       if (response.ok) {
         const data = await response.json();
         if (data.success && data.data) {
@@ -1642,9 +1642,9 @@ async function populateUserDropdowns() {
   try {
     // parallel fetch
     const [calResp, evResp, notifyResp] = await Promise.all([
-      fetch('/api/ha/calendars'),
-      fetch('/api/calendar'),
-      fetch('/api/ha/notify-services')
+      fetch('api/ha/calendars'),
+      fetch('api/calendar'),
+      fetch('api/ha/notify-services')
     ]);
 
     let eventCounts = {};
@@ -1739,7 +1739,7 @@ async function fetchUsers() {
   if (!listContainer) return;
 
   try {
-    const resp = await fetch('/api/users');
+    const resp = await fetch('api/users');
     if (!resp.ok) throw new Error('Failed to fetch users');
     const users = await resp.json();
 
@@ -1818,9 +1818,9 @@ function openEditUserModal(userId, userName, currentCalendar, currentNotify, cur
 async function handleUpdateUser(e) {
   e.preventDefault();
   const userId = document.getElementById('edit-user-id').value;
-  const calendarEntityId = Array.from(document.getElementById('edit-user-calendar').selectedOptions)
-    .map(opt => opt.value)
-    .filter(v => v !== '');
+  const calendarEntityId = Array.from(
+    document.querySelectorAll('#edit-user-calendar .cal-checkbox:checked')
+  ).map(cb => cb.value);
   const notifyService = document.getElementById('edit-user-notify').value || null;
   const color = document.getElementById('edit-user-color')?.value || '#4285f4';
   const icon = document.getElementById('edit-user-icon')?.value || 'person';
@@ -1831,7 +1831,7 @@ async function handleUpdateUser(e) {
   btn.disabled = true;
 
   try {
-    const resp = await fetch(`/api/users/${userId}`, {
+    const resp = await fetch(`api/users/${userId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1869,14 +1869,14 @@ async function handleCreateUser(e) {
   btn.disabled = true;
 
   try {
-    const resp = await fetch('/api/users', {
+    const resp = await fetch('api/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name,
-        calendar_entity_id: Array.from(document.getElementById('new-user-calendar').selectedOptions)
-          .map(opt => opt.value)
-          .filter(v => v !== ''),
+        calendar_entity_id: Array.from(
+          document.querySelectorAll('#new-user-calendar .cal-checkbox:checked')
+        ).map(cb => cb.value),
         notify_service: document.getElementById('new-user-notify').value || null,
         color: document.getElementById('new-user-color')?.value || '#4285f4',
         icon: document.getElementById('new-user-icon')?.value || 'person'
@@ -1909,7 +1909,7 @@ async function fetchCalDAVAccounts() {
   if (!container) return;
 
   try {
-    const resp = await fetch('/api/caldav/accounts');
+    const resp = await fetch('api/caldav/accounts');
     if (!resp.ok) throw new Error('Failed to fetch accounts');
     const accounts = await resp.json();
 
@@ -1967,7 +1967,7 @@ async function connectAppleCalendar() {
   statusEl.style.display = 'block';
 
   try {
-    const resp = await fetch('/api/caldav/connect', {
+    const resp = await fetch('api/caldav/connect', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ appleId, appPassword, userId })
@@ -2011,7 +2011,7 @@ async function disconnectCalDAVAccount(accountId) {
   }
 
   try {
-    const resp = await fetch(`/api/caldav/accounts/${accountId}`, {
+    const resp = await fetch(`api/caldav/accounts/${accountId}`, {
       method: 'DELETE'
     });
 
@@ -2057,7 +2057,7 @@ async function handleCalDAVSync() {
   syncBtn.innerHTML = '<i class="material-icons rotating">sync</i> Syncing...';
 
   try {
-    const res = await fetch('/api/caldav/sync', {
+    const res = await fetch('api/caldav/sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' }
     });

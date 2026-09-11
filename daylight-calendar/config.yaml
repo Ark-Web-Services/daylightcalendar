@@ -1,5 +1,5 @@
 name: "Daylight Calendar"
-version: "1.1.9.3"
+version: "1.1.9.5"
 slug: "daylight_calendar"
 description: "A beautiful fullscreen calendar display for your Home Assistant touchscreen"
 url: "https://github.com/Ark-Web-Services/daylightcalendar"

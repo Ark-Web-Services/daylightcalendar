@@ -1,4 +1,21 @@
 # Changelog
+## [1.1.9.5] - 2026-09-11
+
+### Fixed
+- **User creation/editing crashed under ingress**: `handleCreateUser` and `handleUpdateUser`
+  read `.selectedOptions` from `#new-user-calendar` / `#edit-user-calendar`, but those are
+  `<div class="calendar-checkbox-list">` containers filled with checkboxes, not `<select>`
+  elements. `.selectedOptions` was `undefined`, so `Array.from(undefined)` threw
+  "can't access property Symbol.iterator, items is undefined". Both now read
+  `.cal-checkbox:checked`.
+- **Empty user list, calendar list and notify-service dropdown under ingress**: 17 `fetch()`
+  calls in `public/script.js` used absolute `/api/...` paths. Home Assistant serves add-ons
+  from `/api/hassio_ingress/<token>/`, so those requests escaped the add-on and hit the
+  Home Assistant API instead (401). They now use relative paths, matching the convention
+  already used by `page-loader.js` and `populateEditDropdowns`.
+- **Socket.io client 404**: `<script src="/socket.io/socket.io.js">` was absolute and failed
+  to load under ingress in `index.html` and `refactored-index.html`. Now relative.
+
 ## [1.1.9.4] - 2025-06-17
 
 ### Major Improvements
