@@ -452,12 +452,48 @@ async function initializeApp() {
     return {};
   }
 
+  // Helpers to persist which connected calendars are hidden from the calendar view
+  function readCalendarSettings() {
+    const settingsFile = path.join(DATA_DIR, 'calendar_settings.json');
+    if (fs.existsSync(settingsFile)) {
+      try {
+        const settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+        return {
+          disabledCalendarIds: Array.isArray(settings.disabledCalendarIds)
+            ? settings.disabledCalendarIds.filter(id => typeof id === 'string')
+            : []
+        };
+      } catch (err) {
+        console.error('Error reading calendar settings:', err);
+      }
+    }
+    return { disabledCalendarIds: [] };
+  }
+
+  function saveCalendarSettings(settings) {
+    const settingsFile = path.join(DATA_DIR, 'calendar_settings.json');
+    try {
+      if (!fs.existsSync(DATA_DIR)) {
+        fs.mkdirSync(DATA_DIR, { recursive: true });
+      }
+
+      const normalized = {
+        disabledCalendarIds: [...new Set(settings.disabledCalendarIds || [])]
+      };
+      fs.writeFileSync(settingsFile, JSON.stringify(normalized, null, 2));
+      return normalized;
+    } catch (err) {
+      console.error('Error saving calendar settings:', err);
+      throw err;
+    }
+  }
+
   // Function to fetch calendar data (HA + CalDAV merged)
   async function fetchCalendarData() {
     let haEvents = [];
     let caldavEvents = [];
 
-    // In standalone mode, return mock data mixed with real CalDAV data
+    // In standalone mode, load mock data mixed with real CalDAV data
     if (isStandaloneDev) {
       try {
         const mockPath = path.join(__dirname, 'mock-data', 'calendar.json');
@@ -477,12 +513,10 @@ async function initializeApp() {
         // Fallback to mock events ONLY if real fetch fails completely and we have no accounts?
         // Actually, let's just log it. If the user wants real CalDAV, they need to connect.
       }
-
-      return [...haEvents, ...caldavEvents];
     }
 
     // Fetch HA calendar events
-    if (config.calendar_entity_id) {
+    if (!isStandaloneDev && config.calendar_entity_id) {
       try {
         const now = new Date();
         const start_time = now.toISOString();
@@ -503,11 +537,13 @@ async function initializeApp() {
     }
 
     // Fetch CalDAV events
-    try {
-      caldavEvents = await caldavService.fetchAllEvents(config.calendar_days_to_show || 7);
-      console.log(`[INFO] Fetched ${caldavEvents.length} CalDAV events`);
-    } catch (error) {
-      console.error('[ERROR] Error fetching CalDAV events:', error.message);
+    if (!isStandaloneDev) {
+      try {
+        caldavEvents = await caldavService.fetchAllEvents(config.calendar_days_to_show || 7);
+        console.log(`[INFO] Fetched ${caldavEvents.length} CalDAV events`);
+      } catch (error) {
+        console.error('[ERROR] Error fetching CalDAV events:', error.message);
+      }
     }
 
     const mergedEvents = [...haEvents, ...caldavEvents];
@@ -556,7 +592,8 @@ async function initializeApp() {
       }
     });
 
-    return mergedEvents;
+    const disabledCalendarIds = new Set(readCalendarSettings().disabledCalendarIds);
+    return mergedEvents.filter(event => !disabledCalendarIds.has(event.calendar_entity_id));
   }
 
   // Function to fetch weather data
@@ -612,29 +649,28 @@ async function initializeApp() {
 
         console.log(`[INFO] Successfully fetched weather state for ${weatherEntityId}`);
 
-        // Extract forecast from the entity's attributes (Legacy)
-        let forecast = currentState.attributes?.forecast || [];
+        // Modern Home Assistant exposes forecasts through a response-producing service.
+        let forecast = [];
+        console.log(`[INFO] Fetching daily forecast via weather.get_forecasts for ${weatherEntityId}`);
+        try {
+          const serviceResponse = await callHaApi('/services/weather/get_forecasts?return_response', {
+            method: 'POST',
+            body: JSON.stringify({
+              entity_id: weatherEntityId,
+              type: 'daily'
+            })
+          });
+          const responseData = serviceResponse?.service_response || serviceResponse;
+          forecast = responseData?.[weatherEntityId]?.forecast || [];
+          console.log(`[INFO] Successfully fetched ${forecast.length} daily forecast items via service call.`);
+        } catch (serviceError) {
+          console.warn(`[WARN] Failed to fetch daily forecast via service call: ${serviceError.message}`);
+        }
 
-        // If forecast is empty, try the new weather.get_forecasts service (Modern HA)
-        if (forecast.length === 0) {
-          console.log(`[INFO] Legacy forecast attribute empty, trying weather.get_forecasts service for ${weatherEntityId}`);
-          try {
-            const serviceResponse = await callHaApi(`/services/weather/get_forecasts`, {
-              method: 'POST',
-              body: JSON.stringify({
-                entity_id: weatherEntityId,
-                type: 'daily'
-              })
-            });
-
-            // Service response format: { "weather.entity_id": { "forecast": [...] } }
-            if (serviceResponse && serviceResponse[weatherEntityId]) {
-              forecast = serviceResponse[weatherEntityId].forecast || [];
-              console.log(`[INFO] Successfully fetched ${forecast.length} forecast items via service call.`);
-            }
-          } catch (serviceError) {
-            console.warn(`[WARN] Failed to fetch forecast via service call: ${serviceError.message}`);
-          }
+        // Retain compatibility with older Home Assistant weather integrations.
+        if (forecast.length === 0 && Array.isArray(currentState.attributes?.forecast)) {
+          forecast = currentState.attributes.forecast;
+          console.log(`[INFO] Using ${forecast.length} legacy forecast items from weather entity attributes.`);
         }
 
         // Return both current state and forecast
@@ -984,7 +1020,9 @@ async function initializeApp() {
           picture: u.avatar,
           // Merge local mapping data
           calendar_entity_id: mappings[u.id]?.calendar_entity_id || null,
-          notify_service: mappings[u.id]?.notify_service || null
+          notify_service: mappings[u.id]?.notify_service || null,
+          color: mappings[u.id]?.color || '#4285f4',
+          icon: mappings[u.id]?.icon || 'person'
         }));
       } catch (e) { return []; }
     }
@@ -1070,6 +1108,37 @@ async function initializeApp() {
     }
   });
 
+  // API: Get persisted calendar visibility settings
+  app.get('/api/calendar-settings', (req, res) => {
+    res.json(readCalendarSettings());
+  });
+
+  // API: Enable or disable a connected calendar
+  app.put('/api/calendar-settings', express.json(), (req, res) => {
+    try {
+      const { calendarId, enabled } = req.body;
+      if (typeof calendarId !== 'string' || !calendarId.trim() || typeof enabled !== 'boolean') {
+        return res.status(400).json({ error: 'calendarId and enabled are required' });
+      }
+
+      const settings = readCalendarSettings();
+      const disabledCalendarIds = new Set(settings.disabledCalendarIds);
+      if (enabled) {
+        disabledCalendarIds.delete(calendarId);
+      } else {
+        disabledCalendarIds.add(calendarId);
+      }
+
+      const savedSettings = saveCalendarSettings({
+        disabledCalendarIds: [...disabledCalendarIds]
+      });
+      res.json({ calendarId, enabled, ...savedSettings });
+    } catch (err) {
+      console.error('Update calendar settings failed:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // API: Get HA Notify Services
   app.get('/api/ha/notify-services', async (req, res) => {
     try {
@@ -1136,8 +1205,8 @@ async function initializeApp() {
   app.post('/api/caldav/connect', express.json(), async (req, res) => {
     try {
       const { appleId, appPassword, userId } = req.body;
-      if (!appleId || !appPassword || !userId) {
-        return res.status(400).json({ error: 'Apple ID, app-specific password, and user assignment are required' });
+      if (!appleId || !appPassword) {
+        return res.status(400).json({ error: 'Apple ID and app-specific password are required' });
       }
 
       // if (isStandaloneDev) {
@@ -1146,7 +1215,7 @@ async function initializeApp() {
       //   // return res.json(mockAccounts[0]);
       // }
 
-      const account = await caldavService.connectAppleCalendar(appleId, appPassword, userId);
+      const account = await caldavService.connectAppleCalendar(appleId, appPassword, userId || null);
       res.json(account);
     } catch (err) {
       console.error('CalDAV connect failed:', err);

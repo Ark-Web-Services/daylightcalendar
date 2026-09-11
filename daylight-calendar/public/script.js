@@ -7,12 +7,23 @@ let inactivityTimer;
 let dimmerCountdownTimer;
 let dimmerCountdown = 30;
 let weatherForecastData = [];
+let weatherTemperatureUnit = '°';
+let weatherPrecipitationUnit = '';
+let activeWeatherPopover = null;
 let calendar;
 let allCalendarUsers = [];
 let activeCalendarUsers = new Set();
+let calendarUserFiltersReady = false;
+const supportedThemes = ['light', 'dark', 'pastel', 'forest', 'ocean', 'sunset'];
+let selectedTheme = 'light';
+let automaticThemeTimer = null;
+const initializedFrameContent = new WeakMap();
 
 // Display settings (default values)
 let displaySettings = {
+  autoNightMode: true,
+  nightModeStart: '20:00',
+  nightModeEnd: '07:00',
   screenBurnProtection: true,
   dimAfterMinutes: 10,
   displayClock: false
@@ -58,81 +69,48 @@ document.addEventListener('DOMContentLoaded', function () {
 // Setup Turbo frame event listeners
 function setupTurboFrameListeners() {
   console.log('[DEBUG] Setting up Turbo frame event listeners...');
+  document.removeEventListener('turbo:frame-load', handleTurboFrameLoad);
+  document.addEventListener('turbo:frame-load', handleTurboFrameLoad);
 
-  // Listen for turbo frame loads
-  document.addEventListener('turbo:frame-load', function (event) {
-    const frame = event.target;
-    console.log('[DEBUG] Turbo frame loaded:', frame.id);
+  // Config is fetched after DOMContentLoaded, so some eager Turbo frames may
+  // already have completed before this listener exists. Initialize them now.
+  document.querySelectorAll('turbo-frame[complete]').forEach(initializeLoadedFrame);
+}
 
-    // Re-setup modals for any new content
-    setupModals();
+function handleTurboFrameLoad(event) {
+  initializeLoadedFrame(event.target);
+}
 
-    switch (frame.id) {
-      case 'calendar-content':
-        console.log('[DEBUG] Initializing calendar content...');
-        initializeCalendarPage();
-        break;
-      case 'chores-content':
-        console.log('[DEBUG] Initializing chores content...');
-        initializeChoresPage();
-        break;
-      case 'meals-content':
-        console.log('[DEBUG] Initializing meals content...');
-        initializeMealsPage();
-        break;
-      case 'games-content':
-        console.log('[DEBUG] Initializing games content...');
-        initializeGamesPage();
-        break;
-      case 'settings-content':
-        console.log('[DEBUG] Initializing settings content...');
-        initializeSettingsPage();
-        break;
-      case 'api-test-content':
-        console.log('[DEBUG] Initializing debug content...');
-        initializeDebugPage();
-        break;
-      default:
-        console.log('[DEBUG] Unknown frame loaded:', frame.id);
-    }
-  });
+function initializeLoadedFrame(frame) {
+  if (!frame?.id) return;
+  const contentMarker = frame.firstElementChild;
+  if (contentMarker && initializedFrameContent.get(frame) === contentMarker) return;
+  if (contentMarker) initializedFrameContent.set(frame, contentMarker);
+  console.log('[DEBUG] Initializing loaded frame:', frame.id);
+  setupModals();
 
-  // Also listen for regular frame loads in case turbo events don't fire
-  document.addEventListener('DOMContentLoaded', function () {
-    console.log('[DEBUG] DOM fully loaded, checking for existing frames...');
-
-    // Check if any frames are already loaded
-    const frames = ['calendar-content', 'chores-content', 'meals-content', 'games-content', 'settings-content', 'api-test-content'];
-    frames.forEach(frameId => {
-      const frame = document.getElementById(frameId);
-      if (frame && frame.style.display !== 'none') {
-        console.log('[DEBUG] Found existing frame:', frameId);
-        // Re-setup modals for existing content
-        setupModals();
-        // Initialize the frame content
-        switch (frameId) {
-          case 'calendar-content':
-            initializeCalendarPage();
-            break;
-          case 'chores-content':
-            initializeChoresPage();
-            break;
-          case 'meals-content':
-            initializeMealsPage();
-            break;
-          case 'games-content':
-            initializeGamesPage();
-            break;
-          case 'settings-content':
-            initializeSettingsPage();
-            break;
-          case 'api-test-content':
-            initializeDebugPage();
-            break;
-        }
-      }
-    });
-  });
+  switch (frame.id) {
+    case 'calendar-content':
+      initializeCalendarPage();
+      break;
+    case 'chores-content':
+      initializeChoresPage();
+      break;
+    case 'meals-content':
+      initializeMealsPage();
+      break;
+    case 'games-content':
+      initializeGamesPage();
+      break;
+    case 'settings-content':
+      initializeSettingsPage();
+      break;
+    case 'api-test-content':
+      initializeDebugPage();
+      break;
+    default:
+      console.log('[DEBUG] Unknown frame loaded:', frame.id);
+  }
 }
 
 // Initialize calendar page
@@ -140,21 +118,19 @@ function initializeCalendarPage() {
   console.log('[INFO] Initializing calendar page...');
 
   // Wait for elements to be available in the DOM
-  setTimeout(() => {
+  setTimeout(async () => {
     // Update time and weather first
     updateTime();
+    fetchWeather();
 
-    // Setup calendar with delay to ensure DOM is ready
-    setTimeout(() => {
+    // People load independently; events remain visible until their filters are ready.
+    loadUserToggles().then(() => {
+      if (calendar) calendar.refetchEvents();
+    });
+    const hasCalendars = await refreshCalendarAvailability();
+    if (hasCalendars) {
       setupCalendar();
-
-      // Fetch data after calendar is set up
-      setTimeout(() => {
-        fetchWeather();
-        fetchCalendarEvents();
-        loadUserToggles();
-      }, 200);
-    }, 100);
+    }
 
     console.log('[INFO] Calendar page initialized');
   }, 100);
@@ -249,8 +225,49 @@ function initializeChoresPage() {
       console.log('[DEBUG] Add chore form listener added');
     }
 
+    populateChoreAssignees();
     fetchAndDisplayChores();
   }, 100);
+}
+
+async function populateChoreAssignees() {
+  const select = document.getElementById('assigneeName');
+  if (!select) return;
+
+  const unassignedOption = document.createElement('option');
+  unassignedOption.value = '';
+  unassignedOption.textContent = 'Unassigned';
+  select.replaceChildren(unassignedOption);
+  select.disabled = true;
+
+  try {
+    const response = await fetch('api/users');
+    if (!response.ok) throw new Error('Failed to load users');
+    const users = await response.json();
+
+    users.forEach(user => {
+      const option = document.createElement('option');
+      const color = getValidCalendarColor(user.color);
+      option.value = user.name || user.id;
+      option.textContent = user.name || 'Unnamed user';
+      option.dataset.color = color;
+      option.style.color = color;
+      select.appendChild(option);
+    });
+
+    select.onchange = () => {
+      const selectedColor = select.selectedOptions[0]?.dataset.color;
+      select.style.borderColor = selectedColor || '';
+    };
+  } catch (error) {
+    console.error('[ERROR] Failed to populate chore assignees:', error);
+    const unavailableOption = document.createElement('option');
+    unavailableOption.disabled = true;
+    unavailableOption.textContent = 'People unavailable';
+    select.appendChild(unavailableOption);
+  } finally {
+    select.disabled = false;
+  }
 }
 
 function initializeMealsPage() {
@@ -272,45 +289,45 @@ function initializeMealsPage() {
     const mealCategoriesModal = document.getElementById('meal-categories-modal');
 
     if (prevWeekBtn) {
-      prevWeekBtn.addEventListener('click', () => {
+      prevWeekBtn.onclick = () => {
         console.log('[INFO] Previous week clicked');
         // Navigate to previous week
-      });
+      };
     }
 
     if (nextWeekBtn) {
-      nextWeekBtn.addEventListener('click', () => {
+      nextWeekBtn.onclick = () => {
         console.log('[INFO] Next week clicked');
         // Navigate to next week
-      });
+      };
     }
 
     if (recipeBookBtn && recipeBookModal) {
-      recipeBookBtn.addEventListener('click', () => {
+      recipeBookBtn.onclick = () => {
         console.log('[INFO] Recipe book button clicked');
         recipeBookModal.classList.add('show');
-      });
+      };
     }
 
     if (groceryListBtn && groceryListModal) {
-      groceryListBtn.addEventListener('click', () => {
+      groceryListBtn.onclick = () => {
         console.log('[INFO] Grocery list button clicked');
         groceryListModal.classList.add('show');
-      });
+      };
     }
 
     if (addMealBtn && addMealModal) {
-      addMealBtn.addEventListener('click', () => {
+      addMealBtn.onclick = () => {
         console.log('[INFO] Add meal button clicked');
         addMealModal.classList.add('show');
-      });
+      };
     }
 
     if (mealCategoriesBtn && mealCategoriesModal) {
-      mealCategoriesBtn.addEventListener('click', () => {
+      mealCategoriesBtn.onclick = () => {
         console.log('[INFO] Meal categories button clicked');
         mealCategoriesModal.classList.add('show');
-      });
+      };
     }
 
     // Setup form submissions
@@ -318,24 +335,24 @@ function initializeMealsPage() {
     const addGroceryForm = document.getElementById('add-grocery-item-form');
 
     if (addMealForm) {
-      addMealForm.addEventListener('submit', (e) => {
+      addMealForm.onsubmit = (e) => {
         e.preventDefault();
         console.log('[INFO] Add meal form submitted');
         const formData = new FormData(addMealForm);
         console.log('[INFO] Meal data:', Object.fromEntries(formData));
         addMealModal.classList.remove('show');
         addMealForm.reset();
-      });
+      };
     }
 
     if (addGroceryForm) {
-      addGroceryForm.addEventListener('submit', (e) => {
+      addGroceryForm.onsubmit = (e) => {
         e.preventDefault();
         console.log('[INFO] Add grocery item form submitted');
         const formData = new FormData(addGroceryForm);
         console.log('[INFO] Grocery item data:', Object.fromEntries(formData));
         addGroceryForm.reset();
-      });
+      };
     }
 
     fetchAndDisplayMeals();
@@ -391,31 +408,76 @@ function initializeGamesPage() {
     // Setup profile selection
     const profileList = document.getElementById('profile-list');
     if (profileList) {
-      // Add some default profiles for demo
-      profileList.innerHTML = `
-        <div class="profile-item" data-profile="alex">
-          <div class="profile-avatar" style="background-color: #4285f4;">A</div>
-          <div class="profile-name">Alex</div>
-          <div class="profile-playtime">30 min remaining</div>
-        </div>
-        <div class="profile-item" data-profile="jordan">
-          <div class="profile-avatar" style="background-color: #34a853;">J</div>
-          <div class="profile-name">Jordan</div>
-          <div class="profile-playtime">45 min remaining</div>
-        </div>
-      `;
-
-      // Setup profile clicks
-      profileList.addEventListener('click', (e) => {
+      profileList.onclick = (e) => {
         const profileItem = e.target.closest('.profile-item');
         if (profileItem) {
           document.querySelectorAll('.profile-item').forEach(p => p.classList.remove('selected'));
           profileItem.classList.add('selected');
           console.log('[INFO] Profile selected:', profileItem.dataset.profile);
         }
-      });
+      };
+      loadGameProfiles(profileList);
     }
   }, 100);
+}
+
+async function loadGameProfiles(profileList = document.getElementById('profile-list')) {
+  if (!profileList) return;
+  profileList.innerHTML = '<div class="profile-list-state"><i class="material-icons spin" aria-hidden="true">refresh</i> Loading people…</div>';
+
+  try {
+    const response = await fetch('api/users');
+    if (!response.ok) throw new Error('Failed to load users');
+    const users = await response.json();
+    profileList.innerHTML = '';
+
+    if (!Array.isArray(users) || users.length === 0) {
+      profileList.innerHTML = `
+        <div class="profile-list-empty">
+          <i class="material-icons" aria-hidden="true">person_off</i>
+          <div>
+            <strong>No people yet</strong>
+            <span>Add a household member in Settings to choose a game profile.</span>
+          </div>
+          <button type="button" class="btn btn-secondary" id="open-user-settings">Open Settings</button>
+        </div>
+      `;
+      document.getElementById('open-user-settings')?.addEventListener('click', openUserManagementSettings);
+      return;
+    }
+
+    users.forEach(user => {
+      const profile = document.createElement('button');
+      profile.type = 'button';
+      profile.className = 'profile-item';
+      profile.dataset.profile = user.id;
+
+      const avatar = document.createElement('span');
+      avatar.className = 'profile-avatar';
+      avatar.style.backgroundColor = getValidCalendarColor(user.color);
+      avatar.textContent = (user.name || '?').trim().charAt(0).toUpperCase() || '?';
+
+      const name = document.createElement('span');
+      name.className = 'profile-name';
+      name.textContent = user.name || 'Unnamed user';
+
+      profile.append(avatar, name);
+      profileList.appendChild(profile);
+    });
+  } catch (error) {
+    console.error('[ERROR] Failed to load game profiles:', error);
+    profileList.innerHTML = `
+      <div class="profile-list-empty">
+        <i class="material-icons" aria-hidden="true">error_outline</i>
+        <div>
+          <strong>People could not be loaded</strong>
+          <span>Check the Home Assistant connection and try again.</span>
+        </div>
+        <button type="button" class="btn btn-secondary" id="retry-game-profiles">Retry</button>
+      </div>
+    `;
+    document.getElementById('retry-game-profiles')?.addEventListener('click', () => loadGameProfiles(profileList));
+  }
 }
 
 function initializeSettingsPage() {
@@ -435,71 +497,9 @@ function initializeSettingsPage() {
       displayClock: !!displayClock
     });
 
-    if (screenBurnProtection) {
-      screenBurnProtection.addEventListener('change', function (e) {
-        displaySettings.screenBurnProtection = e.target.checked;
-        console.log('[INFO] Screen burn protection:', e.target.checked);
-        if (displaySettings.screenBurnProtection) {
-          resetInactivityTimer();
-        } else {
-          if (inactivityTimer) {
-            clearTimeout(inactivityTimer);
-          }
-          wakeScreen();
-        }
-      });
-      console.log('[DEBUG] Screen burn protection listener added');
-    }
-
-    if (dimAfterMinutes) {
-      dimAfterMinutes.addEventListener('change', function (e) {
-        displaySettings.dimAfterMinutes = parseInt(e.target.value, 10);
-        console.log('[INFO] Dim after minutes:', displaySettings.dimAfterMinutes);
-        resetInactivityTimer();
-      });
-      console.log('[DEBUG] Dim after minutes listener added');
-    }
-
-    if (displayClock) {
-      displayClock.addEventListener('change', function (e) {
-        displaySettings.displayClock = e.target.checked;
-        console.log('[INFO] Display clock:', e.target.checked);
-        const clockDisplay = document.getElementById('clock-display');
-        if (displaySettings.displayClock && clockDisplay) {
-          clockDisplay.classList.add('active');
-        } else if (clockDisplay) {
-          clockDisplay.classList.remove('active');
-        }
-      });
-      console.log('[DEBUG] Display clock listener added');
-    }
-
-    // Setup theme buttons
-    const themeButtons = document.querySelectorAll('.theme-button');
-    console.log('[DEBUG] Found theme buttons:', themeButtons.length);
-    themeButtons.forEach((button, index) => {
-      console.log('[DEBUG] Setting up theme button', index, 'with theme:', button.dataset.theme);
-      button.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const theme = button.dataset.theme;
-        console.log('[INFO] Theme selected:', theme);
-
-        // Remove active class from all theme buttons
-        themeButtons.forEach(btn => btn.classList.remove('active'));
-        button.classList.add('active');
-
-        // Apply theme (this could update CSS variables or classes)
-        document.documentElement.setAttribute('data-theme', theme);
-
-        // Also apply to body for broader compatibility
-        document.body.setAttribute('data-theme', theme);
-        document.body.className = document.body.className.replace(/theme-\w+/g, '') + ` theme-${theme}`;
-
-        console.log('[DEBUG] Theme applied to document and body:', theme);
-      });
-    });
-    console.log('[DEBUG] All theme button listeners added');
+    // Global delegated settings handlers survive Turbo replacing this frame.
+    syncDisplaySettingsControls();
+    syncThemeControls();
 
     // Setup camera/microphone test buttons
     const startCameraBtn = document.getElementById('start-camera');
@@ -636,6 +636,10 @@ function initializeSettingsPage() {
       initializeCalDAVSettings();
     }
 
+    if (typeof loadCalendarManagement === 'function') {
+      loadCalendarManagement();
+    }
+
     // Re-setup modals for settings page (generic closers)
     setupModals();
     setupColorAndIconSelectors();
@@ -694,10 +698,18 @@ function initializeSidebar() {
         contentFrame.classList.add('active-content');
         contentFrame.style.display = 'block';
 
-        // Force FullCalendar to recalculate its dimensions now that container is visible
-        if (target === 'calendar-page' && typeof calendar !== 'undefined' && calendar) {
-          setTimeout(() => {
-            calendar.updateSize();
+        // Refresh availability and size after returning from calendar settings
+        if (target === 'calendar-content') {
+          setTimeout(async () => {
+            const hasCalendars = await refreshCalendarAvailability();
+            if (!hasCalendars) return;
+
+            if (calendar) {
+              calendar.updateSize();
+              calendar.refetchEvents();
+            } else {
+              setupCalendar();
+            }
           }, 50);
         }
       }
@@ -726,9 +738,225 @@ function initializeGlobalUI() {
   // Setup modal management
   setupModals();
 
+  // These listeners live on the stable document, so Turbo frame swaps cannot
+  // orphan them or create duplicate handlers when Settings is reopened.
+  document.removeEventListener('click', handleDelegatedUiClick);
+  document.addEventListener('click', handleDelegatedUiClick);
+  document.removeEventListener('change', handleDelegatedSettingsChange);
+  document.addEventListener('change', handleDelegatedSettingsChange);
+
+  initializeThemeState();
+  fetchDisplaySettings();
+  if (!automaticThemeTimer) {
+    automaticThemeTimer = setInterval(applyAutomaticTheme, 60 * 1000);
+  }
+
   // Start the clock
   updateClock();
   setInterval(updateClock, 1000);
+}
+
+function handleDelegatedUiClick(event) {
+  const themeButton = event.target.closest('.theme-button[data-theme]');
+  if (themeButton) {
+    event.preventDefault();
+    selectTheme(themeButton.dataset.theme, true);
+    return;
+  }
+
+  if (activeWeatherPopover && !activeWeatherPopover.contains(event.target)) {
+    closeDailyWeatherPopover();
+  }
+}
+
+function handleDelegatedSettingsChange(event) {
+  const { target } = event;
+  if (!target?.id) return;
+
+  if (target.id === 'auto-night-mode') {
+    displaySettings.autoNightMode = target.checked;
+    persistDisplaySettings();
+    applyAutomaticTheme();
+    return;
+  }
+
+  if (target.id === 'night-mode-start' || target.id === 'night-mode-end') {
+    const key = target.id === 'night-mode-start' ? 'nightModeStart' : 'nightModeEnd';
+    displaySettings[key] = target.value;
+    persistDisplaySettings();
+    applyAutomaticTheme();
+    return;
+  }
+
+  if (target.id === 'screen-burn-protection') {
+    displaySettings.screenBurnProtection = target.checked;
+    if (target.checked) {
+      resetInactivityTimer();
+    } else {
+      if (inactivityTimer) clearTimeout(inactivityTimer);
+      wakeScreen();
+    }
+    persistDisplaySettings();
+    return;
+  }
+
+  if (target.id === 'dim-after-minutes') {
+    displaySettings.dimAfterMinutes = parseInt(target.value, 10);
+    resetInactivityTimer();
+    persistDisplaySettings();
+    return;
+  }
+
+  if (target.id === 'display-clock') {
+    displaySettings.displayClock = target.checked;
+    document.getElementById('clock-display')?.classList.toggle('active', target.checked);
+    persistDisplaySettings();
+  }
+}
+
+async function initializeThemeState() {
+  let storedTheme;
+  try {
+    storedTheme = localStorage.getItem('daylight-theme');
+  } catch (error) {
+    console.warn('[WARN] Could not read local theme:', error);
+  }
+
+  selectedTheme = supportedThemes.includes(storedTheme)
+    ? storedTheme
+    : (supportedThemes.includes(window.appConfig?.theme) ? window.appConfig.theme : 'light');
+  applyAutomaticTheme();
+
+  try {
+    const response = await fetch('api/user/theme');
+    if (!response.ok) throw new Error(`Failed to load theme: ${response.status}`);
+    const data = await response.json();
+    if (!supportedThemes.includes(storedTheme) && supportedThemes.includes(data.theme)) {
+      selectedTheme = data.theme;
+      localStorage.setItem('daylight-theme', selectedTheme);
+      applyAutomaticTheme();
+    }
+  } catch (error) {
+    console.warn('[WARN] Using locally stored theme:', error);
+  }
+}
+
+async function selectTheme(theme, explicitSelection = false) {
+  if (!supportedThemes.includes(theme)) return;
+  selectedTheme = theme;
+
+  try {
+    localStorage.setItem('daylight-theme', theme);
+  } catch (error) {
+    console.warn('[WARN] Could not persist theme locally:', error);
+  }
+
+  if (explicitSelection) {
+    // A direct tap is an override. Auto mode can be turned back on separately.
+    displaySettings.autoNightMode = false;
+    persistDisplaySettings();
+  }
+
+  applyAutomaticTheme();
+  syncDisplaySettingsControls();
+  syncThemeControls();
+
+  try {
+    const response = await fetch('api/user/theme', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ theme })
+    });
+    if (!response.ok) throw new Error(`Failed to save theme: ${response.status}`);
+  } catch (error) {
+    console.warn('[WARN] Theme remains saved on this display only:', error);
+  }
+}
+
+function applyAutomaticTheme() {
+  let resolvedTheme = selectedTheme;
+  if (displaySettings.autoNightMode && selectedTheme !== 'dark') {
+    const isNight = isTimeWithinRange(
+      moment().format('HH:mm'),
+      displaySettings.nightModeStart,
+      displaySettings.nightModeEnd
+    );
+    if (isNight) {
+      resolvedTheme = selectedTheme === 'light' ? 'dark' : `${selectedTheme}-dark`;
+    }
+  }
+  applyThemeClass(resolvedTheme);
+}
+
+function isTimeWithinRange(current, start = '20:00', end = '07:00') {
+  if (start === end) return true;
+  return start < end
+    ? current >= start && current < end
+    : current >= start || current < end;
+}
+
+function applyThemeClass(theme) {
+  const themeClasses = [
+    ...supportedThemes.map(item => `theme-${item}`),
+    'theme-pastel-dark',
+    'theme-forest-dark',
+    'theme-ocean-dark',
+    'theme-sunset-dark'
+  ];
+
+  [document.documentElement, document.body, document.getElementById('app')]
+    .filter(Boolean)
+    .forEach(element => {
+      element.classList.remove(...themeClasses);
+      element.classList.add(`theme-${theme}`);
+      element.dataset.theme = theme;
+    });
+  syncThemeControls();
+}
+
+function syncThemeControls() {
+  document.querySelectorAll('.theme-button[data-theme]').forEach(button => {
+    const isActive = button.dataset.theme === selectedTheme;
+    button.classList.toggle('active', isActive);
+    button.setAttribute('aria-pressed', String(isActive));
+  });
+}
+
+function syncDisplaySettingsControls() {
+  const settingsElements = {
+    'auto-night-mode': displaySettings.autoNightMode,
+    'night-mode-start': displaySettings.nightModeStart,
+    'night-mode-end': displaySettings.nightModeEnd,
+    'screen-burn-protection': displaySettings.screenBurnProtection,
+    'dim-after-minutes': displaySettings.dimAfterMinutes,
+    'display-clock': displaySettings.displayClock
+  };
+
+  Object.entries(settingsElements).forEach(([id, value]) => {
+    const element = document.getElementById(id);
+    if (!element) return;
+    if (element.type === 'checkbox') element.checked = Boolean(value);
+    else element.value = value;
+  });
+}
+
+async function persistDisplaySettings() {
+  try {
+    localStorage.setItem('daylight-display-settings', JSON.stringify(displaySettings));
+  } catch (error) {
+    console.warn('[WARN] Could not persist display settings locally:', error);
+  }
+
+  try {
+    const response = await fetch('api/user/display-settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(displaySettings)
+    });
+    if (!response.ok) throw new Error(`Failed to save display settings: ${response.status}`);
+  } catch (error) {
+    console.warn('[WARN] Display settings remain saved on this display only:', error);
+  }
 }
 
 function updateClock() {
@@ -796,6 +1024,10 @@ function handleModalClose(event) {
 
 function handleEscapeKey(event) {
   if (event.key === 'Escape') {
+    if (activeWeatherPopover) {
+      closeDailyWeatherPopover();
+      return;
+    }
     const openModal = document.querySelector('.modal.show');
     if (openModal) {
       closeModal(openModal);
@@ -853,11 +1085,15 @@ function setupCalendar() {
 
   try {
     calendar = new FullCalendar.Calendar(calendarEl, {
-      initialView: 'timeGridWeek',
+      initialView: getStoredCalendarView(),
       headerToolbar: {
         left: 'prev,next today',
         center: 'title',
-        right: 'timeGridWeek,timeGridDay'
+        right: 'timeGridWeek,dayGridMonth'
+      },
+      buttonText: {
+        week: 'Week',
+        month: 'Month'
       },
       slotMinTime: '06:00:00',
       slotMaxTime: '24:00:00',
@@ -865,7 +1101,7 @@ function setupCalendar() {
       height: 'auto',
       aspectRatio: 1.35,
       events: function (fetchInfo, successCallback, failureCallback) {
-        const url = `/api/calendar?start=${fetchInfo.startStr}&end=${fetchInfo.endStr}`;
+        const url = `api/calendar?start=${fetchInfo.startStr}&end=${fetchInfo.endStr}`;
         fetch(url)
           .then(res => {
             if (!res.ok) throw new Error('Network response was not ok');
@@ -873,12 +1109,14 @@ function setupCalendar() {
           })
           .then(events => {
             const filtered = events.filter(e => {
-              // Strictly hide events that aren't mapped to a user profile
-              if (!e.userId) return false;
+              // Unassigned calendars are always visible. People toggles only filter assigned events.
+              if (!e.userId || !calendarUserFiltersReady) return true;
               return activeCalendarUsers.has(e.userId);
             });
 
-            // Color code events according to the user's color
+            const neutralColor = getNeutralCalendarColor();
+
+            // Assigned events use the person's color; unassigned events keep their calendar color.
             filtered.forEach(e => {
               if (e.userId) {
                 const user = allCalendarUsers.find(u => u.id === e.userId);
@@ -886,10 +1124,19 @@ function setupCalendar() {
                   e.backgroundColor = user.color;
                   e.borderColor = user.color;
                 }
+              } else {
+                const calendarColor = getValidCalendarColor(
+                  e.calendarColor || e.color || e.backgroundColor,
+                  neutralColor
+                );
+                e.backgroundColor = calendarColor;
+                e.borderColor = calendarColor;
+                e.classNames = [...(e.classNames || []), 'calendar-event-unassigned'];
               }
             });
 
             successCallback(filtered);
+            updateNextEventPanel(filtered);
           })
           .catch(err => {
             console.error('[ERROR] Failed to fetch calendar events:', err);
@@ -899,15 +1146,32 @@ function setupCalendar() {
       eventClick: function (info) {
         console.log('[DEBUG] Event clicked:', info.event);
       },
-      eventDidMount: function (info) {
-        // Add weather icons if available
-        updateEventWeather(info);
+      dayCellDidMount: function (info) {
+        if (info.view.type === 'dayGridMonth') {
+          renderDailyWeatherButton(info.el, info.date, false);
+        }
+      },
+      dayHeaderDidMount: function (info) {
+        if (info.view.type !== 'dayGridMonth') {
+          renderDailyWeatherButton(info.el, info.date, true);
+        }
+      },
+      datesSet: function (info) {
+        closeDailyWeatherPopover();
+        if (info.view.type === 'timeGridWeek' || info.view.type === 'dayGridMonth') {
+          try {
+            localStorage.setItem('daylight-calendar-view', info.view.type);
+          } catch (error) {
+            console.warn('[WARN] Could not persist calendar view:', error);
+          }
+        }
+        requestAnimationFrame(refreshDailyWeatherIcons);
       },
       loading: function (isLoading) {
         console.log('[DEBUG] Calendar loading:', isLoading);
       },
       eventDisplay: 'block',
-      dayMaxEvents: false,
+      dayMaxEvents: 3,
       moreLinkClick: 'popover',
       nowIndicator: true,
       scrollTime: '08:00:00',
@@ -950,6 +1214,107 @@ function setupCalendar() {
         <button onclick="setupCalendar()" class="btn btn-primary">Retry</button>
       </div>
     `;
+  }
+}
+
+function getStoredCalendarView() {
+  try {
+    const storedView = localStorage.getItem('daylight-calendar-view');
+    if (storedView === 'dayGridMonth' || storedView === 'timeGridWeek') return storedView;
+  } catch (error) {
+    console.warn('[WARN] Could not read saved calendar view:', error);
+  }
+  return 'timeGridWeek';
+}
+
+function getNeutralCalendarColor() {
+  return getComputedStyle(document.documentElement)
+    .getPropertyValue('--md-on-surface-variant')
+    .trim() || '#5f6368';
+}
+
+function getValidCalendarColor(color, fallback = getNeutralCalendarColor()) {
+  return typeof color === 'string' && window.CSS && CSS.supports('color', color)
+    ? color
+    : fallback;
+}
+
+function openCalendarConnectionSettings() {
+  const settingsTab = document.querySelector('.tab-item[data-tab-target="settings-content"]');
+  if (settingsTab) {
+    settingsTab.click();
+  }
+
+  setTimeout(() => {
+    const connectionSettings = document.getElementById('calendar-connection-settings');
+    if (connectionSettings) {
+      connectionSettings.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    const appleIdInput = document.getElementById('caldav-apple-id');
+    if (appleIdInput) appleIdInput.focus({ preventScroll: true });
+  }, 200);
+}
+
+function openUserManagementSettings() {
+  const settingsTab = document.querySelector('.tab-item[data-tab-target="settings-content"]');
+  if (settingsTab) settingsTab.click();
+
+  setTimeout(() => {
+    const userSettings = document.getElementById('user-management-settings');
+    if (userSettings) {
+      userSettings.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, 200);
+}
+
+async function refreshCalendarAvailability() {
+  const calendarEl = document.getElementById('calendar');
+  if (!calendarEl) return false;
+
+  try {
+    const response = await fetch('api/ha/calendars');
+    if (!response.ok) throw new Error('Failed to load connected calendars');
+    const calendars = await response.json();
+    const hasCalendars = Array.isArray(calendars) && calendars.length > 0;
+    const calendarFrame = calendarEl.closest('#calendar-content');
+    const toolbar = calendarFrame ? calendarFrame.querySelector('.calendar-toolbar') : null;
+    const footer = calendarFrame ? calendarFrame.querySelector('footer') : null;
+
+    if (!hasCalendars) {
+      if (calendar) {
+        calendar.destroy();
+        calendar = null;
+      }
+
+      if (toolbar) toolbar.hidden = true;
+      if (footer) footer.hidden = true;
+      calendarEl.classList.add('calendar-empty-container');
+      calendarEl.innerHTML = `
+        <div class="calendar-empty-state">
+          <i class="material-icons" aria-hidden="true">event_busy</i>
+          <h2>No calendars connected</h2>
+          <p>Connect a calendar in Settings to start seeing events here.</p>
+          <button type="button" class="btn btn-primary" id="open-calendar-settings">
+            <i class="material-icons" aria-hidden="true">settings</i>
+            Open Settings
+          </button>
+        </div>
+      `;
+      document.getElementById('open-calendar-settings')
+        ?.addEventListener('click', openCalendarConnectionSettings);
+      return false;
+    }
+
+    if (toolbar) toolbar.hidden = false;
+    if (footer) footer.hidden = false;
+    if (calendarEl.classList.contains('calendar-empty-container')) {
+      calendarEl.classList.remove('calendar-empty-container');
+      calendarEl.innerHTML = '';
+    }
+    return true;
+  } catch (err) {
+    console.error('[ERROR] Failed to check calendar availability:', err);
+    return true;
   }
 }
 
@@ -1012,48 +1377,33 @@ function wakeScreen() {
 
 // Fetch display settings
 async function fetchDisplaySettings() {
+  let localSettings = {};
+  try {
+    localSettings = JSON.parse(localStorage.getItem('daylight-display-settings') || '{}');
+    displaySettings = { ...displaySettings, ...localSettings };
+  } catch (error) {
+    console.warn('[WARN] Could not read local display settings:', error);
+  }
+
   try {
     const response = await fetch('api/user/display-settings');
     if (!response.ok) throw new Error(`Failed to load display settings: ${response.status}`);
 
     const settings = await response.json();
-    displaySettings = { ...displaySettings, ...settings };
+    // Per-display storage takes precedence when Home Assistant helpers are
+    // unavailable or have not yet caught up with the latest wall-display tap.
+    displaySettings = { ...displaySettings, ...settings, ...localSettings };
 
     console.log('[INFO] Loaded display settings:', displaySettings);
-
-    // Apply display clock setting
-    const clockDisplay = document.getElementById('clock-display');
-    if (displaySettings.displayClock && clockDisplay) {
-      clockDisplay.classList.add('active');
-    }
-
-    // Initialize screen burn protection
-    if (displaySettings.screenBurnProtection) {
-      resetInactivityTimer();
-    }
-
-    // Update UI to match settings if elements exist
-    const settingsElements = {
-      'screen-burn-protection': displaySettings.screenBurnProtection,
-      'dim-after-minutes': displaySettings.dimAfterMinutes,
-      'display-clock': displaySettings.displayClock
-    };
-
-    Object.entries(settingsElements).forEach(([id, value]) => {
-      const element = document.getElementById(id);
-      if (element) {
-        if (element.type === 'checkbox') {
-          element.checked = value;
-        } else {
-          element.value = value;
-        }
-      }
-    });
-
   } catch (error) {
     console.error('[ERROR] Failed to load display settings:', error);
-    // Continue with default settings
   }
+
+  document.getElementById('clock-display')
+    ?.classList.toggle('active', Boolean(displaySettings.displayClock));
+  if (displaySettings.screenBurnProtection) resetInactivityTimer();
+  syncDisplaySettingsControls();
+  applyAutomaticTheme();
 }
 
 // Update time display
@@ -1185,9 +1535,12 @@ function fetchWeather() {
       }
 
       weatherForecastData = preprocessWeatherData(forecastArrayFromAPI || []);
+      weatherTemperatureUnit = attributes.temperature_unit || '°';
+      weatherPrecipitationUnit = attributes.precipitation_unit || '';
       console.log('[DEBUG] Processed weather forecast data:', weatherForecastData);
 
       updateCurrentWeatherDisplay(temp, condition);
+      refreshDailyWeatherIcons();
     })
     .catch(error => {
       console.error('[ERROR] Error fetching or processing weather data:', error.message, error.stack);
@@ -1212,6 +1565,7 @@ function displayWeatherError(message) {
   // Clear any existing weather icons from calendar and global stores
   weatherForecastData = [];
   window.currentWeather = null;
+  refreshDailyWeatherIcons();
 }
 
 // Process weather data to ensure consistent format
@@ -1230,10 +1584,11 @@ function preprocessWeatherData(forecastData) {
     return {
       datetime: entry.datetime || entry.date || null,
       condition: entry.condition || entry.state || 'unknown',
-      temperature: entry.temperature || entry.temp || 0,
-      templow: entry.templow || entry.min_temp || 0,
-      humidity: entry.humidity || 0,
-      precipitation: entry.precipitation || 0
+      temperature: entry.temperature ?? entry.temp ?? null,
+      templow: entry.templow ?? entry.min_temp ?? null,
+      humidity: entry.humidity ?? null,
+      precipitation: entry.precipitation ?? null,
+      precipitationProbability: entry.precipitation_probability ?? null
     };
   }).filter(entry => entry && entry.datetime); // Filter out invalid entries
 }
@@ -1273,7 +1628,11 @@ function updateCurrentWeatherDisplay(temp, condition) {
   }
   console.log('[DEBUG] Updated temperature display to:', tempDiv.textContent);
 
-  // Map Home Assistant weather condition to Material Icons
+  conditionIcon.textContent = getWeatherMaterialIcon(condition);
+  console.log('[DEBUG] Updated weather icon to:', conditionIcon.textContent);
+}
+
+function getWeatherMaterialIcon(condition) {
   const iconMap = {
     'clear-night': 'nights_stay',
     'cloudy': 'cloud',
@@ -1293,10 +1652,7 @@ function updateCurrentWeatherDisplay(temp, condition) {
     'unavailable': 'help',
     'error': 'error'
   };
-
-  // Update weather icon
-  conditionIcon.textContent = iconMap[condition] || 'cloud';
-  console.log('[DEBUG] Updated weather icon to:', iconMap[condition] || 'cloud');
+  return iconMap[condition] || 'cloud';
 }
 
 // Stub functions to prevent errors
@@ -1328,11 +1684,24 @@ async function loadUserToggles() {
     if (activeCalendarUsers.size === 0 && allCalendarUsers.length > 0) {
       allCalendarUsers.forEach(u => activeCalendarUsers.add(u.id));
     }
+    calendarUserFiltersReady = true;
 
     userTogglesContainer.innerHTML = '';
 
+    const calendarUsers = userTogglesContainer.closest('.calendar-users');
+    const toggleLabel = calendarUsers ? calendarUsers.querySelector('.users-toggle-label') : null;
+    if (toggleLabel) toggleLabel.textContent = 'People:';
+
+    let unassignedNote = calendarUsers ? calendarUsers.querySelector('.unassigned-filter-note') : null;
+    if (calendarUsers && !unassignedNote) {
+      unassignedNote = document.createElement('span');
+      unassignedNote.className = 'unassigned-filter-note';
+      unassignedNote.innerHTML = '<i class="material-icons" aria-hidden="true">visibility</i> Unassigned events are always shown';
+      calendarUsers.appendChild(unassignedNote);
+    }
+
     if (allCalendarUsers.length === 0) {
-      userTogglesContainer.innerHTML = '<span class="no-users-msg" style="font-size: 0.9em; opacity: 0.7;">No users found</span>';
+      userTogglesContainer.innerHTML = '<span class="no-users-msg">No people filters</span>';
       return;
     }
 
@@ -1467,11 +1836,21 @@ async function fetchAndDisplayChores() {
   }
 }
 
-function fetchAndDisplayMeals() {
+async function fetchAndDisplayMeals() {
   console.log('[INFO] fetchAndDisplayMeals called - fetching and displaying meals');
 
   const mealWeekView = document.getElementById('meal-week-view');
   if (mealWeekView) {
+    let users = [];
+    try {
+      const response = await fetch('api/users');
+      if (!response.ok) throw new Error('Failed to load users');
+      const userData = await response.json();
+      users = Array.isArray(userData) ? userData : [];
+    } catch (error) {
+      console.warn('[WARN] Could not load users for meal assignments:', error);
+    }
+
     // Create week view for meals
     const days = [];
     for (let i = 0; i < 7; i++) {
@@ -1480,54 +1859,61 @@ function fetchAndDisplayMeals() {
 
     const mealTypes = ['Breakfast', 'Lunch', 'Dinner'];
 
-    // Sample meals
+    const assignedCook = index => users.length > 0
+      ? users[index % users.length]
+      : { name: 'Unassigned', color: getNeutralCalendarColor() };
+
+    // Sample meal content uses real household names when people exist.
     const sampleMeals = [
-      { day: 0, type: 'Breakfast', description: 'Pancakes', cook: 'Alex' },
-      { day: 0, type: 'Dinner', description: 'Spaghetti & Meatballs', cook: 'Jordan' },
-      { day: 1, type: 'Lunch', description: 'Caesar Salad', cook: 'Casey' },
-      { day: 2, type: 'Dinner', description: 'Grilled Chicken', cook: 'Taylor' }
+      { day: 0, type: 'Breakfast', description: 'Pancakes', cook: assignedCook(0) },
+      { day: 0, type: 'Dinner', description: 'Spaghetti & Meatballs', cook: assignedCook(1) },
+      { day: 1, type: 'Lunch', description: 'Caesar Salad', cook: assignedCook(2) },
+      { day: 2, type: 'Dinner', description: 'Grilled Chicken', cook: assignedCook(3) }
     ];
 
     let weekHTML = `
       <div class="meal-week-header">
-        <div class="week-navigation">
-          <h3>Week of ${moment().startOf('week').format('MMMM D, YYYY')}</h3>
-        </div>
+        <p class="meal-week-eyebrow">This week</p>
+        <h2>Week of ${moment().startOf('week').format('MMMM D, YYYY')}</h2>
       </div>
-      <div class="meal-week-grid">
-        <div class="meal-grid-header">
-          <div class="meal-time-column"></div>
-          ${days.map(day => `
-            <div class="meal-day-header">
-              <div class="day-name">${day.format('ddd')}</div>
-              <div class="day-date">${day.format('M/D')}</div>
-            </div>
-          `).join('')}
-        </div>
+      <div class="meal-day-grid">
     `;
 
-    mealTypes.forEach(mealType => {
+    days.forEach((day, dayIndex) => {
       weekHTML += `
-        <div class="meal-row">
-          <div class="meal-time-label">${mealType}</div>
-          ${days.map((day, dayIndex) => {
-        const meal = sampleMeals.find(m => m.day === dayIndex && m.type === mealType);
-        return `
-              <div class="meal-slot" data-day="${dayIndex}" data-meal-type="${mealType}">
-                ${meal ? `
-                  <div class="meal-item">
-                    <div class="meal-description">${meal.description}</div>
-                    <div class="meal-cook">${meal.cook}</div>
-                  </div>
-                ` : `
-                  <div class="meal-empty">
-                    <i class="material-icons">add</i>
-                  </div>
-                `}
+        <article class="meal-day-card${day.isSame(moment(), 'day') ? ' is-today' : ''}">
+          <header class="meal-day-heading">
+            <span class="meal-day-name">${day.format('dddd')}</span>
+            <span class="meal-day-date">${day.format('MMM D')}</span>
+          </header>
+          <div class="meal-day-periods">
+            ${mealTypes.map(mealType => {
+        const meal = sampleMeals.find(item => item.day === dayIndex && item.type === mealType);
+        if (meal) {
+          const cookName = escapeHtml(meal.cook.name || 'Unassigned');
+          const cookColor = getValidCalendarColor(meal.cook.color, getNeutralCalendarColor());
+          return `
+              <div class="meal-period">
+                <span class="meal-period-label">${mealType}</span>
+                <div class="meal-slot has-meal" data-day="${dayIndex}" data-meal-type="${mealType}">
+                  <span class="meal-description">${meal.description}</span>
+                  <span class="meal-cook"><span class="meal-cook-dot" style="background-color: ${cookColor}"></span>${cookName}</span>
+                </div>
               </div>
-            `;
+          `;
+        }
+        return `
+              <div class="meal-period">
+                <span class="meal-period-label">${mealType}</span>
+                <button type="button" class="meal-slot meal-empty" data-day="${dayIndex}" data-meal-type="${mealType}" aria-label="Add ${mealType.toLowerCase()} for ${day.format('dddd')}">
+                  <i class="material-icons" aria-hidden="true">add</i>
+                  <span>Add meal</span>
+                </button>
+              </div>
+        `;
       }).join('')}
-        </div>
+          </div>
+        </article>
       `;
     });
 
@@ -1535,9 +1921,9 @@ function fetchAndDisplayMeals() {
     mealWeekView.innerHTML = weekHTML;
 
     // Add click handlers for empty meal slots
-    mealWeekView.addEventListener('click', (e) => {
+    mealWeekView.onclick = (e) => {
       const mealSlot = e.target.closest('.meal-slot');
-      if (mealSlot && mealSlot.querySelector('.meal-empty')) {
+      if (mealSlot && mealSlot.classList.contains('meal-empty')) {
         const day = mealSlot.dataset.day;
         const mealType = mealSlot.dataset.mealType;
         console.log('[INFO] Clicked empty meal slot:', day, mealType);
@@ -1557,10 +1943,16 @@ function fetchAndDisplayMeals() {
           addMealModal.classList.add('show');
         }
       }
-    });
+    };
 
     console.log('[INFO] Meal week view populated with sample data');
   }
+}
+
+function escapeHtml(value) {
+  const div = document.createElement('div');
+  div.textContent = String(value ?? '');
+  return div.innerHTML;
 }
 
 async function loadCurrentHAUser() {
@@ -1593,41 +1985,151 @@ async function loadCurrentHAUser() {
   }
 }
 
-function updateEventWeather(info) {
-  // Add weather icons to calendar events if weather data is available
-  console.log('[DEBUG] updateEventWeather called for event:', info.event.title);
-
-  if (weatherForecastData && weatherForecastData.length > 0) {
-    const eventDate = moment(info.event.start);
-    const weatherForDay = weatherForecastData.find(w =>
-      moment(w.datetime).isSame(eventDate, 'day')
-    );
-
-    if (weatherForDay) {
-      const iconMap = {
-        'clear-night': 'nights_stay',
-        'cloudy': 'cloud',
-        'partlycloudy': 'cloud_queue',
-        'sunny': 'wb_sunny',
-        'rainy': 'water_drop'
-      };
-
-      const weatherIcon = iconMap[weatherForDay.condition] || 'cloud';
-
-      // Add weather icon to event element
-      const eventEl = info.el;
-      const weatherSpan = document.createElement('span');
-      weatherSpan.className = 'event-weather-icon material-icons';
-      weatherSpan.textContent = weatherIcon;
-      weatherSpan.style.fontSize = '12px';
-      weatherSpan.style.marginLeft = '4px';
-
-      const titleEl = eventEl.querySelector('.fc-event-title');
-      if (titleEl) {
-        titleEl.appendChild(weatherSpan);
-      }
-    }
+function getForecastDateKey(value) {
+  if (typeof value === 'string') {
+    const datePrefix = value.match(/^\d{4}-\d{2}-\d{2}/);
+    if (datePrefix) return datePrefix[0];
   }
+  return moment(value).format('YYYY-MM-DD');
+}
+
+function getForecastForDate(date) {
+  const dateKey = getForecastDateKey(date);
+  return weatherForecastData.find(entry => getForecastDateKey(entry.datetime) === dateKey) || null;
+}
+
+function renderDailyWeatherButton(container, date, inHeader) {
+  if (!container) return;
+  container.querySelector('.day-weather-button')?.remove();
+
+  const forecast = getForecastForDate(date);
+  if (!forecast) return;
+
+  container.classList.add('day-weather-host');
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = `day-weather-button${inHeader ? ' day-weather-button-header' : ''}`;
+  button.dataset.forecastDate = getForecastDateKey(date);
+  button.setAttribute('aria-expanded', 'false');
+  button.setAttribute('aria-label', `Weather for ${moment(date).format('dddd, MMMM D')}: ${formatWeatherCondition(forecast.condition)}. Tap for details.`);
+
+  const icon = document.createElement('i');
+  icon.className = 'material-icons';
+  icon.setAttribute('aria-hidden', 'true');
+  icon.textContent = getWeatherMaterialIcon(forecast.condition);
+  button.appendChild(icon);
+  button.addEventListener('click', event => {
+    event.preventDefault();
+    event.stopPropagation();
+    toggleDailyWeatherPopover(button, forecast, date);
+  });
+  container.appendChild(button);
+}
+
+function refreshDailyWeatherIcons() {
+  const calendarEl = document.getElementById('calendar');
+  if (!calendarEl) return;
+
+  calendarEl.querySelectorAll('.day-weather-button').forEach(button => button.remove());
+  if (!weatherForecastData.length || !calendar) return;
+
+  const selector = calendar.view.type === 'dayGridMonth'
+    ? '.fc-daygrid-day[data-date]'
+    : '.fc-col-header-cell[data-date]';
+
+  calendarEl.querySelectorAll(selector).forEach(cell => {
+    renderDailyWeatherButton(cell, cell.dataset.date, calendar.view.type !== 'dayGridMonth');
+  });
+}
+
+function formatWeatherCondition(condition) {
+  return String(condition || 'Unknown')
+    .replace(/-/g, ' ')
+    .replace(/\b\w/g, character => character.toUpperCase());
+}
+
+function formatForecastTemperature(value) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return '—';
+  return `${Math.round(Number(value))}${weatherTemperatureUnit}`;
+}
+
+function closeDailyWeatherPopover() {
+  if (!activeWeatherPopover) return;
+  const trigger = document.querySelector(`[data-forecast-date="${activeWeatherPopover.dataset.forecastDate}"][aria-expanded="true"]`);
+  if (trigger) trigger.setAttribute('aria-expanded', 'false');
+  activeWeatherPopover.remove();
+  activeWeatherPopover = null;
+}
+
+function toggleDailyWeatherPopover(button, forecast, date) {
+  const dateKey = getForecastDateKey(date);
+  if (activeWeatherPopover?.dataset.forecastDate === dateKey) {
+    closeDailyWeatherPopover();
+    return;
+  }
+
+  closeDailyWeatherPopover();
+  button.setAttribute('aria-expanded', 'true');
+
+  const panel = document.createElement('section');
+  panel.className = 'day-weather-popover';
+  panel.dataset.forecastDate = dateKey;
+  panel.setAttribute('role', 'dialog');
+  panel.setAttribute('aria-label', `Weather details for ${moment(date).format('dddd, MMMM D')}`);
+
+  const heading = document.createElement('div');
+  heading.className = 'day-weather-popover-heading';
+
+  const title = document.createElement('strong');
+  title.textContent = moment(date).format('dddd, MMM D');
+
+  const closeButton = document.createElement('button');
+  closeButton.type = 'button';
+  closeButton.className = 'day-weather-popover-close';
+  closeButton.setAttribute('aria-label', 'Close weather details');
+  closeButton.innerHTML = '<i class="material-icons" aria-hidden="true">close</i>';
+  closeButton.addEventListener('click', closeDailyWeatherPopover);
+  heading.append(title, closeButton);
+
+  const condition = document.createElement('div');
+  condition.className = 'day-weather-condition';
+  condition.innerHTML = `<i class="material-icons" aria-hidden="true">${getWeatherMaterialIcon(forecast.condition)}</i>`;
+  const conditionText = document.createElement('span');
+  conditionText.textContent = formatWeatherCondition(forecast.condition);
+  condition.appendChild(conditionText);
+
+  const temperatures = document.createElement('div');
+  temperatures.className = 'day-weather-temperatures';
+  temperatures.textContent = `High ${formatForecastTemperature(forecast.temperature)} · Low ${formatForecastTemperature(forecast.templow)}`;
+
+  const precipitation = document.createElement('div');
+  precipitation.className = 'day-weather-precipitation';
+  if (forecast.precipitationProbability !== null) {
+    precipitation.textContent = `${Math.round(Number(forecast.precipitationProbability))}% chance of precipitation`;
+  } else if (forecast.precipitation !== null) {
+    const unit = weatherPrecipitationUnit ? ` ${weatherPrecipitationUnit}` : '';
+    precipitation.textContent = `${forecast.precipitation}${unit} precipitation`;
+  } else {
+    precipitation.textContent = 'Precipitation unavailable';
+  }
+
+  panel.append(heading, condition, temperatures, precipitation);
+  document.body.appendChild(panel);
+  activeWeatherPopover = panel;
+
+  const triggerRect = button.getBoundingClientRect();
+  const panelRect = panel.getBoundingClientRect();
+  const viewportPadding = 12;
+  const left = Math.min(
+    Math.max(viewportPadding, triggerRect.left),
+    window.innerWidth - panelRect.width - viewportPadding
+  );
+  const fitsBelow = triggerRect.bottom + panelRect.height + viewportPadding <= window.innerHeight;
+  const top = fitsBelow
+    ? triggerRect.bottom + 6
+    : Math.max(viewportPadding, triggerRect.top - panelRect.height - 6);
+  panel.style.left = `${left}px`;
+  panel.style.top = `${top}px`;
 }
 
 
@@ -1902,6 +2404,179 @@ async function handleCreateUser(e) {
   }
 }
 
+// ── CALENDAR VISIBILITY MANAGEMENT ───────────────────────────────────────
+
+function updateCalendarManagementSummary() {
+  const summary = document.getElementById('calendar-management-summary');
+  const toggles = [...document.querySelectorAll('#calendar-management-list .calendar-visibility-toggle')];
+  if (!summary || toggles.length === 0) return;
+
+  const enabledCount = toggles.filter(toggle => toggle.checked).length;
+  summary.textContent = `${enabledCount} of ${toggles.length} shown`;
+}
+
+async function updateCalendarVisibility(calendarId, enabled, toggle, row, status) {
+  toggle.disabled = true;
+  status.textContent = 'Saving…';
+  status.classList.remove('error');
+
+  try {
+    const response = await fetch('api/calendar-settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ calendarId, enabled })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Failed to save calendar visibility');
+    }
+
+    row.classList.toggle('is-disabled', !enabled);
+    status.textContent = enabled ? 'Shown' : 'Hidden';
+    toggle.setAttribute('aria-checked', String(enabled));
+    updateCalendarManagementSummary();
+    if (calendar) calendar.refetchEvents();
+  } catch (err) {
+    console.error('[ERROR] Failed to update calendar visibility:', err);
+    toggle.checked = !enabled;
+    status.textContent = 'Could not save — try again';
+    status.classList.add('error');
+  } finally {
+    toggle.disabled = false;
+  }
+}
+
+function renderCalendarManagementEmptyState(container, summary) {
+  summary.textContent = 'No calendars';
+  container.innerHTML = `
+    <div class="calendar-management-empty">
+      <i class="material-icons" aria-hidden="true">event_busy</i>
+      <div>
+        <h4>No calendars connected</h4>
+        <p>Connect Apple Calendar below, or add a calendar integration in Home Assistant.</p>
+      </div>
+      <button type="button" class="btn btn-primary" id="connect-first-calendar">Connect a calendar</button>
+    </div>
+  `;
+  document.getElementById('connect-first-calendar')
+    ?.addEventListener('click', openCalendarConnectionSettings);
+}
+
+async function loadCalendarManagement() {
+  const container = document.getElementById('calendar-management-list');
+  const summary = document.getElementById('calendar-management-summary');
+  if (!container || !summary) return;
+
+  container.innerHTML = `
+    <div class="calendar-management-loading">
+      <i class="material-icons spin" aria-hidden="true">refresh</i>
+      Loading calendars…
+    </div>
+  `;
+  summary.textContent = 'Loading…';
+
+  try {
+    const [calendarsResponse, settingsResponse] = await Promise.all([
+      fetch('api/ha/calendars'),
+      fetch('api/calendar-settings')
+    ]);
+
+    if (!calendarsResponse.ok || !settingsResponse.ok) {
+      throw new Error('Failed to load calendar settings');
+    }
+
+    const calendars = await calendarsResponse.json();
+    const settings = await settingsResponse.json();
+    if (!Array.isArray(calendars) || calendars.length === 0) {
+      renderCalendarManagementEmptyState(container, summary);
+      return;
+    }
+
+    const disabledCalendarIds = new Set(settings.disabledCalendarIds || []);
+    container.innerHTML = '';
+
+    calendars.forEach(calendarItem => {
+      const isEnabled = !disabledCalendarIds.has(calendarItem.entity_id);
+      const sourceName = calendarItem.source === 'caldav' ? 'iCloud' : 'Home Assistant';
+      const hasCalendarColor = typeof calendarItem.color === 'string' &&
+        window.CSS && CSS.supports('color', calendarItem.color);
+      const calendarColor = getValidCalendarColor(calendarItem.color);
+
+      const row = document.createElement('div');
+      row.className = `calendar-management-item${isEnabled ? '' : ' is-disabled'}`;
+
+      const swatch = document.createElement('span');
+      swatch.className = 'calendar-color-swatch';
+      swatch.style.backgroundColor = calendarColor;
+      swatch.title = hasCalendarColor ? calendarItem.color : 'Default calendar color';
+      swatch.setAttribute('aria-hidden', 'true');
+
+      const details = document.createElement('div');
+      details.className = 'calendar-management-details';
+
+      const name = document.createElement('div');
+      name.className = 'calendar-management-name';
+      name.textContent = calendarItem.name || calendarItem.entity_id;
+
+      const meta = document.createElement('div');
+      meta.className = 'calendar-management-meta';
+
+      const source = document.createElement('span');
+      source.className = `calendar-source-badge calendar-source-${calendarItem.source === 'caldav' ? 'icloud' : 'ha'}`;
+      source.textContent = sourceName;
+
+      const colorLabel = document.createElement('span');
+      colorLabel.className = 'calendar-color-label';
+      colorLabel.textContent = hasCalendarColor ? calendarItem.color : 'Default color';
+
+      meta.append(source, colorLabel);
+      details.append(name, meta);
+
+      const control = document.createElement('label');
+      control.className = 'calendar-visibility-control';
+
+      const status = document.createElement('span');
+      status.className = 'calendar-visibility-status';
+      status.textContent = isEnabled ? 'Shown' : 'Hidden';
+
+      const toggle = document.createElement('input');
+      toggle.type = 'checkbox';
+      toggle.className = 'calendar-visibility-toggle';
+      toggle.checked = isEnabled;
+      toggle.setAttribute('role', 'switch');
+      toggle.setAttribute('aria-checked', String(isEnabled));
+      toggle.setAttribute('aria-label', `Show ${calendarItem.name || calendarItem.entity_id} on the calendar`);
+
+      const track = document.createElement('span');
+      track.className = 'calendar-toggle-track';
+      track.setAttribute('aria-hidden', 'true');
+
+      toggle.addEventListener('change', () => {
+        updateCalendarVisibility(calendarItem.entity_id, toggle.checked, toggle, row, status);
+      });
+
+      control.append(status, toggle, track);
+      row.append(swatch, details, control);
+      container.appendChild(row);
+    });
+
+    updateCalendarManagementSummary();
+  } catch (err) {
+    console.error('[ERROR] Failed to load calendar management:', err);
+    summary.textContent = 'Unavailable';
+    container.innerHTML = `
+      <div class="calendar-management-error">
+        <i class="material-icons" aria-hidden="true">error_outline</i>
+        <span>Calendars could not be loaded.</span>
+        <button type="button" class="btn btn-secondary" id="retry-calendar-management">Retry</button>
+      </div>
+    `;
+    document.getElementById('retry-calendar-management')
+      ?.addEventListener('click', loadCalendarManagement);
+  }
+}
+
 // ── CALDAV ACCOUNT MANAGEMENT ────────────────────────────────────────────
 
 async function fetchCalDAVAccounts() {
@@ -1951,10 +2626,10 @@ async function connectAppleCalendar() {
 
   const appleId = appleIdInput.value.trim();
   const appPassword = passwordInput.value.trim();
-  const userId = document.getElementById('caldav-user-select').value;
+  const userId = document.getElementById('caldav-user-select')?.value || null;
 
-  if (!appleId || !appPassword || !userId) {
-    statusEl.textContent = 'Please enter Apple ID, app-specific password, and select a user.';
+  if (!appleId || !appPassword) {
+    statusEl.textContent = 'Please enter your Apple ID and app-specific password.';
     statusEl.className = 'caldav-connect-status error';
     statusEl.style.display = 'block';
     return;
@@ -1990,6 +2665,8 @@ async function connectAppleCalendar() {
 
     // Refresh accounts list
     fetchCalDAVAccounts();
+    loadCalendarManagement();
+    refreshCalendarAvailability();
 
     // Hide success message after 3 seconds
     setTimeout(() => {
@@ -2021,6 +2698,8 @@ async function disconnectCalDAVAccount(accountId) {
     }
 
     fetchCalDAVAccounts(); // Refresh
+    loadCalendarManagement();
+    refreshCalendarAvailability();
   } catch (err) {
     alert('Error disconnecting: ' + err.message);
   }
@@ -2101,15 +2780,46 @@ async function populateCalDAVUserDropdown() {
     const users = await resp.json();
 
     if (users.length === 0) {
-      select.innerHTML = '<option value="">No users found</option>';
+      select.innerHTML = '<option value="">-- No user (Unassigned) --</option>';
       return;
     }
 
-    select.innerHTML = '<option value="">-- Select User (Required) --</option>' +
+    select.innerHTML = '<option value="">-- No user (Unassigned) --</option>' +
       users.map(u => `<option value="${u.id}">${u.name}</option>`).join('');
 
   } catch (err) {
     console.error('Failed to populate CalDAV user dropdown:', err);
     select.innerHTML = '<option value="">Error loading users</option>';
   }
+}
+
+// Populates the "Next Event" footer. #next-event-info previously had no JS writing
+// to it at all, so it always read "No upcoming events" no matter what was scheduled.
+function updateNextEventPanel(events) {
+  const el = document.getElementById('next-event-info');
+  if (!el) return;
+
+  const now = new Date();
+  const upcoming = (events || [])
+    .map(e => ({ ev: e, when: new Date(e.start) }))
+    .filter(x => !isNaN(x.when) && x.when >= now)
+    .sort((a, b) => a.when - b.when)[0];
+
+  if (!upcoming) {
+    el.textContent = 'No upcoming events';
+    return;
+  }
+
+  const { ev, when } = upcoming;
+  const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const dayDiff = Math.round((new Date(when.getFullYear(), when.getMonth(), when.getDate()) - midnight) / 86400000);
+  const dayLabel = dayDiff === 0 ? 'Today'
+    : dayDiff === 1 ? 'Tomorrow'
+    : when.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+
+  const timeLabel = ev.allDay
+    ? 'all day'
+    : when.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+
+  el.textContent = `${ev.title} — ${dayLabel}, ${timeLabel}`;
 }

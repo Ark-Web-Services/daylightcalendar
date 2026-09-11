@@ -1,0 +1,19 @@
+{
+  "users": [
+    {
+      "id": "u_morgan",
+      "name": "Morgan",
+      "avatar": null
+    },
+    {
+      "id": "u_sam",
+      "name": "Sam",
+      "avatar": null
+    },
+    {
+      "id": "u_riley",
+      "name": "Riley",
+      "avatar": null
+    }
+  ]
+}

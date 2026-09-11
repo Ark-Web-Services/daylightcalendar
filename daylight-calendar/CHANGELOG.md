@@ -1,4 +1,40 @@
 # Changelog
+## [1.1.9.7] - 2026-09-11
+
+### Added
+- **Calendar management**: connected calendars (Home Assistant and CalDAV) are now listed in
+  Settings with source, color and a persisted enable/disable toggle, backed by new
+  `GET`/`PUT /api/calendar-settings` endpoints. Previously calendars could only be reached
+  from inside the edit-user modal.
+- **Month view** on the calendar page, alongside the existing week view.
+- **Per-day weather icons** on calendar days, tappable for condition and high/low. Uses the
+  `weather.get_forecasts` service (the `forecast` entity attribute was removed in HA 2024.4).
+- **Empty states** for the calendar view and calendar management when nothing is connected.
+- **"Next Event" panel is now populated.** `#next-event-info` had no JavaScript writing to it,
+  so it permanently read "No upcoming events" regardless of what was scheduled.
+
+### Fixed
+- **Connected calendars rendered nothing.** The calendar view dropped every event lacking a
+  `userId`, and events only gained one if a person was mapped to that exact calendar. With no
+  mappings, all events were silently discarded. Calendars are now visible by default; assigning
+  a person is optional and controls color-coding and the people filters.
+- **Unreadable CalDAV sync log.** The box was styled inline with `rgba(0,0,0,0.3)` and
+  `#a1b2c3`, which rendered grey-on-grey on every light theme. Now a token-based
+  `.caldav-sync-logs` class meeting WCAG AA across all six themes (4.76:1 worst case).
+- **Meals page was squished and unreadable**; rebuilt as a responsive card grid.
+- **Theme buttons intermittently stopped responding** after re-entering Settings, caused by
+  listeners bound to DOM that the page loader swaps out.
+- **Automatic night mode ignored the selected theme**, flipping to generic dark. Pastel, Forest,
+  Ocean and Sunset now have hue-preserving dark variants, and auto mode switches between the
+  light and dark variant of the active theme.
+- **Hardcoded demo users** ("Alex"/"Jordan") removed from the games profile list, chores
+  assignee dropdown, meal fixtures, and the unused `--color-alex`/`--color-jordan` tokens.
+  These surfaces now populate from real users.
+
+### Development
+- Added `mock-data/` fixtures so the `STANDALONE_DEV=true` mode documented in DEVELOPMENT.md
+  can actually run without a Home Assistant instance.
+
 ## [1.1.9.6] - 2026-09-11
 
 ### Fixed

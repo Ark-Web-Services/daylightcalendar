@@ -1,13 +1,17 @@
 <turbo-frame id="meals-content">
 <header class="content-header">
   <h1>Meal Planner</h1>
-  <div class="header-actions">
-    <button id="prev-week" class="btn btn-secondary"><i class="material-icons">chevron_left</i></button>
-    <button id="next-week" class="btn btn-secondary"><i class="material-icons">chevron_right</i></button>
-    <button id="recipe-book-button" class="btn btn-primary"><i class="material-icons">menu_book</i> Recipe Book</button>
-    <button id="grocery-list-button" class="btn btn-primary"><i class="material-icons">shopping_basket</i> Grocery List</button>
-    <button id="add-meal-button" class="btn btn-primary"><i class="material-icons">add</i> Add Meal</button>
-    <button id="meal-categories-button" class="btn btn-primary"><i class="material-icons">label</i> Categories</button>
+  <div class="meal-header-actions">
+    <div class="meal-week-controls" aria-label="Change meal-planning week">
+      <button id="prev-week" class="btn btn-secondary" type="button" aria-label="Previous week"><i class="material-icons" aria-hidden="true">chevron_left</i></button>
+      <button id="next-week" class="btn btn-secondary" type="button" aria-label="Next week"><i class="material-icons" aria-hidden="true">chevron_right</i></button>
+    </div>
+    <div class="meal-page-actions">
+      <button id="recipe-book-button" class="btn btn-primary" type="button"><i class="material-icons" aria-hidden="true">menu_book</i> Recipe Book</button>
+      <button id="grocery-list-button" class="btn btn-primary" type="button"><i class="material-icons" aria-hidden="true">shopping_basket</i> Grocery List</button>
+      <button id="add-meal-button" class="btn btn-primary" type="button"><i class="material-icons" aria-hidden="true">add</i> Add Meal</button>
+      <button id="meal-categories-button" class="btn btn-primary" type="button"><i class="material-icons" aria-hidden="true">label</i> Categories</button>
+    </div>
   </div>
 </header>
 <div class="content-scrollable">

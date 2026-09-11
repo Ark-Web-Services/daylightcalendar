@@ -57,6 +57,7 @@
             <i class="material-icons">brightness_7</i> Sunset
           </button>
         </div>
+        <p class="setting-description">Choose a theme directly to keep it fixed. Turn Auto Night Mode back on to use that theme's matching dark variant at night.</p>
       </div>
 
       <div class="settings-card">
@@ -67,8 +68,7 @@
               <input type="checkbox" id="auto-night-mode" name="auto-night-mode">
               Auto Night Mode
             </label>
-            <p class="setting-description">Automatically switch to night mode with reduced blue light between sunset and
-              sunrise.</p>
+            <p class="setting-description">Automatically use the selected theme's dark variant during the hours below.</p>
           </div>
         </div>
         <div class="form-row">
@@ -113,7 +113,23 @@
 
     <div class="settings-section">
       <h2>Calendar Accounts</h2>
-      <div class="settings-card">
+      <div class="settings-card calendar-management-card">
+        <div class="calendar-management-heading">
+          <div>
+            <h3>Visible Calendars</h3>
+            <p class="setting-description">Choose which connected calendars appear on the calendar. Calendars are shown by default.</p>
+          </div>
+          <span id="calendar-management-summary" class="calendar-management-summary" aria-live="polite">Loading…</span>
+        </div>
+        <div id="calendar-management-list" class="calendar-management-list" aria-live="polite">
+          <div class="calendar-management-loading">
+            <i class="material-icons spin" aria-hidden="true">refresh</i>
+            Loading calendars…
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-card" id="calendar-connection-settings">
         <h3><i class="material-icons" style="vertical-align: middle; margin-right: 8px;">event</i>Apple Calendar
           (iCloud)</h3>
         <p class="setting-description">
@@ -138,13 +154,13 @@
               <input type="password" id="caldav-app-password" placeholder="xxxx-xxxx-xxxx-xxxx" autocomplete="off">
             </div>
             <div class="form-group">
-              <label for="caldav-user-select">Assign to User *</label>
-              <select id="caldav-user-select" required>
-                <option value="">-- Select User (Required) --</option>
+              <label for="caldav-user-select">Assign to User (Optional)</label>
+              <select id="caldav-user-select">
+                <option value="">-- No user (Unassigned) --</option>
                 <option disabled>Loading users...</option>
               </select>
-              <p class="setting-description" style="font-size: 0.8rem; margin-top: 4px;">Associate this calendar account
-                with a specific user profile.</p>
+              <p class="setting-description" style="font-size: 0.8rem; margin-top: 4px;">Assigned events use that person's
+                color and filter. Unassigned events aren't affected by people filters.</p>
             </div>
           </div>
           <button id="caldav-connect-btn" class="btn btn-primary">
@@ -163,15 +179,14 @@
           </div>
           <p class="setting-description" style="margin-top: 0;">Force an immediate re-sync of all iCloud events and view
             connection logs.</p>
-          <pre id="caldav-sync-logs"
-            style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 12px; color: #a1b2c3; font-size: 13px; max-height: 200px; overflow-y: auto; display: none; white-space: pre-wrap; font-family: monospace;"></pre>
+          <pre id="caldav-sync-logs" class="caldav-sync-logs"></pre>
         </div>
       </div>
     </div>
 
     <div class="settings-section">
       <h2>Home Assistant Integration</h2>
-      <div class="settings-card">
+      <div class="settings-card" id="user-management-settings">
         <h3>User Management</h3>
         <p class="setting-description">
           <i class="material-icons">info</i>

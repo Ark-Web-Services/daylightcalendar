@@ -1,0 +1,114 @@
+{
+  "current": {
+    "state": "sunny",
+    "attributes": {
+      "temperature": 84,
+      "temperature_unit": "\u00b0F",
+      "humidity": 52,
+      "wind_speed": 6,
+      "friendly_name": "Home",
+      "forecast": [
+        {
+          "datetime": "2026-09-11T00:00:00",
+          "condition": "sunny",
+          "temperature": 88,
+          "templow": 68,
+          "precipitation_probability": 0
+        },
+        {
+          "datetime": "2026-09-12T00:00:00",
+          "condition": "partlycloudy",
+          "temperature": 86,
+          "templow": 67,
+          "precipitation_probability": 10
+        },
+        {
+          "datetime": "2026-09-13T00:00:00",
+          "condition": "rainy",
+          "temperature": 78,
+          "templow": 65,
+          "precipitation_probability": 80
+        },
+        {
+          "datetime": "2026-09-14T00:00:00",
+          "condition": "lightning-rainy",
+          "temperature": 81,
+          "templow": 66,
+          "precipitation_probability": 60
+        },
+        {
+          "datetime": "2026-09-15T00:00:00",
+          "condition": "cloudy",
+          "temperature": 83,
+          "templow": 64,
+          "precipitation_probability": 20
+        },
+        {
+          "datetime": "2026-09-16T00:00:00",
+          "condition": "sunny",
+          "temperature": 87,
+          "templow": 66,
+          "precipitation_probability": 0
+        },
+        {
+          "datetime": "2026-09-17T00:00:00",
+          "condition": "sunny",
+          "temperature": 90,
+          "templow": 69,
+          "precipitation_probability": 0
+        }
+      ]
+    }
+  },
+  "forecast": [
+    {
+      "datetime": "2026-09-11T00:00:00",
+      "condition": "sunny",
+      "temperature": 88,
+      "templow": 68,
+      "precipitation_probability": 0
+    },
+    {
+      "datetime": "2026-09-12T00:00:00",
+      "condition": "partlycloudy",
+      "temperature": 86,
+      "templow": 67,
+      "precipitation_probability": 10
+    },
+    {
+      "datetime": "2026-09-13T00:00:00",
+      "condition": "rainy",
+      "temperature": 78,
+      "templow": 65,
+      "precipitation_probability": 80
+    },
+    {
+      "datetime": "2026-09-14T00:00:00",
+      "condition": "lightning-rainy",
+      "temperature": 81,
+      "templow": 66,
+      "precipitation_probability": 60
+    },
+    {
+      "datetime": "2026-09-15T00:00:00",
+      "condition": "cloudy",
+      "temperature": 83,
+      "templow": 64,
+      "precipitation_probability": 20
+    },
+    {
+      "datetime": "2026-09-16T00:00:00",
+      "condition": "sunny",
+      "temperature": 87,
+      "templow": 66,
+      "precipitation_probability": 0
+    },
+    {
+      "datetime": "2026-09-17T00:00:00",
+      "condition": "sunny",
+      "temperature": 90,
+      "templow": 69,
+      "precipitation_probability": 0
+    }
+  ]
+}

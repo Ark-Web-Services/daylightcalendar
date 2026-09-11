@@ -1,0 +1,84 @@
+{
+  "events": [
+    {
+      "id": "ev1",
+      "title": "School drop-off",
+      "start": "2026-09-11T07:45:00",
+      "end": "2026-09-11T08:15:00",
+      "allDay": false,
+      "calendar_entity_id": "calendar.family",
+      "source": "ha",
+      "userId": "u_morgan"
+    },
+    {
+      "id": "ev2",
+      "title": "Dentist \u2014 Riley",
+      "start": "2026-09-11T14:00:00",
+      "end": "2026-09-11T15:00:00",
+      "allDay": false,
+      "calendar_entity_id": "calendar.family",
+      "source": "ha",
+      "userId": "u_riley"
+    },
+    {
+      "id": "ev3",
+      "title": "Soccer practice",
+      "start": "2026-09-12T17:30:00",
+      "end": "2026-09-12T19:00:00",
+      "allDay": false,
+      "calendar_entity_id": "calendar.kids",
+      "source": "ha",
+      "userId": "u_sam"
+    },
+    {
+      "id": "ev4",
+      "title": "Trash out",
+      "start": "2026-09-12T20:00:00",
+      "end": "2026-09-12T20:15:00",
+      "allDay": false,
+      "calendar_entity_id": "calendar.household",
+      "source": "ha",
+      "userId": null
+    },
+    {
+      "id": "ev5",
+      "title": "Grandma visits",
+      "start": "2026-09-13",
+      "end": "2026-09-15",
+      "allDay": true,
+      "calendar_entity_id": "calendar.family",
+      "source": "ha",
+      "userId": null
+    },
+    {
+      "id": "ev6",
+      "title": "Parent-teacher night",
+      "start": "2026-09-14T18:30:00",
+      "end": "2026-09-14T20:00:00",
+      "allDay": false,
+      "calendar_entity_id": "calendar.school",
+      "source": "ha",
+      "userId": "u_morgan"
+    },
+    {
+      "id": "ev7",
+      "title": "Riley sleepover",
+      "start": "2026-09-16T16:00:00",
+      "end": "2026-09-17T10:00:00",
+      "allDay": false,
+      "calendar_entity_id": "calendar.kids",
+      "source": "ha",
+      "userId": "u_riley"
+    },
+    {
+      "id": "ev8",
+      "title": "Farmers market",
+      "start": "2026-09-17",
+      "end": "2026-09-17",
+      "allDay": true,
+      "calendar_entity_id": "calendar.household",
+      "source": "ha",
+      "userId": "u_sam"
+    }
+  ]
+}
