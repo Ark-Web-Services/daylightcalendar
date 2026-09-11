@@ -27,4 +27,21 @@
     <p id="next-event-info">No upcoming events</p>
   </div>
 </footer>
+
+<!-- Event details. Tapping an event previously only wrote to the console. -->
+<div id="event-detail-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="event-detail-title">
+  <div class="modal-content event-detail-content">
+    <div class="modal-header">
+      <h3 id="event-detail-title">Event</h3>
+      <button class="modal-close" id="event-detail-close" aria-label="Close event details">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p class="event-detail-when" id="event-detail-when"></p>
+      <div class="event-detail-meta" id="event-detail-meta"></div>
+      <p class="event-detail-location" id="event-detail-location" hidden></p>
+      <p class="event-detail-description" id="event-detail-description" hidden></p>
+    </div>
+  </div>
+</div>
+
 </turbo-frame>

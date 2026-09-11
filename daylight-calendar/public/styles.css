@@ -3226,3 +3226,87 @@ button.meal-empty:focus-visible {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* Event detail modal. Wall-mounted touchscreen: finger-sized targets, readable
+   in every theme via surface tokens rather than hardcoded colors. */
+.event-detail-content {
+  max-width: 520px;
+  width: min(92vw, 520px);
+}
+
+.event-detail-when {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--md-on-surface);
+  margin: 0 0 12px;
+}
+
+.event-detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.event-detail-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 4px 12px;
+  border-radius: 16px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--md-on-primary);
+  background: var(--chip-color, var(--md-primary));
+}
+
+.event-detail-chip-muted {
+  color: var(--md-on-surface-variant);
+  background: var(--md-surface-variant);
+  border: 1px solid var(--md-outline);
+}
+
+.event-detail-location,
+.event-detail-description {
+  color: var(--md-on-surface-variant);
+  margin: 0 0 8px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+/* Comfortable tap target for the close control on a touchscreen. */
+#event-detail-modal .modal-close {
+  min-width: 44px;
+  min-height: 44px;
+  font-size: 28px;
+  line-height: 1;
+}
+
+/* Settings readable measure.
+   .settings-section / .settings-card are width:100% inside a full-width scroll
+   container, so on a wide wall display every row stretched edge to edge and the
+   forms became hard to scan. Cap the content and centre it; the container still
+   fills the width so backgrounds and scrolling are unaffected. */
+#settings-content .content-scrollable > * {
+  max-width: 900px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Keep label/control pairs from drifting apart on a wide card. */
+#settings-content .settings-card .form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--md-space-3);
+}
+
+#settings-content .settings-card .form-row > .form-group {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+@media (max-width: 700px) {
+  #settings-content .content-scrollable > * {
+    max-width: 100%;
+  }
+}

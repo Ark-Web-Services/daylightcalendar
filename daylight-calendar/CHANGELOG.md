@@ -1,4 +1,25 @@
 # Changelog
+## [1.1.9.9] - 2026-09-11
+
+### Fixed
+- **Only ever fetched 7 days of events.** `/api/calendar` ignored the `start`/`end` the calendar
+  view requested; `fetchCalendarData()` always built a fixed today-00:00 -> +7 days window. Month
+  view drew six weeks and received one, and nothing before today was fetched at all, so the wall
+  display showed far fewer events than the phone. The requested range is now threaded through to
+  both the Home Assistant and CalDAV fetches, with a sane fallback and a defensive span cap.
+- **Day view was missing**, leaving only Week and Month. Restored to the switcher, the button
+  labels and the saved-view allowlist.
+- **The calendar never refreshed itself.** Nothing refetched events on a timer, so a wall display
+  nobody touches stayed stale indefinitely. Added a 5-minute refresh that pauses while the page is
+  hidden, refreshes immediately when it becomes visible, and cannot stack duplicate timers when the
+  page loader re-enters the calendar.
+- **Tapping an event did nothing** — `eventClick` only wrote to the console. Added an event detail
+  dialog showing time, calendar, assigned person, location and description, with touchscreen-sized
+  tap targets and theme-token styling.
+- **Settings page stretched edge to edge** on a wide display. `.settings-section` and
+  `.settings-card` are `width: 100%` with no max-width, so forms had no readable measure. Content
+  is now capped and centred, collapsing back to full width on narrow screens.
+
 ## [1.1.9.8] - 2026-09-11
 
 ### Fixed

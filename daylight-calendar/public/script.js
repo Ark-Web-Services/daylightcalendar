@@ -1089,9 +1089,10 @@ function setupCalendar() {
       headerToolbar: {
         left: 'prev,next today',
         center: 'title',
-        right: 'timeGridWeek,dayGridMonth'
+        right: 'timeGridDay,timeGridWeek,dayGridMonth'
       },
       buttonText: {
+        day: 'Day',
         week: 'Week',
         month: 'Month'
       },
@@ -1144,7 +1145,8 @@ function setupCalendar() {
           });
       },
       eventClick: function (info) {
-        console.log('[DEBUG] Event clicked:', info.event);
+        showEventDetails(info.event);
+        info.jsEvent.preventDefault();
       },
       dayCellDidMount: function (info) {
         if (info.view.type === 'dayGridMonth') {
@@ -1184,6 +1186,8 @@ function setupCalendar() {
     });
 
     calendar.render();
+
+    startCalendarAutoRefresh();
     console.log('[DEBUG] FullCalendar rendered successfully');
 
     // Force a resize after render to ensure proper sizing
@@ -1220,7 +1224,7 @@ function setupCalendar() {
 function getStoredCalendarView() {
   try {
     const storedView = localStorage.getItem('daylight-calendar-view');
-    if (storedView === 'dayGridMonth' || storedView === 'timeGridWeek') return storedView;
+    if (['timeGridDay', 'timeGridWeek', 'dayGridMonth'].includes(storedView)) return storedView;
   } catch (error) {
     console.warn('[WARN] Could not read saved calendar view:', error);
   }
@@ -2823,3 +2827,130 @@ function updateNextEventPanel(events) {
 
   el.textContent = `${ev.title} — ${dayLabel}, ${timeLabel}`;
 }
+
+// ── Automatic refresh ────────────────────────────────────────────────────
+// This runs on a wall-mounted display nobody touches for days. Nothing refetched
+// events on a timer, so the board stayed stale until someone interacted with it.
+const CALENDAR_REFRESH_MS = 5 * 60 * 1000;
+let calendarRefreshTimer = null;
+let calendarVisibilityHooked = false;
+
+function refreshCalendarData() {
+  try {
+    if (typeof calendar !== 'undefined' && calendar) calendar.refetchEvents();
+    if (typeof fetchWeather === 'function') fetchWeather();
+  } catch (err) {
+    console.warn('[WARN] Auto-refresh failed:', err);
+  }
+}
+
+function startCalendarAutoRefresh() {
+  // The page loader re-enters pages, so guard against stacking timers.
+  stopCalendarAutoRefresh();
+
+  if (document.visibilityState !== 'hidden') {
+    calendarRefreshTimer = setInterval(refreshCalendarData, CALENDAR_REFRESH_MS);
+  }
+
+  if (!calendarVisibilityHooked) {
+    calendarVisibilityHooked = true;
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        stopCalendarAutoRefresh();
+      } else {
+        refreshCalendarData();
+        if (!calendarRefreshTimer) {
+          calendarRefreshTimer = setInterval(refreshCalendarData, CALENDAR_REFRESH_MS);
+        }
+      }
+    });
+  }
+}
+
+function stopCalendarAutoRefresh() {
+  if (calendarRefreshTimer) {
+    clearInterval(calendarRefreshTimer);
+    calendarRefreshTimer = null;
+  }
+}
+
+// ── Event details ────────────────────────────────────────────────────────
+// eventClick previously only console.logged, so tapping an event on the
+// touchscreen appeared to do nothing.
+function formatEventWhen(ev) {
+  const start = ev.start;
+  const end = ev.end;
+  if (!start) return '';
+
+  const dayFmt = { weekday: 'long', month: 'long', day: 'numeric' };
+  const timeFmt = { hour: 'numeric', minute: '2-digit' };
+
+  if (ev.allDay) {
+    // FullCalendar's all-day end is exclusive; step back a day for display.
+    const lastDay = end ? new Date(end.getTime() - 86400000) : start;
+    const sameDay = lastDay.toDateString() === start.toDateString();
+    return sameDay
+      ? `${start.toLocaleDateString(undefined, dayFmt)} · All day`
+      : `${start.toLocaleDateString(undefined, dayFmt)} – ${lastDay.toLocaleDateString(undefined, dayFmt)} · All day`;
+  }
+
+  const startStr = `${start.toLocaleDateString(undefined, dayFmt)}, ${start.toLocaleTimeString(undefined, timeFmt)}`;
+  if (!end) return startStr;
+  return end.toDateString() === start.toDateString()
+    ? `${startStr} – ${end.toLocaleTimeString(undefined, timeFmt)}`
+    : `${startStr} – ${end.toLocaleDateString(undefined, dayFmt)}, ${end.toLocaleTimeString(undefined, timeFmt)}`;
+}
+
+function showEventDetails(ev) {
+  const modal = document.getElementById('event-detail-modal');
+  if (!modal || !ev) return;
+
+  const props = ev.extendedProps || {};
+  const set = (id, value, isHideable) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (isHideable) {
+      if (value) { el.textContent = value; el.hidden = false; }
+      else { el.textContent = ''; el.hidden = true; }
+    } else {
+      el.textContent = value || '';
+    }
+  };
+
+  set('event-detail-title', ev.title || 'Event');
+  set('event-detail-when', formatEventWhen(ev));
+  set('event-detail-location', props.location, true);
+  set('event-detail-description', props.description, true);
+
+  const meta = document.getElementById('event-detail-meta');
+  if (meta) {
+    const chips = [];
+    const owner = props.userId && typeof allCalendarUsers !== 'undefined'
+      ? (allCalendarUsers || []).find(u => u.id === props.userId)
+      : null;
+    if (owner) {
+      chips.push(`<span class="event-detail-chip" style="--chip-color:${owner.color || 'var(--md-primary)'}">${escapeHtml(owner.name)}</span>`);
+    } else {
+      chips.push('<span class="event-detail-chip event-detail-chip-muted">Unassigned</span>');
+    }
+    const calName = props.calendarName || props.calendar_entity_id;
+    if (calName) chips.push(`<span class="event-detail-chip event-detail-chip-muted">${escapeHtml(String(calName))}</span>`);
+    meta.innerHTML = chips.join('');
+  }
+
+  modal.classList.add('show');
+}
+
+function hideEventDetails() {
+  const modal = document.getElementById('event-detail-modal');
+  if (modal) modal.classList.remove('show');
+}
+
+document.addEventListener('click', (e) => {
+  if (e.target.closest('#event-detail-close')) { hideEventDetails(); return; }
+  const modal = document.getElementById('event-detail-modal');
+  if (modal && e.target === modal) hideEventDetails();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') hideEventDetails();
+});

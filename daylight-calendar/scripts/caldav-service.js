@@ -233,11 +233,44 @@ async function fetchCalendars(accountId) {
 }
 
 /**
- * Fetch events from all connected CalDAV accounts
- * @param {number} daysToShow - Number of days ahead to fetch (default 7)
+ * Fetch events from all connected CalDAV accounts.
+ *
+ * Accepts the range the calendar view actually asked for. It previously took a
+ * `daysToShow` count and always fetched today-00:00 -> +7 days, so month view
+ * requested six weeks and received one, and nothing in the past was ever
+ * returned.
+ *
+ * @param {{start: Date|string, end: Date|string}} [range]
  * @returns {Promise<Array>} FullCalendar-compatible event objects
  */
-async function fetchAllEvents(daysToShow = 7) {
+const DEFAULT_WINDOW_DAYS = 7;
+const MAX_WINDOW_DAYS = 62;
+
+function resolveRange(range) {
+    const dayMs = 24 * 60 * 60 * 1000;
+    const midnightToday = new Date();
+    midnightToday.setHours(0, 0, 0, 0);
+
+    const parse = (v) => {
+        if (!v) return null;
+        const d = v instanceof Date ? v : new Date(v);
+        return isNaN(d.getTime()) ? null : d;
+    };
+
+    let start = parse(range && range.start);
+    let end = parse(range && range.end);
+
+    if (!start || !end || end <= start) {
+        start = midnightToday;
+        end = new Date(midnightToday.getTime() + DEFAULT_WINDOW_DAYS * dayMs);
+    } else if ((end - start) / dayMs > MAX_WINDOW_DAYS) {
+        end = new Date(start.getTime() + MAX_WINDOW_DAYS * dayMs);
+    }
+
+    return { start, end };
+}
+
+async function fetchAllEvents(range) {
     const accounts = loadAccounts();
     const accountIds = Object.keys(accounts);
 
@@ -245,10 +278,7 @@ async function fetchAllEvents(daysToShow = 7) {
         return [];
     }
 
-    const now = new Date();
-    const start = new Date(now);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(start.getTime() + daysToShow * 24 * 60 * 60 * 1000);
+    const { start, end } = resolveRange(range);
 
     const allEvents = [];
 
@@ -283,7 +313,7 @@ async function fetchAllEvents(daysToShow = 7) {
         }
     }
 
-    console.log(`[CalDAV] Fetched ${allEvents.length} total events from ${accountIds.length} account(s)`);
+    console.log(`[CalDAV] Fetched ${allEvents.length} events from ${accountIds.length} account(s) between ${start.toISOString()} and ${end.toISOString()}`);
     return allEvents;
 }
 

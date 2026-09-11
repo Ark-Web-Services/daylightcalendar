@@ -488,8 +488,34 @@ async function initializeApp() {
     }
   }
 
+  const MAX_CALENDAR_RANGE_DAYS = 62;
+
+  function getCalendarRange(startValue, endValue) {
+    const configuredDays = Number.parseInt(config.calendar_days_to_show, 10);
+    const fallbackDays = Number.isFinite(configuredDays) && configuredDays > 0
+      ? Math.min(configuredDays, MAX_CALENDAR_RANGE_DAYS)
+      : 7;
+    const fallbackStart = new Date();
+    fallbackStart.setHours(0, 0, 0, 0);
+    const fallbackEnd = new Date(fallbackStart.getTime() + fallbackDays * 24 * 60 * 60 * 1000);
+
+    const requestedStart = new Date(startValue);
+    const requestedEnd = new Date(endValue);
+    if (!startValue || !endValue || Number.isNaN(requestedStart.getTime()) ||
+      Number.isNaN(requestedEnd.getTime()) || requestedEnd <= requestedStart) {
+      return { start: fallbackStart, end: fallbackEnd };
+    }
+
+    const maximumEnd = new Date(requestedStart.getTime() + MAX_CALENDAR_RANGE_DAYS * 24 * 60 * 60 * 1000);
+    return {
+      start: requestedStart,
+      end: requestedEnd > maximumEnd ? maximumEnd : requestedEnd
+    };
+  }
+
   // Function to fetch calendar data (HA + CalDAV merged)
-  async function fetchCalendarData() {
+  async function fetchCalendarData(range = getCalendarRange()) {
+    const calendarRange = getCalendarRange(range.start, range.end);
     let haEvents = [];
     let caldavEvents = [];
 
@@ -506,7 +532,7 @@ async function initializeApp() {
 
       // Try to fetch REAL CalDAV events first
       try {
-        caldavEvents = await caldavService.fetchAllEvents(config.calendar_days_to_show || 7);
+        caldavEvents = await caldavService.fetchAllEvents(calendarRange);
         console.log(`[INFO] (Standalone) Fetched ${caldavEvents.length} Real CalDAV events`);
       } catch (error) {
         console.error('[ERROR] Error fetching Real CalDAV events in standalone mode:', error.message);
@@ -518,10 +544,9 @@ async function initializeApp() {
     // Fetch HA calendar events
     if (!isStandaloneDev && config.calendar_entity_id) {
       try {
-        const now = new Date();
-        const start_time = now.toISOString();
-        const end_time = new Date(now.getTime() + (config.calendar_days_to_show || 7) * 24 * 60 * 60 * 1000).toISOString();
-        const apiPath = "/calendars/" + config.calendar_entity_id + "?start=" + start_time + "&end=" + end_time;
+        const startTime = encodeURIComponent(calendarRange.start.toISOString());
+        const endTime = encodeURIComponent(calendarRange.end.toISOString());
+        const apiPath = `/calendars/${config.calendar_entity_id}?start=${startTime}&end=${endTime}`;
 
         console.log("[INFO] Fetching calendar data from: " + hassApiUrl + apiPath);
         const data = await callHaApi(apiPath);
@@ -539,7 +564,7 @@ async function initializeApp() {
     // Fetch CalDAV events
     if (!isStandaloneDev) {
       try {
-        caldavEvents = await caldavService.fetchAllEvents(config.calendar_days_to_show || 7);
+        caldavEvents = await caldavService.fetchAllEvents(calendarRange);
         console.log(`[INFO] Fetched ${caldavEvents.length} CalDAV events`);
       } catch (error) {
         console.error('[ERROR] Error fetching CalDAV events:', error.message);
@@ -1272,7 +1297,8 @@ async function initializeApp() {
       // if (isStandaloneDev) {
       //   return res.json(caldavService.getMockEvents());
       // }
-      const events = await caldavService.fetchAllEvents(config.calendar_days_to_show || 7);
+      const range = getCalendarRange(req.query.start, req.query.end);
+      const events = await caldavService.fetchAllEvents(range);
       res.json(events);
     } catch (err) {
       console.error('CalDAV fetch events failed:', err);
@@ -1382,7 +1408,8 @@ async function initializeApp() {
   // API endpoint for calendar data
   app.get('/api/calendar', async (req, res) => {
     try {
-      const calendarData = await fetchCalendarData();
+      const range = getCalendarRange(req.query.start, req.query.end);
+      const calendarData = await fetchCalendarData(range);
       res.json(calendarData);
     } catch (error) {
       console.error('[ERROR] Error in /api/calendar endpoint:', error.message);
@@ -1437,7 +1464,8 @@ async function initializeApp() {
 
   app.get('/api/combined-data', async (req, res) => {
     try {
-      const calendarData = await fetchCalendarData();
+      const range = getCalendarRange(req.query.start, req.query.end);
+      const calendarData = await fetchCalendarData(range);
       const weatherData = await fetchWeatherData();
       res.json({
         calendarData: Array.isArray(calendarData) ? calendarData : [],
@@ -2009,7 +2037,7 @@ async function initializeApp() {
         }
       }
 
-      const allEvents = await caldavService.fetchAllEvents(config.calendar_days_to_show || 7);
+      const allEvents = await caldavService.fetchAllEvents(getCalendarRange());
       const counts = allEvents.reduce((acc, ev) => {
         acc[ev.calendarName] = (acc[ev.calendarName] || 0) + 1;
         return acc;
