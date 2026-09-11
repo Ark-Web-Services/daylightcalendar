@@ -2043,6 +2043,15 @@ function initializeCalDAVSettings() {
   if (syncBtn) {
     syncBtn.addEventListener('click', handleCalDAVSync);
   }
+
+  // Wire up edit user form
+  const editForm = document.getElementById('edit-user-form');
+  if (editForm) {
+    editForm.addEventListener('submit', handleUpdateUser);
+  }
+
+  // Populate user dropdown for CalDAV
+  populateCalDAVUserDropdown();
 }
 
 async function handleCalDAVSync() {
@@ -2080,15 +2089,6 @@ async function handleCalDAVSync() {
     syncBtn.disabled = false;
     syncBtn.innerHTML = '<i class="material-icons" style="font-size: 18px;">sync</i> Sync Now';
   }
-
-  // Wire up edit user form
-  const editForm = document.getElementById('edit-user-form');
-  if (editForm) {
-    editForm.addEventListener('submit', handleUpdateUser);
-  }
-
-  // Populate user dropdown for CalDAV
-  populateCalDAVUserDropdown();
 }
 
 async function populateCalDAVUserDropdown() {

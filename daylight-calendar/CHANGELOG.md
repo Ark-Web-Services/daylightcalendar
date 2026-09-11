@@ -1,4 +1,16 @@
 # Changelog
+## [1.1.9.6] - 2026-09-11
+
+### Fixed
+- **CalDAV "Assign to User" dropdown stuck on "Loading users..."**: the call to
+  `populateCalDAVUserDropdown()`, along with the `edit-user-form` submit wiring, sat after
+  the `finally` block *inside* `handleCalDAVSync()`. Both only ran if the user clicked
+  "Sync Now" first, so the dropdown never left its placeholder. Moved into
+  `initializeCalDAVSettings()`, which is what the settings-page init already calls and
+  whose call site comment already claimed it wired the edit form.
+- **Editing a user silently did nothing**: same root cause — `edit-user-form`'s submit
+  handler was never attached, so `handleUpdateUser` never fired.
+
 ## [1.1.9.5] - 2026-09-11
 
 ### Fixed
