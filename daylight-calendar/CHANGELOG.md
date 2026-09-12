@@ -1,4 +1,14 @@
 # Changelog
+## [1.1.9.13] - 2026-09-12
+
+Calendar routing in 1.1.9.12 was only half-shipped: the calendar-management screen rendered
+controls for assigning a calendar source to one or more profiles, but the server endpoints those
+controls saved to were absent, so every save failed. The routing API now persists calendar-to-profile
+assignments and returns the consequence preview's destinations correctly, including shared calendars
+that belong to more than one person. Calendars such as Holidays, School, or Birthdays that do not
+belong to a person can now be routed to a separately coloured non-person label instead, while
+unassigned calendars remain visible rather than silently disappearing.
+
 ## [1.1.9.12] - 2026-09-11
 
 ### Fixed

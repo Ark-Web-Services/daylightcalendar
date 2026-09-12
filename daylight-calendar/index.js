@@ -452,22 +452,45 @@ async function initializeApp() {
     return {};
   }
 
+  function writeUserMappings(mappings) {
+    const mappingFile = path.join(DATA_DIR, 'user_mappings.json');
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    fs.writeFileSync(mappingFile, JSON.stringify(mappings, null, 2));
+  }
+
+  function normalizeCalendarIds(value) {
+    const values = Array.isArray(value) ? value : (value ? [value] : []);
+    return [...new Set(values.filter(id => typeof id === 'string' && id.trim()))];
+  }
+
   // Helpers to persist which connected calendars are hidden from the calendar view
   function readCalendarSettings() {
     const settingsFile = path.join(DATA_DIR, 'calendar_settings.json');
     if (fs.existsSync(settingsFile)) {
       try {
         const settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+        const labels = Array.isArray(settings.labels)
+          ? settings.labels.filter(label => label && typeof label.id === 'string' && typeof label.name === 'string')
+          : [];
+        const validLabelIds = new Set(labels.map(label => label.id));
+        const calendarLabels = settings.calendarLabels && typeof settings.calendarLabels === 'object'
+          ? Object.fromEntries(Object.entries(settings.calendarLabels).filter(([calendarId, labelId]) =>
+            typeof calendarId === 'string' && validLabelIds.has(labelId)))
+          : {};
         return {
           disabledCalendarIds: Array.isArray(settings.disabledCalendarIds)
             ? settings.disabledCalendarIds.filter(id => typeof id === 'string')
-            : []
+            : [],
+          labels,
+          calendarLabels
         };
       } catch (err) {
         console.error('Error reading calendar settings:', err);
       }
     }
-    return { disabledCalendarIds: [] };
+    return { disabledCalendarIds: [], labels: [], calendarLabels: {} };
   }
 
   function saveCalendarSettings(settings) {
@@ -478,7 +501,11 @@ async function initializeApp() {
       }
 
       const normalized = {
-        disabledCalendarIds: [...new Set(settings.disabledCalendarIds || [])]
+        disabledCalendarIds: [...new Set(settings.disabledCalendarIds || [])],
+        labels: Array.isArray(settings.labels) ? settings.labels : [],
+        calendarLabels: settings.calendarLabels && typeof settings.calendarLabels === 'object'
+          ? settings.calendarLabels
+          : {}
       };
       fs.writeFileSync(settingsFile, JSON.stringify(normalized, null, 2));
       return normalized;
@@ -486,6 +513,14 @@ async function initializeApp() {
       console.error('Error saving calendar settings:', err);
       throw err;
     }
+  }
+
+  function clearLabelsForCalendars(calendarIds) {
+    const normalizedIds = normalizeCalendarIds(calendarIds);
+    if (normalizedIds.length === 0) return;
+    const settings = readCalendarSettings();
+    normalizedIds.forEach(calendarId => delete settings.calendarLabels[calendarId]);
+    saveCalendarSettings(settings);
   }
 
   const MAX_CALENDAR_RANGE_DAYS = 62;
@@ -515,21 +550,40 @@ async function initializeApp() {
 
   // Function to fetch calendar data (HA + CalDAV merged)
 
-  // Profiles need distinct identities: every user previously defaulted to the same
-  // blue, so the wall display showed a row of identical circles. Colour is derived
-  // from the user id so it is stable across restarts without a migration.
+  // The palette extends the existing profile selector. Defaults are persisted so
+  // identity colors remain stable and new profiles avoid colors already in use.
   const PROFILE_PALETTE = [
-    '#4285f4', '#34a853', '#f9ab00', '#ea4335', '#a142f4',
-    '#00acc1', '#ff7043', '#7cb342', '#ec407a', '#5c6bc0'
+    '#4285f4', '#34a853', '#fbbc05', '#ea4335', '#9c27b0',
+    '#009688', '#ff7043', '#7cb342', '#ec407a', '#5c6bc0'
   ];
 
-  function defaultProfileColor(id) {
-    const key = String(id || '');
-    let hash = 0;
-    for (let i = 0; i < key.length; i++) {
-      hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
-    }
-    return PROFILE_PALETTE[hash % PROFILE_PALETTE.length];
+  function getNextAvailableColor(existingColors) {
+    const colorsInUse = new Set(
+      [...existingColors].filter(Boolean).map(color => String(color).toLowerCase())
+    );
+    return PROFILE_PALETTE.find(color => !colorsInUse.has(color.toLowerCase())) ||
+      PROFILE_PALETTE[colorsInUse.size % PROFILE_PALETTE.length];
+  }
+
+  function ensureProfileColors(persons, mappings) {
+    const colorsInUse = new Set();
+    let changed = false;
+
+    persons.forEach(person => {
+      const existing = mappings[person.id] || {};
+      const normalizedColor = existing.color ? String(existing.color).toLowerCase() : null;
+      if (!normalizedColor || colorsInUse.has(normalizedColor)) {
+        const color = getNextAvailableColor(colorsInUse);
+        mappings[person.id] = { ...existing, color };
+        colorsInUse.add(color.toLowerCase());
+        changed = true;
+      } else {
+        colorsInUse.add(normalizedColor);
+      }
+    });
+
+    if (changed) writeUserMappings(mappings);
+    return mappings;
   }
 
   async function fetchCalendarData(range = getCalendarRange()) {
@@ -591,6 +645,10 @@ async function initializeApp() {
 
     const mergedEvents = [...haEvents, ...caldavEvents];
     const userMappings = readUserMappings();
+    const calendarSettings = readCalendarSettings();
+    const caldavAccountNames = new Map(
+      caldavService.getAccounts().map(account => [account.id, account.appleId])
+    );
 
     let validUserIds = [];
     try {
@@ -600,42 +658,38 @@ async function initializeApp() {
       console.error('[ERROR] Could not fetch valid HA users for event mapping:', err.message);
     }
 
-    // Assign proper userId to events so frontend filtering works
+    // Attach destination identity while retaining userId for older frontend consumers.
     mergedEvents.forEach(e => {
-      // Validate HA userIds that were assigned inside fetchCalendarData if any
-      if (e.userId && !validUserIds.includes(e.userId)) {
-        e.userId = null;
-      }
-
       if (e.source === 'caldav') {
         const calEntityId = `caldav_${e.accountId}_${e.calendarUrl}`;
         e.calendar_entity_id = calEntityId; // Stamp entity ID for counts
-        const userMapping = Object.entries(userMappings).find(([id, data]) => {
-          if (Array.isArray(data.calendar_entity_id)) {
-            return data.calendar_entity_id.includes(calEntityId);
-          }
-          return data.calendar_entity_id === calEntityId;
-        });
-
-        if (userMapping && validUserIds.includes(userMapping[0])) {
-          e.userId = userMapping[0]; // Assign to the linked user
-        }
-      } else if (e.source === 'ha') {
-        // Find if HA calendar is mapped to a user
-        const userMapping = Object.entries(userMappings).find(([id, data]) => {
-          if (Array.isArray(data.calendar_entity_id)) {
-            return data.calendar_entity_id.includes(e.calendar_entity_id);
-          }
-          return data.calendar_entity_id === e.calendar_entity_id;
-        });
-
-        if (userMapping && validUserIds.includes(userMapping[0])) {
-          e.userId = userMapping[0];
-        }
       }
+
+      const profileIds = validUserIds.filter(id => {
+        const mapping = userMappings[id];
+        return mapping && normalizeCalendarIds(mapping.calendar_entity_id).includes(e.calendar_entity_id);
+      });
+      const labelId = profileIds.length === 0
+        ? calendarSettings.calendarLabels[e.calendar_entity_id]
+        : null;
+      const label = labelId
+        ? calendarSettings.labels.find(candidate => candidate.id === labelId)
+        : null;
+
+      e.profileIds = profileIds;
+      e.userId = profileIds[0] || null;
+      e.labelId = label ? label.id : null;
+      e.labelName = label ? label.name : null;
+      e.labelColor = label ? label.color : null;
+      e.destinationType = profileIds.length > 0 ? 'profiles' : (label ? 'label' : 'unassigned');
+      e.sourceType = e.source;
+      e.readOnly = e.source === 'caldav';
+      e.sourceAccountName = e.source === 'caldav'
+        ? (caldavAccountNames.get(e.accountId) || null)
+        : 'Home Assistant';
     });
 
-    const disabledCalendarIds = new Set(readCalendarSettings().disabledCalendarIds);
+    const disabledCalendarIds = new Set(calendarSettings.disabledCalendarIds);
     return mergedEvents.filter(event => !disabledCalendarIds.has(event.calendar_entity_id));
   }
 
@@ -931,7 +985,7 @@ async function initializeApp() {
 
       mappings[userId] = { ...mappings[userId], ...data };
 
-      fs.writeFileSync(mappingFile, JSON.stringify(mappings, null, 2));
+      writeUserMappings(mappings);
       return mappings[userId];
     } catch (err) {
       console.error('Error saving user mapping:', err);
@@ -952,6 +1006,25 @@ async function initializeApp() {
     return {};
   }
 
+  function getCalendarRouting(validProfileIds) {
+    const routes = {};
+    Object.entries(getUserMappings()).forEach(([profileId, mapping]) => {
+      if (validProfileIds && !validProfileIds.has(profileId)) return;
+      normalizeCalendarIds(mapping.calendar_entity_id).forEach(calendarId => {
+        routes[calendarId] = routes[calendarId] || { profileIds: [], labelId: null };
+        routes[calendarId].profileIds.push(profileId);
+      });
+    });
+
+    const settings = readCalendarSettings();
+    Object.entries(settings.calendarLabels).forEach(([calendarId, labelId]) => {
+      routes[calendarId] = routes[calendarId] || { profileIds: [], labelId: null };
+      if (routes[calendarId].profileIds.length === 0) routes[calendarId].labelId = labelId;
+    });
+
+    return { routes, labels: settings.labels };
+  }
+
   // Helper to fetch HA Calendars + CalDAV Calendars
   async function fetchHaCalendars() {
     let haCalendars = [];
@@ -959,10 +1032,10 @@ async function initializeApp() {
 
     if (isStandaloneDev) {
       haCalendars = [
-        { entity_id: 'calendar.civil_holidays', name: 'Holidays', source: 'ha' },
-        { entity_id: 'calendar.icloud_personal', name: 'iCloud Personal', source: 'ha' },
-        { entity_id: 'calendar.google_family', name: 'Google Family', source: 'ha' },
-        { entity_id: 'calendar.work_outlook', name: 'Work Outlook', source: 'ha' }
+        { entity_id: 'calendar.civil_holidays', name: 'Holidays', source: 'ha', accountName: 'Home Assistant', readOnly: false },
+        { entity_id: 'calendar.icloud_personal', name: 'iCloud Personal', source: 'ha', accountName: 'Home Assistant', readOnly: false },
+        { entity_id: 'calendar.google_family', name: 'Google Family', source: 'ha', accountName: 'Home Assistant', readOnly: false },
+        { entity_id: 'calendar.work_outlook', name: 'Work Outlook', source: 'ha', accountName: 'Home Assistant', readOnly: false }
       ];
       // Add mock CalDAV calendars
       const mockAccounts = caldavService.getMockAccounts();
@@ -973,8 +1046,10 @@ async function initializeApp() {
             name: `🍎 ${cal.displayName}`,
             source: 'caldav',
             accountId: acc.id,
+            accountName: acc.appleId,
             calendarUrl: cal.url,
-            color: cal.color
+            color: cal.color,
+            readOnly: true
           });
         });
       });
@@ -986,7 +1061,9 @@ async function initializeApp() {
           .map(entity => ({
             entity_id: entity.entity_id,
             name: entity.attributes.friendly_name || entity.entity_id,
-            source: 'ha'
+            source: 'ha',
+            accountName: 'Home Assistant',
+            readOnly: false
           }));
       } catch (err) {
         console.error('Failed to fetch HA calendars:', err);
@@ -1008,8 +1085,10 @@ async function initializeApp() {
               name: `🍎 ${cal.displayName}`,
               source: 'caldav',
               accountId: acc.id,
+              accountName: acc.appleId,
               calendarUrl: cal.url,
-              color: cal.color
+              color: cal.color,
+              readOnly: true
             });
           });
         });
@@ -1055,7 +1134,8 @@ async function initializeApp() {
       const mockPath = path.join(__dirname, 'mock-data', 'users.json');
       try {
         const data = JSON.parse(fs.readFileSync(mockPath, 'utf8'));
-        const mappings = getUserMappings();
+        let mappings = getUserMappings();
+        mappings = ensureProfileColors(data.users, mappings);
         return data.users.map(u => ({
           id: u.id,
           name: u.name,
@@ -1064,7 +1144,7 @@ async function initializeApp() {
           // Merge local mapping data
           calendar_entity_id: mappings[u.id]?.calendar_entity_id || null,
           notify_service: mappings[u.id]?.notify_service || null,
-          color: mappings[u.id]?.color || defaultProfileColor(u.id),
+          color: mappings[u.id]?.color,
           icon: mappings[u.id]?.icon || 'person'
         }));
       } catch (e) { return []; }
@@ -1076,7 +1156,8 @@ async function initializeApp() {
     try {
       const result = await client.sendCommand('person/list');
       const persons = result.storage || [];
-      const mappings = getUserMappings();
+      let mappings = getUserMappings();
+      mappings = ensureProfileColors(persons, mappings);
 
       return persons.map(person => ({
         id: person.id,
@@ -1086,7 +1167,7 @@ async function initializeApp() {
         // Merge local mapping data
         calendar_entity_id: mappings[person.id]?.calendar_entity_id || null,
         notify_service: mappings[person.id]?.notify_service || null,
-        color: mappings[person.id]?.color || defaultProfileColor(person.id),
+        color: mappings[person.id]?.color,
         icon: mappings[person.id]?.icon || 'person'
       }));
     } catch (err) {
@@ -1173,11 +1254,100 @@ async function initializeApp() {
       }
 
       const savedSettings = saveCalendarSettings({
+        ...settings,
         disabledCalendarIds: [...disabledCalendarIds]
       });
       res.json({ calendarId, enabled, ...savedSettings });
     } catch (err) {
       console.error('Update calendar settings failed:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // API: Read source-to-destination routing without changing legacy user mapping consumers.
+  app.get('/api/calendar-routing', async (req, res) => {
+    try {
+      const users = await fetchHaUsers();
+      res.json(getCalendarRouting(new Set(users.map(user => user.id))));
+    } catch (err) {
+      console.error('Fetch calendar routing failed:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // API: Create a non-person destination label with its own identity color.
+  app.post('/api/calendar-labels', express.json(), (req, res) => {
+    try {
+      const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
+      if (!name) return res.status(400).json({ error: 'Label name required' });
+
+      const settings = readCalendarSettings();
+      const duplicate = settings.labels.find(label => label.name.toLowerCase() === name.toLowerCase());
+      if (duplicate) return res.status(409).json({ error: 'A label with that name already exists' });
+
+      const mappings = getUserMappings();
+      const color = getNextAvailableColor([
+        ...Object.values(mappings).map(mapping => mapping && mapping.color),
+        ...settings.labels.map(label => label.color)
+      ]);
+      const label = {
+        id: `label_${Date.now().toString(36)}`,
+        name: name.slice(0, 40),
+        color
+      };
+      settings.labels.push(label);
+      saveCalendarSettings(settings);
+      res.json(label);
+    } catch (err) {
+      console.error('Create calendar label failed:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // API: Route one source calendar to one or more profiles, one label, or neither.
+  app.put('/api/calendar-routing', express.json(), async (req, res) => {
+    try {
+      const calendarId = typeof req.body.calendarId === 'string' ? req.body.calendarId.trim() : '';
+      const requestedProfileIds = Array.isArray(req.body.profileIds)
+        ? [...new Set(req.body.profileIds.filter(id => typeof id === 'string' && id.trim()))]
+        : [];
+      const labelId = typeof req.body.labelId === 'string' && req.body.labelId.trim()
+        ? req.body.labelId.trim()
+        : null;
+      if (!calendarId) return res.status(400).json({ error: 'calendarId required' });
+      if (labelId && requestedProfileIds.length > 0) {
+        return res.status(400).json({ error: 'Choose profiles or a label, not both' });
+      }
+
+      const users = await fetchHaUsers();
+      const validProfileIds = new Set(users.map(user => user.id));
+      if (requestedProfileIds.some(id => !validProfileIds.has(id))) {
+        return res.status(400).json({ error: 'Unknown profile selected' });
+      }
+
+      const settings = readCalendarSettings();
+      if (labelId && !settings.labels.some(label => label.id === labelId)) {
+        return res.status(400).json({ error: 'Unknown label selected' });
+      }
+
+      const mappings = getUserMappings();
+      const profileIdsToUpdate = new Set([...Object.keys(mappings), ...requestedProfileIds]);
+      profileIdsToUpdate.forEach(profileId => {
+        const mapping = mappings[profileId] || {};
+        const calendarIds = normalizeCalendarIds(mapping.calendar_entity_id)
+          .filter(id => id !== calendarId);
+        if (requestedProfileIds.includes(profileId)) calendarIds.push(calendarId);
+        mappings[profileId] = { ...mapping, calendar_entity_id: calendarIds };
+      });
+      writeUserMappings(mappings);
+
+      if (labelId) settings.calendarLabels[calendarId] = labelId;
+      else delete settings.calendarLabels[calendarId];
+      saveCalendarSettings(settings);
+
+      res.json({ calendarId, profileIds: requestedProfileIds, labelId });
+    } catch (err) {
+      console.error('Update calendar routing failed:', err);
       res.status(500).json({ error: err.message });
     }
   });
@@ -1209,15 +1379,22 @@ async function initializeApp() {
       const { name, calendar_entity_id, notify_service, color, icon } = req.body;
       if (!name) return res.status(400).json({ error: 'Name required' });
 
+      // Persist colors for existing profiles before choosing the next free default.
+      await fetchHaUsers();
       const newUser = await createHaUser(name);
+      const mappings = getUserMappings();
+      const profileColor = typeof color === 'string' && color.trim()
+        ? color
+        : getNextAvailableColor(Object.values(mappings).map(mapping => mapping && mapping.color));
 
       // Save local mapping
-      await saveUserMapping(newUser.id, { calendar_entity_id, notify_service, color, icon });
+      await saveUserMapping(newUser.id, { calendar_entity_id, notify_service, color: profileColor, icon });
+      clearLabelsForCalendars(calendar_entity_id);
 
       // Merge local data for response
       newUser.calendar_entity_id = calendar_entity_id;
       newUser.notify_service = notify_service;
-      newUser.color = color;
+      newUser.color = profileColor;
       newUser.icon = icon;
 
       res.json(newUser);
@@ -1234,6 +1411,7 @@ async function initializeApp() {
       const { calendar_entity_id, notify_service, color, icon } = req.body;
 
       await saveUserMapping(id, { calendar_entity_id, notify_service, color, icon });
+      clearLabelsForCalendars(calendar_entity_id);
 
       res.json({ success: true, id, calendar_entity_id, notify_service, color, icon });
     } catch (err) {

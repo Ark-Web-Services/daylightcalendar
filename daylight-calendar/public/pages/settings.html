@@ -116,11 +116,22 @@
       <div class="settings-card calendar-management-card">
         <div class="calendar-management-heading">
           <div>
-            <h3>Visible Calendars</h3>
-            <p class="setting-description">Choose which connected calendars appear on the calendar. Calendars are shown by default.</p>
+            <h3>Calendar routing</h3>
+            <p class="setting-description">See each source, choose who its events are for, or route non-person events to a label.</p>
           </div>
           <span id="calendar-management-summary" class="calendar-management-summary" aria-live="polite">Loading…</span>
         </div>
+        <form id="calendar-label-form" class="calendar-label-form">
+          <div class="form-group">
+            <label for="calendar-label-name">New non-person label</label>
+            <input id="calendar-label-name" type="text" maxlength="40" placeholder="School, Holidays, Birthdays">
+          </div>
+          <button type="submit" class="btn btn-secondary">
+            <i class="material-icons" aria-hidden="true">label</i>
+            Add label
+          </button>
+          <span id="calendar-label-status" class="calendar-label-status" aria-live="polite"></span>
+        </form>
         <div id="calendar-management-list" class="calendar-management-list" aria-live="polite">
           <div class="calendar-management-loading">
             <i class="material-icons spin" aria-hidden="true">refresh</i>
@@ -133,7 +144,7 @@
         <h3><i class="material-icons" style="vertical-align: middle; margin-right: 8px;">event</i>Apple Calendar
           (iCloud)</h3>
         <p class="setting-description">
-          Connect your Apple Calendar to see iCloud events in Daylight.
+          Connect your Apple Calendar to see iCloud events in Daylight. iCloud sync is read-only: events can be viewed here but must be edited in Apple Calendar.
           Requires an <a href="https://appleid.apple.com/account/manage" target="_blank" rel="noopener">app-specific
             password</a>.
         </p>
@@ -152,15 +163,6 @@
             <div class="form-group">
               <label for="caldav-app-password">App-Specific Password</label>
               <input type="password" id="caldav-app-password" placeholder="xxxx-xxxx-xxxx-xxxx" autocomplete="off">
-            </div>
-            <div class="form-group">
-              <label for="caldav-user-select">Assign to User (Optional)</label>
-              <select id="caldav-user-select">
-                <option value="">-- No user (Unassigned) --</option>
-                <option disabled>Loading users...</option>
-              </select>
-              <p class="setting-description" style="font-size: 0.8rem; margin-top: 4px;">Assigned events use that person's
-                color and filter. Unassigned events aren't affected by people filters.</p>
             </div>
           </div>
           <button id="caldav-connect-btn" class="btn btn-primary">
@@ -187,10 +189,10 @@
     <div class="settings-section">
       <h2>Home Assistant Integration</h2>
       <div class="settings-card" id="user-management-settings">
-        <h3>User Management</h3>
+        <h3>Profiles</h3>
         <p class="setting-description">
           <i class="material-icons">info</i>
-          Manage household members. Click a user to edit their linked calendar and notification device.
+          Profiles are the people shown on Daylight. Each has initials and a distinct color used across every calendar view.
         </p>
 
         <div id="user-list" class="user-list-container">
@@ -199,21 +201,21 @@
         </div>
 
         <button id="add-user-btn" class="btn btn-primary" style="margin-top: 15px;">
-          <i class="material-icons">person_add</i> Add User
+          <i class="material-icons">person_add</i> Add Profile
         </button>
       </div>
     </div>
   </div>
 
-  <!-- Add User Modal -->
+  <!-- Add Profile Modal -->
   <div id="add-user-modal" class="modal">
     <div class="modal-content">
       <div class="modal-header">
-        <h3>Add New User</h3>
+        <h3>Add New Profile</h3>
         <button class="modal-close">&times;</button>
       </div>
       <div class="modal-body">
-        <p>This will create a new Person in Home Assistant.</p>
+        <p>This creates a Person in Home Assistant and a display profile in Daylight.</p>
         <form id="add-user-form">
           <div class="form-group">
             <label for="new-user-name">Name</label>
@@ -221,9 +223,8 @@
           </div>
           <div class="form-group">
             <label>Calendar(s)</label>
-            <div id="new-user-calendar" class="calendar-checkbox-list"
-              style="max-height: 150px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 8px; background: rgba(0,0,0,0.2);">
-              <div class="loading-calendars" style="padding: 4px;">Loading...</div>
+            <div id="new-user-calendar" class="calendar-checkbox-list">
+              <div class="loading-calendars">Loading...</div>
             </div>
           </div>
           <div class="form-group">
@@ -252,7 +253,8 @@
                 <button type="button" class="color-option" data-color="#009688"
                   style="background-color: #009688;"></button>
               </div>
-              <input type="hidden" id="new-user-color" value="#4285f4">
+              <input type="hidden" id="new-user-color" value="" data-default-color="true">
+              <p class="setting-description">Daylight chooses the next unused color unless you pick one.</p>
             </div>
             <div class="form-group" style="width: 50%;">
               <label>Icon</label>
@@ -269,18 +271,18 @@
           </div>
           <div class="form-actions">
             <button type="button" class="btn btn-secondary modal-cancel">Cancel</button>
-            <button type="submit" class="btn btn-primary">Create User</button>
+            <button type="submit" class="btn btn-primary">Create Profile</button>
           </div>
         </form>
       </div>
     </div>
   </div>
 
-  <!-- Edit User Modal -->
+  <!-- Edit Profile Modal -->
   <div id="edit-user-modal" class="modal">
     <div class="modal-content">
       <div class="modal-header">
-        <h3>Edit User</h3>
+        <h3>Edit Profile</h3>
         <button class="modal-close">&times;</button>
       </div>
       <div class="modal-body">
@@ -289,9 +291,8 @@
         <form id="edit-user-form">
           <div class="form-group">
             <label>Calendar(s)</label>
-            <div id="edit-user-calendar" class="calendar-checkbox-list"
-              style="max-height: 150px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 8px; background: rgba(0,0,0,0.2);">
-              <div class="loading-calendars" style="padding: 4px;">Loading...</div>
+            <div id="edit-user-calendar" class="calendar-checkbox-list">
+              <div class="loading-calendars">Loading...</div>
             </div>
           </div>
           <div class="form-group">
