@@ -1,9 +1,10 @@
 # Daylight — Handoff & Roadmap
 
-Written 2026-09-11 at the end of a long working session. Purpose: let a fresh session
-continue without re-deriving what took hours to find.
+Written 2026-09-11, updated 2026-09-12. Purpose: let a fresh session continue without
+re-deriving what took hours to find.
 
-Current deployed version: **1.1.9.12**. Repo `main` is level with origin.
+Repo `main` is at **1.1.9.17** and level with origin. **The add-on is still running 1.1.9.12**
+— every release below 1.1.9.13..17 is pushed but NOT deployed. See §7.
 
 ---
 
@@ -81,15 +82,28 @@ it failed.
 - `api/users` returns `{id, name, calendar_entity_id, notify_service, color, icon}`.
   `calendar_entity_id` may be a **string or an array**. Mappings persist via
   `readUserMappings`/`saveUserMapping`.
-- `api/calendar-settings` persists `{disabledCalendarIds: []}`.
+- `api/calendar-settings` persists `{disabledCalendarIds, labels, calendarLabels}`.
 - `api/calendar` honours `?start=&end=`; `getCalendarRange()` normalises it and
   `caldavService.fetchAllEvents({start,end})` accepts the range (legacy numeric form still
   works). Span capped at 62 days.
 - Recurrence is expanded **server-side** via tsdav `expand: true`, with a fallback to the
   unexpanded query. The local iCal parser is regex-based and has **no** RRULE/EXDATE/
   RECURRENCE-ID handling, so do not rely on it for recurring events.
-- Profile colours come from `defaultProfileColor(id)` in `index.js` — a stable hash into a
-  ten-colour palette. Do not reintroduce a single default colour.
+- Profile colours come from `PROFILE_PALETTE` + `getNextAvailableColor()` + `ensureProfileColors()`
+  in `index.js`, and are **persisted** to `user_mappings.json` so identities stay stable. (The old
+  `defaultProfileColor(id)` hash is gone.) Do not reintroduce a single default colour.
+- **New durable state added 2026-09-12**, all via the `readJsonFile`/`writeJsonFile` helpers that
+  resolve to `DATA_DIR`: `recipes.json`, `meal_plan.json`, `lists.json`, `chore_meta.json`,
+  `chore_settings.json`, `stars.json`, `rewards.json`, `routines.json`, `routine_progress.json`.
+- **Writes that can race are serialised** behind an in-process promise lock
+  (`withHouseholdStorageLock`, and the equivalent for lists). A plain read-modify-write on these
+  JSON files loses records when the wall panel and a phone write at once. Reuse the existing lock;
+  do not add a second mechanism.
+- **Stars are an append-only ledger; balances are derived by summing it.** Never store a mutable
+  balance counter. Awards are idempotent per `completionKey`; routine keys include the date.
+- Chores live in a Home Assistant `todo.` entity — Daylight does **not** own chore identity.
+  Metadata is a side-car keyed by todo `uid`. Never assume a uid you hold metadata for still
+  exists, and tolerate uids you have never seen.
 - Sidebar collapse is owned **solely** by `public/js/sidebar-fix.js` via `applySidebarState()`.
   Do not add a second listener in `script.js`; that exact duplication broke restore-after-refresh.
 
@@ -112,74 +126,51 @@ login. Delete or stub that file before local dev if you don't want that.
 
 ## 4. Remaining work
 
-### Package 1 — sync mental model (PARTIALLY DONE)
+Packages 1-4 were completed on 2026-09-12 (versions 1.1.9.13 through 1.1.9.17), each verified
+against the standalone dev server. **None of it has been seen rendering in a browser, and none
+of it is deployed.** See §7.
 
-The driving idea, from the Skylight teardown: **PROFILE** (who it's for) ≠ **SOURCE** (where it
-came from) ≠ **DESTINATION** (where edits write back). Conflating these is what made Daylight
-render nothing from 7 connected iCloud calendars.
+### Done
 
-Done: distinct stable profile colours; initials + name on filter chips; read-only badges on
-calendar management rows and in the event detail dialog; source badge (HA vs iCloud) per row.
+- **Package 1 — sync mental model (1.1.9.13).** Calendar-to-profile assignment from the calendar
+  management screen, the consequence preview, and non-person label calendars.
+  `GET/PUT /api/calendar-routing`, `POST /api/calendar-labels`. Events carry `profileIds`,
+  `labelId`/`labelName`/`labelColor`, `destinationType`, `sourceType`, `readOnly`,
+  `sourceAccountName`.
+  *1.1.9.12 shipped this feature's UI without its endpoints — the controls 404'd on save.*
+- **Package 2 — meals + recipes (1.1.9.14).** The Meal Planner was entirely mock: a hardcoded
+  `sampleMeals` array, and an Add Meal handler that console.logged and discarded. Now
+  `recipes.json` + `meal_plan.json` under DATA_DIR, full CRUD, week navigation, and a working
+  Recipe Book. `loadRecipes()` is finally defined, so its three pre-existing guarded call sites
+  resolve.
+- **Package 3 — lists (1.1.9.15).** `lists.json`, grocery/todo/custom lists, a new Lists tab,
+  reorder, clear-checked. Writes are serialised behind a promise chain — verified by 20
+  concurrent POSTs all landing. The Meals grocery modal and recipe-ingredient push both use it.
+- **Package 4 — motivation loop (1.1.9.16 + 1.1.9.17).** Append-only star ledger with derived
+  balances, rewards with partial progress and redemption, chore metadata side-car, routines with
+  per-profile per-day progress, Up for Grabs with atomic claiming, chore subtasks, and a
+  collapsible "Household momentum" strip on the calendar page.
 
-Remaining:
-- [ ] Assign a calendar to one or more profiles **from the calendar management screen**.
-      Today assignment only exists inside the edit-user modal.
-- [ ] Show the consequence before committing — e.g. "events from School will appear in Lily's
-      colour" — rather than letting the user discover it afterwards.
-- [ ] Non-person **label** calendars (holidays, birthdays, school terms) with their own colour,
-      instead of forcing every calendar onto a person.
-
-### Package 2 — recipes + grocery wiring (NOT STARTED)
-
-`loadRecipes()` is **called in three places and defined in none**
-(`js/event-fixer.js`, `js/page-loader.js`, `js/script-bridge.js` — all guarded by
-`typeof loadRecipes === 'function'`, so they silently no-op). There are **no recipe API
-endpoints**. `#select-recipe-btn` in `pages/meals.html` has **no handler** and is currently
-disabled with an explanatory title. The Recipe Book modal placeholder now says the feature
-isn't set up.
-
-- [ ] Recipe storage under `/data` + CRUD endpoints
-- [ ] Browsable recipe book UI (replacing the honest placeholder)
-- [ ] Selecting a recipe fills the meal description; re-enable `#select-recipe-btn`
-- [ ] Push recipe ingredients to a grocery list (pairs with Package 3)
-
-### Package 3 — lists (NOT STARTED)
-
-A whole tab Daylight lacks. Teardown is emphatic (p.8): for shared lists, **reliability beats
-features** — stale state is worse than missing capability.
-
-- [ ] Grocery / to-do / custom lists, persisted under `/data`
-- [ ] New nav tab + page, matching the existing page-loader pattern
-- [ ] Add/check/reorder/delete items; visible "last synced" state
-- [ ] Multi-device consistency (the wall panel and any phone browser)
-
-### Package 4 — stars, rewards, routines, up-for-grabs (NOT STARTED, LARGEST)
-
-Skylight's main differentiator; Daylight has a chores board with none of the motivation loop.
-This is a new data model, not a UI tweak.
-
-- [ ] Stars awarded on chore completion, per profile
-- [ ] Rewards with star cost, partial progress, and redemption
-- [ ] Routines — repeating multi-step habits (morning/evening sequences)
-- [ ] "Up for Grabs" — unassigned chores anyone can claim
-- [ ] Nested subtasks/checklists (teardown rec #5)
-- [ ] Surface the loop on the calendar home screen, not buried in a tab
-
-### Cross-cutting, from the teardown's ranked recommendations
+### Still open, from the teardown's ranked recommendations
 
 - [ ] Household change notifications — alert when someone adds/edits an event (rec #4)
 - [ ] "Event ending soon" reminders for pickup travel time
 - [ ] Two-way calendar editing — **a project, not a patch**: CalDAV write-back, conflict
       handling, a finger-usable event editor, text entry on a wall panel. Decide whether
       "phones create, wall displays" is actually the right division of labor first.
-
----
+- [ ] Meal Categories modal exists but does not yet drive the persisted `mealTypes` list.
+- [ ] "Start Cooking" mode — button deliberately left disabled with an honest title.
 
 ## 5. Known unverified / open
 
-- The browser extension disconnected partway through the session, so several shipped changes
-  were **never seen rendering**: the calendar management section, the sync-log box appearance,
-  theme-button responsiveness after re-entering Settings, and the event detail dialog.
+- **Nothing from 1.1.9.13-1.1.9.17 has ever been seen rendering in a browser.** Every claim is
+  from curl against the standalone dev server. Codex's sandbox had no browser access, and the
+  extension was unavailable. The backends are well tested; the UI is not. Expect layout and
+  theme problems on first look, especially on the new Lists page, the Stars & Rewards section on
+  Chores, and the Household momentum strip on the calendar page.
+- Also never seen rendering, from the previous session: the calendar management section, the
+  sync-log box appearance, theme-button responsiveness after re-entering Settings, and the event
+  detail dialog.
 - **Week-view event contrast** looked poor — pale blue blocks with near-white text. Never
   measured. Likely the first thing a user notices from across a room.
 - `repository.yaml` / GitHub reports **84 Dependabot vulnerabilities** (3 critical, 36 high).
@@ -191,11 +182,51 @@ This is a new data model, not a UI tweak.
 
 ## 6. Process notes
 
-- **Codex subagents were unreliable here.** Three attempts: 1 of 5 items, 1 of 5, then 0 of 5
-  after sitting idle for five hours. Tasks detach and give no completion signal. If used,
-  verify with `git diff` rather than trusting a completion notification.
+- **Codex was reliable on 2026-09-12 — five for five** — reversing the previous session's
+  experience. What changed:
+  - `codex exec --sandbox workspace-write -c sandbox_workspace_write.network_access=true`.
+    **Without `network_access=true` the sandbox blocks binding a local port**, so every attempt
+    to smoke-test the dev server dies with `EPERM listen 0.0.0.0:8100` and the agent silently
+    falls back to reading code instead of running it. This one flag is the difference between a
+    verified task and a plausible-sounding one.
+  - A **fresh session per task**, each seeded with a written constraints brief (the §2 list) —
+    not a running conversation. Context stays small and no task inherits another's confusion.
+  - Briefs that **demand evidence with real numbers** ("fire 20 concurrent POSTs and report how
+    many landed"), not "make sure it works". Every genuine bug class here — lost writes, double
+    awards, claim races — only shows up under that kind of check.
+  - Background the dev server in a **detached subshell** `( ... &)` or the agent's shell call
+    hangs. Kill it with `lsof -ti:PORT | xargs kill -9` afterwards.
+- Still verify with `git diff` and your own curl rather than trusting the completion report. Doing
+  so caught nothing false this session, but it is cheap.
 - **Match edits by content, not indentation.** Several scripted edits failed because indentation
   was inferred from `sed`-piped output that had added leading spaces. Use regex anchored on
   distinctive code, and capture the existing indent.
 - The user tests between releases and their feedback has found real bugs every time. Ship small,
   let them use it, then iterate.
+
+---
+
+## 7. Deployment status — READ THIS FIRST
+
+**`main` is at 1.1.9.17. The add-on on the wall panel is still running 1.1.9.12.**
+
+Five releases (1.1.9.13, .14, .15, .16, .17) are committed and pushed but **not deployed**. The
+Supervisor `/store/addons/<slug>/update` call was blocked by a permission gate during the
+session, so it was never run.
+
+`/store/reload` has already been called, so the Supervisor sees the new version —
+`/addons/<slug>/info` reported `version_latest: 1.1.9.13` at the time and will report .17 after
+another reload. To finish:
+
+```
+/store/reload                              (websocket, supervisor/api)
+/store/addons/01a45dd4_daylight_calendar/update
+/addons/01a45dd4_daylight_calendar/info    (confirm version flipped)
+```
+
+Or simply press **Update** on the add-on in the HA UI.
+
+**Deploy one version at a time if you can, and let the user look at it.** §6 of the original
+handoff is right that their feedback has found a real bug every time, and 1.1.9.13-.17 is a
+large amount of unseen UI to land in one jump. 1.1.9.13 in particular is a genuine bug fix —
+it repairs routing controls that currently 404 on save in the deployed build.
