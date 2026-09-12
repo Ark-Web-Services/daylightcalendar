@@ -1,4 +1,21 @@
 # Changelog
+## [1.1.9.11] - 2026-09-11
+
+Informed by a Skylight Calendar UI/VOC teardown whose central finding is that profile
+(who an event is for), source (where it came from) and destination (where edits write
+back) must be visibly separate concepts.
+
+### Changed
+- **Profiles now have distinct identities.** Every user previously defaulted to the same
+  `#4285f4`, so the people filter row was a line of identical blue circles rendering the
+  same generic person icon — there was no way to tell whose filter was whose. Colors are
+  now derived from a ten-color palette keyed on the user id, so they are distinct and
+  stable across restarts without needing a migration. Filter chips show initials and the
+  person's name instead of a generic icon, with 44px tap targets and `aria-pressed` state.
+- **Synced calendars are labelled read-only**, in both the calendar management list and the
+  event detail dialog. Daylight has no CalDAV write path (`scripts/caldav-service.js` has no
+  create, update or delete), so no surface should imply a synced event can be edited here.
+
 ## [1.1.9.10] - 2026-09-11
 
 ### Fixed

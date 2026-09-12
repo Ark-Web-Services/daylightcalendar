@@ -514,6 +514,24 @@ async function initializeApp() {
   }
 
   // Function to fetch calendar data (HA + CalDAV merged)
+
+  // Profiles need distinct identities: every user previously defaulted to the same
+  // blue, so the wall display showed a row of identical circles. Colour is derived
+  // from the user id so it is stable across restarts without a migration.
+  const PROFILE_PALETTE = [
+    '#4285f4', '#34a853', '#f9ab00', '#ea4335', '#a142f4',
+    '#00acc1', '#ff7043', '#7cb342', '#ec407a', '#5c6bc0'
+  ];
+
+  function defaultProfileColor(id) {
+    const key = String(id || '');
+    let hash = 0;
+    for (let i = 0; i < key.length; i++) {
+      hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+    }
+    return PROFILE_PALETTE[hash % PROFILE_PALETTE.length];
+  }
+
   async function fetchCalendarData(range = getCalendarRange()) {
     const calendarRange = getCalendarRange(range.start, range.end);
     let haEvents = [];
@@ -1046,7 +1064,7 @@ async function initializeApp() {
           // Merge local mapping data
           calendar_entity_id: mappings[u.id]?.calendar_entity_id || null,
           notify_service: mappings[u.id]?.notify_service || null,
-          color: mappings[u.id]?.color || '#4285f4',
+          color: mappings[u.id]?.color || defaultProfileColor(u.id),
           icon: mappings[u.id]?.icon || 'person'
         }));
       } catch (e) { return []; }
@@ -1068,7 +1086,7 @@ async function initializeApp() {
         // Merge local mapping data
         calendar_entity_id: mappings[person.id]?.calendar_entity_id || null,
         notify_service: mappings[person.id]?.notify_service || null,
-        color: mappings[person.id]?.color || '#4285f4', // Default blue
+        color: mappings[person.id]?.color || defaultProfileColor(person.id),
         icon: mappings[person.id]?.icon || 'person'
       }));
     } catch (err) {

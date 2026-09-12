@@ -455,7 +455,7 @@ async function loadGameProfiles(profileList = document.getElementById('profile-l
       const avatar = document.createElement('span');
       avatar.className = 'profile-avatar';
       avatar.style.backgroundColor = getValidCalendarColor(user.color);
-      avatar.textContent = (user.name || '?').trim().charAt(0).toUpperCase() || '?';
+      avatar.textContent = getProfileInitials(user.name);
 
       const name = document.createElement('span');
       name.className = 'profile-name';
@@ -995,6 +995,7 @@ function setupColorAndIconSelectors() {
         e.preventDefault();
         btns.forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
+            btn.setAttribute('aria-pressed', 'true');
         input.value = btn.dataset.color;
       };
     });
@@ -1718,16 +1719,19 @@ async function loadUserToggles() {
       const isActive = activeCalendarUsers.has(user.id);
 
       btn.className = 'user-toggle ' + (isActive ? 'active' : '');
-      btn.innerHTML = `<i class="material-icons">${user.icon || 'person'}</i>`;
+      btn.innerHTML =
+          `<span class="user-toggle-initials">${escapeHtml(getProfileInitials(user.name))}</span>` +
+          `<span class="user-toggle-name">${escapeHtml(user.name || 'Unnamed')}</span>`;
       btn.title = user.name;
       btn.style.backgroundColor = isActive ? user.color : 'transparent';
       btn.style.color = isActive ? '#fff' : user.color;
-      btn.style.borderColor = user.color || '#ccc';
+      btn.style.borderColor = user.color || 'var(--md-outline)';
 
       btn.addEventListener('click', () => {
         if (activeCalendarUsers.has(user.id)) {
           activeCalendarUsers.delete(user.id);
           btn.classList.remove('active');
+            btn.setAttribute('aria-pressed', 'false');
           btn.style.backgroundColor = 'transparent';
           btn.style.color = user.color;
         } else {
@@ -2538,7 +2542,20 @@ async function loadCalendarManagement() {
       colorLabel.className = 'calendar-color-label';
       colorLabel.textContent = hasCalendarColor ? calendarItem.color : 'Default color';
 
-      meta.append(source, colorLabel);
+      // Daylight reads synced calendars but never writes back: caldav-service has
+
+      // no create/update/delete. Say so rather than implying editability.
+
+      const readOnly = document.createElement('span');
+
+      readOnly.className = 'calendar-readonly-badge';
+
+      readOnly.textContent = 'Read-only';
+
+      readOnly.title = 'Daylight displays this calendar but cannot change it. Edit events in the source app.';
+
+
+      meta.append(source, colorLabel, readOnly);
       details.append(name, meta);
 
       const control = document.createElement('label');
@@ -2939,6 +2956,9 @@ function showEventDetails(ev) {
     }
     const calName = props.calendarName || props.calendar_entity_id;
     if (calName) chips.push(`<span class="event-detail-chip event-detail-chip-muted">${escapeHtml(String(calName))}</span>`);
+    chips.push('<span class="event-detail-chip event-detail-chip-readonly" '
+      + 'title="Daylight cannot change synced events. Edit this in the calendar it came from.">'
+      + 'Read-only</span>');
     meta.innerHTML = chips.join('');
   }
 
@@ -2958,3 +2978,11 @@ document.addEventListener('click', (e) => {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') hideEventDetails();
 });
+
+// Initials for a profile chip: "Morgan Lee" -> "ML", "Sam" -> "S".
+function getProfileInitials(name) {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+  return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+}

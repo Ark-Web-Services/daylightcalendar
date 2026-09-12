@@ -3359,3 +3359,71 @@ button.meal-empty:focus-visible {
   opacity: 0.65;
   transition: opacity 120ms ease;
 }
+
+/* People filter chips.
+   Previously every profile rendered an identical generic person icon in the same
+   default blue, so the row was unreadable as identity. Now initials plus name. */
+.user-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;           /* finger target on a wall display */
+  padding: 4px 14px 4px 4px;
+  border: 2px solid var(--md-outline);
+  border-radius: 22px;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+
+.user-toggle-initials {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgb(0 0 0 / 0.12);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.user-toggle-name {
+  font-size: 0.9375rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* Inactive chips read as outlines; keep the label legible against the page. */
+.user-toggle:not(.active) .user-toggle-name {
+  color: var(--md-on-surface);
+}
+
+@media (max-width: 640px) {
+  .user-toggle-name { display: none; }
+  .user-toggle { padding: 4px; }
+}
+
+/* Read-only markers. Daylight reads synced calendars but has no CalDAV write
+   path, so nothing may imply an event can be edited here. */
+.calendar-readonly-badge,
+.event-detail-chip-readonly {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--md-on-surface-variant);
+  background: var(--md-surface-variant);
+  border: 1px solid var(--md-outline);
+}
+
+.event-detail-chip-readonly {
+  min-height: 32px;
+  padding: 4px 12px;
+  border-radius: 16px;
+  font-size: 0.875rem;
+}
