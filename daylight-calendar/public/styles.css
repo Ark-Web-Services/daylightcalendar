@@ -1784,6 +1784,221 @@ footer {
   gap: 4px;
 }
 
+/* Chores are touched at arm's length on the wall panel. Keep assignment,
+   progress, and reward choices visible and every new action finger-sized. */
+#chores-content .btn,
+.chore-toggle-btn,
+.modal-close {
+  min-height: 44px;
+}
+
+.chore-toggle-btn {
+  min-width: 44px;
+  padding: 0;
+  border-radius: 50%;
+}
+
+.kanban-lane[data-lane="needs_action"] .lane-header {
+  color: var(--md-on-surface-variant);
+}
+
+.kanban-lane[data-lane="completed"] .lane-header {
+  color: var(--md-on-tertiary-container);
+}
+
+.lane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--md-space-2) 0 var(--md-space-3);
+  border-bottom: 1px solid var(--md-outline-variant);
+  margin-bottom: var(--md-space-3);
+}
+
+.lane-header h3 { margin: 0; font-size: 1rem; }
+
+.lane-content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--md-space-3);
+}
+
+.chore-profile-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--md-space-2);
+}
+
+.chore-profile-option {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  gap: var(--md-space-2);
+  padding: var(--md-space-1) var(--md-space-3) var(--md-space-1) var(--md-space-1);
+  color: var(--md-on-surface);
+  background: var(--md-surface);
+  border: 1px solid var(--md-outline);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.chore-profile-option:has(input:checked) {
+  color: var(--md-on-primary-container);
+  background: var(--md-primary-container);
+  border-color: var(--profile-color);
+}
+
+.chore-profile-option input { accent-color: var(--profile-color); }
+
+.chore-profile-loading,
+.chore-unassigned,
+.stars-empty,
+.reward-progress-complete {
+  color: var(--md-on-surface-variant);
+}
+
+.chore-assignees { display: inline-flex; align-items: center; }
+
+.chore-assignee {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin-right: -4px;
+  color: var(--profile-color);
+  background: var(--md-surface);
+  border: 2px solid var(--profile-color);
+  border-radius: 50%;
+  font-size: 0.6875rem;
+  font-weight: 700;
+}
+
+.chore-stars {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--md-space-1);
+  color: var(--md-on-primary-container);
+}
+
+.chore-stars .material-icons { font-size: 1rem; }
+
+.form-error {
+  min-height: 1.25rem;
+  margin-top: var(--md-space-2);
+  color: var(--md-on-error-container);
+}
+
+.stars-rewards {
+  margin: var(--md-space-5) 0 var(--md-space-4);
+  padding: var(--md-space-5);
+  color: var(--md-on-surface);
+  background: var(--md-surface-2);
+  border-radius: var(--md-shape-large);
+}
+
+.stars-rewards-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--md-space-4);
+  margin-bottom: var(--md-space-4);
+}
+
+.stars-rewards-header h2 { margin: 0 0 var(--md-space-1); font-size: 1.35rem; }
+.stars-rewards-header p { margin: 0; color: var(--md-on-surface-variant); }
+
+.stars-rewards-actions { display: flex; flex-wrap: wrap; gap: var(--md-space-2); }
+
+.stars-rewards-content {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+  gap: var(--md-space-4);
+}
+
+.profile-stars {
+  padding: var(--md-space-4);
+  background: var(--md-surface);
+  border-radius: var(--md-shape-medium);
+  box-shadow: var(--md-shadow-1);
+}
+
+.profile-stars-summary { display: flex; align-items: center; gap: var(--md-space-3); }
+.profile-stars-summary h3 { margin: 0; font-size: 1.05rem; }
+.profile-stars-summary p { margin: var(--md-space-1) 0 0; color: var(--md-on-surface-variant); }
+.profile-stars-summary p strong { color: var(--md-on-surface); font-size: 1.35rem; }
+
+.profile-stars-initials {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  color: var(--profile-color);
+  background: var(--md-surface);
+  border: 2px solid var(--profile-color);
+  border-radius: 50%;
+  font-weight: 700;
+}
+
+.reward-progress { margin: var(--md-space-4) 0; }
+.reward-progress-copy { display: flex; justify-content: space-between; gap: var(--md-space-2); color: var(--md-on-surface-variant); font-size: 0.8125rem; }
+.reward-progress-track { height: 10px; margin-top: var(--md-space-2); overflow: hidden; background: var(--md-surface-variant); border-radius: 999px; }
+.reward-progress-track span { display: block; width: var(--reward-progress); height: 100%; background: var(--md-primary); border-radius: inherit; }
+
+.profile-rewards { display: grid; gap: var(--md-space-2); }
+
+.reward-choice {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  align-items: center;
+  min-height: 52px;
+  gap: var(--md-space-2);
+  padding: var(--md-space-2) var(--md-space-3);
+  color: var(--md-on-surface-variant);
+  background: var(--md-surface-variant);
+  border: 1px solid var(--md-outline);
+  border-radius: var(--md-shape-small);
+  font: inherit;
+  text-align: left;
+}
+
+.reward-choice.is-affordable { color: var(--md-on-primary-container); background: var(--md-primary-container); border-color: var(--md-primary); cursor: pointer; }
+.reward-choice:disabled { opacity: 1; }
+.reward-choice:focus-visible,
+.chore-toggle-btn:focus-visible,
+.chore-profile-option:focus-within { outline: 3px solid var(--md-secondary-container); outline-offset: 2px; }
+.reward-choice strong { font-size: 0.8125rem; white-space: nowrap; }
+
+.reward-manager-list { display: grid; gap: var(--md-space-3); margin-top: var(--md-space-4); }
+.reward-manager-item { display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: var(--md-space-3); padding: var(--md-space-3) 0; border-bottom: 1px solid var(--md-outline-variant); }
+.reward-manager-item strong,
+.reward-manager-item span { display: block; }
+.reward-manager-item span { margin-top: var(--md-space-1); color: var(--md-on-surface-variant); font-size: 0.8125rem; }
+.reward-manager-item > div:last-child { display: flex; flex-wrap: wrap; gap: var(--md-space-2); }
+
+.pending-awards {
+  grid-column: 1 / -1;
+  padding-top: var(--md-space-4);
+  border-top: 1px solid var(--md-outline-variant);
+}
+
+.pending-awards h3 { margin: 0 0 var(--md-space-3); font-size: 1rem; }
+.pending-award { display: flex; align-items: center; justify-content: space-between; gap: var(--md-space-3); padding: var(--md-space-3); color: var(--md-on-surface); background: var(--md-surface); border-radius: var(--md-shape-small); box-shadow: var(--md-shadow-1); }
+.pending-award > div { display: flex; flex-wrap: wrap; gap: var(--md-space-2); }
+
+@media (max-width: 640px) {
+  .stars-rewards { padding: var(--md-space-4); }
+  .stars-rewards-header { flex-direction: column; }
+  .stars-rewards-actions { width: 100%; }
+  .stars-rewards-actions .btn { flex: 1; }
+  .reward-manager-item { grid-template-columns: 28px 1fr; }
+  .reward-manager-item > div:last-child { grid-column: 1 / -1; }
+  .pending-award { align-items: flex-start; flex-direction: column; }
+}
+
 .kanban-item {
   background-color: var(--md-surface);
   border-radius: var(--md-shape-medium);

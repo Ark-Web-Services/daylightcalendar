@@ -1,4 +1,26 @@
 # Changelog
+
+## [1.1.9.16] - 2026-09-12
+
+The chore board previously treated chores as a two-column checklist and then discarded the
+assignee and due-date information collected by its own form. That made it impossible for a
+child to see ownership, earn reliable credit for work completed outside this screen, or turn
+that credit into something motivating.
+
+### Changed
+- **Chores now retain household-only assignment, dates, and star values beside their Home
+  Assistant todo identity.** Completion awards are an append-only, derived-balance ledger so
+  Home Assistant, voice, and wall-panel completions all receive the same idempotent treatment.
+- **Stars and rewards are visible on the Chores page.** Profiles can see their current balance,
+  progress toward the next reward, and the rewards they can redeem; adults can manage rewards
+  and make reasoned ledger adjustments without browser-blocking dialogs.
+
+### Fixed
+- **Chore titles could break completion controls or inject markup.** The board now escapes titles
+  and uses delegated controls instead of interpolating user text into an inline handler.
+- **Lane colours were hardcoded and unreadable in several themes.** The board now uses the
+  Material theme tokens shared by all Daylight themes.
+
 ## [1.1.9.15] - 2026-09-12
 
 Daylight now has durable household Lists rather than an inert Grocery List modal. Grocery,

@@ -1,0 +1,8 @@
+{
+  "items": [
+    { "uid": "mock_dishes", "summary": "Load the dishwasher", "status": "needs_action" },
+    { "uid": "mock_bedroom", "summary": "Tidy bedroom", "status": "needs_action" },
+    { "uid": "mock_dog", "summary": "Feed the dog", "status": "completed", "completed_at": "2026-09-12T07:30:00.000Z" },
+    { "uid": "mock_unassigned", "summary": "Bring in the mail", "status": "needs_action" }
+  ]
+}

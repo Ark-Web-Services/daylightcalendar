@@ -29,6 +29,10 @@ let selectedListId = null;
 let listsPollTimer = null;
 let listEditInProgress = false;
 let listPeople = [];
+let choreProfiles = [];
+let choreRewards = [];
+let pendingRewardRedemption = null;
+let showCompletedChores = true;
 
 // Display settings (default values)
 let displaySettings = {
@@ -155,8 +159,11 @@ function initializeChoresPage() {
   console.log('[INFO] Initializing chores page...');
 
   // Wait for elements to be available
-  setTimeout(() => {
+  setTimeout(async () => {
     console.log('[DEBUG] Looking for chores page elements...');
+    const choresContent = document.getElementById('chores-content');
+    if (!choresContent || choresContent.dataset.choresInitialized === 'true') return;
+    choresContent.dataset.choresInitialized = 'true';
 
     // Setup chore page buttons
     const jumpToTodayBtn = document.getElementById('jump-to-today');
@@ -183,15 +190,11 @@ function initializeChoresPage() {
 
     if (toggleCompletedBtn) {
       toggleCompletedBtn.addEventListener('click', () => {
-        console.log('[INFO] Toggle completed chores clicked');
-        const icon = toggleCompletedBtn.querySelector('i');
-        if (icon.textContent === 'visibility_off') {
-          icon.textContent = 'visibility';
-          toggleCompletedBtn.innerHTML = '<i class="material-icons">visibility</i> Show Completed';
-        } else {
-          icon.textContent = 'visibility_off';
-          toggleCompletedBtn.innerHTML = '<i class="material-icons">visibility_off</i> Hide Completed';
-        }
+        showCompletedChores = !showCompletedChores;
+        toggleCompletedBtn.innerHTML = showCompletedChores
+          ? '<i class="material-icons">visibility_off</i> Hide Completed'
+          : '<i class="material-icons">visibility</i> Show Completed';
+        fetchAndDisplayChores();
       });
       console.log('[DEBUG] Toggle completed button listener added');
     }
@@ -210,6 +213,8 @@ function initializeChoresPage() {
         console.log('[INFO] Add chore form submitted');
         const formData = new FormData(addChoreForm);
         const choreData = Object.fromEntries(formData);
+        const assignedProfileIds = [...document.querySelectorAll('#chore-assignee-options input:checked')].map(input => input.value);
+        const errorElement = document.getElementById('add-chore-error');
 
         try {
           const response = await fetch('api/chores', {
@@ -218,7 +223,10 @@ function initializeChoresPage() {
               'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-              item: choreData.choreName
+              item: choreData.choreName,
+              assignedProfileIds,
+              dueDate: choreData.dueDate || null,
+              starValue: Number(choreData.starValue)
             })
           });
 
@@ -228,60 +236,49 @@ function initializeChoresPage() {
             addChoreForm.reset();
             fetchAndDisplayChores(); // Refresh list
           } else {
-            console.error('[ERROR] Failed to add chore');
-            alert('Failed to add chore. Please try again.');
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.error || 'Unable to add this chore');
           }
         } catch (error) {
           console.error('[ERROR] Error adding chore:', error);
-          alert('Error adding chore: ' + error.message);
+          if (errorElement) errorElement.textContent = error.message;
         }
       });
       console.log('[DEBUG] Add chore form listener added');
     }
 
-    populateChoreAssignees();
+    setupStarsAndRewardsHandlers();
+    await populateChoreAssignees();
+    loadChoreSettingsDefault();
     fetchAndDisplayChores();
   }, 100);
 }
 
 async function populateChoreAssignees() {
-  const select = document.getElementById('assigneeName');
-  if (!select) return;
-
-  const unassignedOption = document.createElement('option');
-  unassignedOption.value = '';
-  unassignedOption.textContent = 'Unassigned';
-  select.replaceChildren(unassignedOption);
-  select.disabled = true;
+  const options = document.getElementById('chore-assignee-options');
+  if (!options) return;
+  options.innerHTML = '<span class="chore-profile-loading">Loading profiles…</span>';
 
   try {
     const response = await fetch('api/users');
     if (!response.ok) throw new Error('Failed to load users');
-    const users = await response.json();
-
-    users.forEach(user => {
-      const option = document.createElement('option');
-      const color = getValidCalendarColor(user.color);
-      option.value = user.name || user.id;
-      option.textContent = user.name || 'Unnamed user';
-      option.dataset.color = color;
-      option.style.color = color;
-      select.appendChild(option);
-    });
-
-    select.onchange = () => {
-      const selectedColor = select.selectedOptions[0]?.dataset.color;
-      select.style.borderColor = selectedColor || '';
-    };
+    choreProfiles = await response.json();
+    renderChoreAssigneeOptions();
   } catch (error) {
     console.error('[ERROR] Failed to populate chore assignees:', error);
-    const unavailableOption = document.createElement('option');
-    unavailableOption.disabled = true;
-    unavailableOption.textContent = 'People unavailable';
-    select.appendChild(unavailableOption);
-  } finally {
-    select.disabled = false;
+    options.innerHTML = '<span class="chore-profile-loading">Profiles unavailable</span>';
   }
+}
+
+function renderChoreAssigneeOptions() {
+  const options = document.getElementById('chore-assignee-options');
+  if (!options) return;
+  options.innerHTML = choreProfiles.length ? choreProfiles.map(profile => `
+    <label class="chore-profile-option" style="--profile-color:${escapeHtml(getValidCalendarColor(profile.color))}">
+      <input type="checkbox" value="${escapeHtml(profile.id)}">
+      <span class="calendar-profile-initials">${escapeHtml(getProfileInitials(profile.name))}</span>
+      <span>${escapeHtml(profile.name || 'Unnamed')}</span>
+    </label>`).join('') : '<span class="chore-profile-loading">No profiles yet</span>';
 }
 
 function initializeMealsPage() {
@@ -2134,31 +2131,33 @@ async function fetchAndDisplayChores() {
     // Create kanban board lanes
     // HA Todo items have status: 'needs_action' or 'completed'
     const lanes = [
-      { id: 'needs_action', title: 'To Do', color: '#6c757d' },
-      { id: 'completed', title: 'Done', color: '#28a745' }
+      { id: 'needs_action', title: 'To Do' },
+      { id: 'completed', title: 'Done' }
     ];
 
     let boardHTML = '';
     lanes.forEach(lane => {
-      const laneChores = chores.filter(chore => chore.status === lane.id);
+      const laneChores = chores.filter(chore => chore.status === lane.id && (showCompletedChores || lane.id !== 'completed'));
 
       boardHTML += `
         <div class="kanban-lane" data-lane="${lane.id}">
-          <div class="lane-header" style="background-color: ${lane.color};">
+          <div class="lane-header">
             <h3>${lane.title}</h3>
             <span class="lane-count">${laneChores.length}</span>
           </div>
           <div class="lane-content">
             ${laneChores.map(chore => `
-              <div class="chore-card" data-chore-id="${chore.uid || chore.summary}" data-status="${chore.status}">
+              <div class="chore-card" data-chore-id="${escapeHtml(chore.uid || chore.summary)}" data-status="${escapeHtml(chore.status)}">
                 <div class="chore-header">
-                  <div class="chore-title">${chore.summary}</div>
-                  <button class="chore-toggle-btn" onclick="toggleChoreStatus('${chore.uid || chore.summary}', '${chore.status}', '${entityId}')">
+                  <div class="chore-title">${escapeHtml(chore.summary)}</div>
+                  <button type="button" class="chore-toggle-btn" data-chore-toggle data-chore-id="${escapeHtml(chore.uid || chore.summary)}" data-status="${escapeHtml(chore.status)}" data-entity-id="${escapeHtml(entityId || '')}" aria-label="${chore.status === 'completed' ? 'Mark incomplete' : 'Mark complete'}: ${escapeHtml(chore.summary)}">
                     <i class="material-icons">${chore.status === 'completed' ? 'check_box' : 'check_box_outline_blank'}</i>
                   </button>
                 </div>
                 <div class="chore-meta">
-                  ${chore.due ? `<span class="chore-due">Due: ${moment(chore.due).format('MMM D')}</span>` : ''}
+                  ${renderChoreProfiles(chore.assignedProfileIds || [])}
+                  <span class="chore-stars"><i class="material-icons" aria-hidden="true">stars</i> ${Number(chore.starValue) || 1}</span>
+                  ${(chore.dueDate || chore.due) ? `<span class="chore-due">Due: ${escapeHtml(formatChoreDueDate(chore.dueDate || chore.due))}</span>` : ''}
                 </div>
               </div>
             `).join('')}
@@ -2169,46 +2168,281 @@ async function fetchAndDisplayChores() {
 
     choreBoard.innerHTML = boardHTML;
     console.log('[INFO] Chore board populated with real data');
-
-    // Add global function for toggle if not exists
-    if (!window.toggleChoreStatus) {
-      window.toggleChoreStatus = async function (itemId, currentStatus, entityId) {
-        const newStatus = currentStatus === 'completed' ? 'needs_action' : 'completed';
-        console.log(`[INFO] Toggling chore ${itemId} to ${newStatus}`);
-
-        // Optimistic update
-        const card = document.querySelector(`.chore-card[data-chore-id="${itemId}"]`);
-        if (card) {
-          card.style.opacity = '0.5';
-        }
-
-        try {
-          const response = await fetch(`api/chores/${itemId}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              status: newStatus,
-              entityId: entityId
-            })
-          });
-
-          if (response.ok) {
-            fetchAndDisplayChores(); // Refresh to move card
-          } else {
-            console.error('Failed to update chore');
-            if (card) card.style.opacity = '1';
-          }
-        } catch (error) {
-          console.error('Error updating chore:', error);
-          if (card) card.style.opacity = '1';
-        }
-      };
-    }
+    choreBoard.onclick = async event => {
+      const button = event.target.closest('[data-chore-toggle]');
+      if (!button) return;
+      const newStatus = button.dataset.status === 'completed' ? 'needs_action' : 'completed';
+      button.disabled = true;
+      try {
+        const response = await fetch(`api/chores/${encodeURIComponent(button.dataset.choreId)}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: newStatus, entityId: button.dataset.entityId })
+        });
+        if (!response.ok) throw new Error('Unable to update this chore');
+        await fetchAndDisplayChores();
+      } catch (error) {
+        console.error('Error updating chore:', error);
+        button.disabled = false;
+      }
+    };
+    loadStarsAndRewards();
 
   } catch (error) {
     console.error('[ERROR] Error fetching chores:', error);
     choreBoard.innerHTML = `<div class="error-message">Failed to load chores: ${error.message}</div>`;
   }
+}
+
+function formatChoreDueDate(value) {
+  const date = moment(value);
+  return date.isValid() ? date.format('MMM D') : String(value || '');
+}
+
+function renderChoreProfiles(profileIds) {
+  const profiles = profileIds.map(id => choreProfiles.find(profile => profile.id === id)).filter(Boolean);
+  if (!profiles.length) return '<span class="chore-unassigned">Unassigned</span>';
+  return `<span class="chore-assignees">${profiles.map(profile => `<span class="chore-assignee" title="${escapeHtml(profile.name)}" style="--profile-color:${escapeHtml(getValidCalendarColor(profile.color))}">${escapeHtml(getProfileInitials(profile.name))}</span>`).join('')}</span>`;
+}
+
+async function loadStarsAndRewards() {
+  const content = document.getElementById('stars-rewards-content');
+  if (!content) return;
+  try {
+    const [starsResponse, rewardsResponse] = await Promise.all([fetch('api/stars'), fetch('api/rewards')]);
+    if (!starsResponse.ok || !rewardsResponse.ok) throw new Error('Unable to load stars and rewards');
+    const stars = await starsResponse.json();
+    choreProfiles = stars.profiles || choreProfiles;
+    choreRewards = (await rewardsResponse.json()).filter(reward => reward.active !== false).sort((a, b) => a.starCost - b.starCost);
+    renderChoreAssigneeOptions();
+    renderStarsAndRewards(stars.profiles || [], stars.pendingAwards || []);
+  } catch (error) {
+    content.innerHTML = `<div class="error-message">${escapeHtml(error.message)}</div>`;
+  }
+}
+
+function renderStarsAndRewards(profiles, pendingAwards = []) {
+  const content = document.getElementById('stars-rewards-content');
+  if (!content) return;
+  if (!profiles.length) {
+    content.innerHTML = '<p class="stars-empty">Add a profile before awarding stars.</p>';
+    return;
+  }
+  const profilesMarkup = profiles.map(profile => {
+    const balance = Number(profile.balance) || 0;
+    const nextReward = choreRewards.find(reward => reward.starCost > balance);
+    const progress = nextReward ? Math.min(100, Math.round((balance / nextReward.starCost) * 100)) : 100;
+    const rewardMarkup = choreRewards.length ? choreRewards.map(reward => {
+      const affordable = balance >= reward.starCost;
+      return `<button type="button" class="reward-choice${affordable ? ' is-affordable' : ''}" data-reward-id="${escapeHtml(reward.id)}" data-profile-id="${escapeHtml(profile.id)}"${affordable ? '' : ' disabled'} aria-label="${affordable ? 'Redeem' : 'Keep earning for'} ${escapeHtml(reward.name)}">
+        <i class="material-icons" aria-hidden="true">${escapeHtml(reward.icon || 'card_giftcard')}</i><span>${escapeHtml(reward.name)}</span><strong>${reward.starCost} stars</strong>
+      </button>`;
+    }).join('') : '<span class="stars-empty">An adult can add the first reward.</span>';
+    return `<article class="profile-stars" style="--profile-color:${escapeHtml(getValidCalendarColor(profile.color))}">
+      <div class="profile-stars-summary"><span class="profile-stars-initials">${escapeHtml(getProfileInitials(profile.name))}</span><div><h3>${escapeHtml(profile.name || 'Unnamed')}</h3><p><strong>${balance}</strong> stars</p></div></div>
+      ${nextReward ? `<div class="reward-progress"><div class="reward-progress-copy"><span>Next: ${escapeHtml(nextReward.name)}</span><span>${balance} / ${nextReward.starCost}</span></div><div class="reward-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="${nextReward.starCost}" aria-valuenow="${balance}"><span style="--reward-progress:${progress}%"></span></div></div>` : '<p class="reward-progress-complete">Every active reward is within reach.</p>'}
+      <div class="profile-rewards">${rewardMarkup}</div>
+    </article>`;
+  }).join('');
+  const pendingMarkup = pendingAwards.length ? `<section class="pending-awards" aria-label="Awards awaiting adult confirmation"><h3>Awaiting adult confirmation</h3>${pendingAwards.map(award => {
+    const profile = choreProfiles.find(candidate => candidate.id === award.profileId);
+    return `<div class="pending-award"><span>${escapeHtml(profile?.name || 'Unknown profile')} earned ${escapeHtml(award.delta)} stars</span><div><button type="button" class="btn btn-secondary" data-award-action="reject" data-award-id="${escapeHtml(award.id)}">Reject</button><button type="button" class="btn btn-primary" data-award-action="confirm" data-award-id="${escapeHtml(award.id)}">Confirm</button></div></div>`;
+  }).join('')}</section>` : '';
+  content.innerHTML = profilesMarkup + pendingMarkup;
+}
+
+function setupStarsAndRewardsHandlers() {
+  const manageButton = document.getElementById('manage-rewards-button');
+  const adjustButton = document.getElementById('adjust-stars-button');
+  const rewardForm = document.getElementById('reward-form');
+  const adjustmentForm = document.getElementById('star-adjust-form');
+  const settingsForm = document.getElementById('chore-settings-form');
+  const rewardContent = document.getElementById('stars-rewards-content');
+  const managerList = document.getElementById('reward-manager-list');
+
+  if (manageButton) manageButton.onclick = () => {
+    renderRewardManager();
+    document.getElementById('reward-manager-modal')?.classList.add('show');
+  };
+  if (adjustButton) adjustButton.onclick = () => openStarAdjustment();
+  document.getElementById('chore-settings-button').onclick = openChoreSettings;
+  document.getElementById('new-reward-button').onclick = () => openRewardForm();
+
+  if (rewardContent) rewardContent.onclick = async event => {
+    const awardAction = event.target.closest('[data-award-action]');
+    if (awardAction) {
+      awardAction.disabled = true;
+      try {
+        const response = await fetch(`api/stars/${encodeURIComponent(awardAction.dataset.awardId)}/${awardAction.dataset.awardAction}`, { method: 'POST' });
+        if (!response.ok) throw new Error('Unable to update pending award');
+        await loadStarsAndRewards();
+      } catch (error) { console.error(error); awardAction.disabled = false; }
+      return;
+    }
+    const rewardButton = event.target.closest('.reward-choice:not([disabled])');
+    if (!rewardButton) return;
+    const reward = choreRewards.find(candidate => candidate.id === rewardButton.dataset.rewardId);
+    const profile = choreProfiles.find(candidate => candidate.id === rewardButton.dataset.profileId);
+    if (reward && profile) openRewardRedemption(reward, profile);
+  };
+
+  if (managerList) managerList.onclick = event => {
+    const editButton = event.target.closest('[data-edit-reward]');
+    const deleteButton = event.target.closest('[data-delete-reward]');
+    if (editButton) openRewardForm(choreRewards.find(reward => reward.id === editButton.dataset.editReward));
+    if (deleteButton) deleteReward(deleteButton.dataset.deleteReward);
+  };
+
+  if (rewardForm) rewardForm.onsubmit = async event => {
+    event.preventDefault();
+    const formData = Object.fromEntries(new FormData(rewardForm));
+    const error = document.getElementById('reward-form-error');
+    const rewardId = formData.id;
+    const payload = { ...formData, starCost: Number(formData.starCost) };
+    try {
+      const response = await fetch(rewardId ? `api/rewards/${encodeURIComponent(rewardId)}` : 'api/rewards', {
+        method: rewardId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Unable to save reward');
+      }
+      document.getElementById('reward-form-modal').classList.remove('show');
+      await loadStarsAndRewards();
+      renderRewardManager();
+    } catch (err) { if (error) error.textContent = err.message; }
+  };
+
+  if (adjustmentForm) adjustmentForm.onsubmit = async event => {
+    event.preventDefault();
+    const formData = Object.fromEntries(new FormData(adjustmentForm));
+    const error = document.getElementById('star-adjust-error');
+    try {
+      const response = await fetch('api/stars/adjust', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...formData, delta: Number(formData.delta) })
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Unable to adjust stars');
+      }
+      document.getElementById('star-adjust-modal').classList.remove('show');
+      await loadStarsAndRewards();
+    } catch (err) { if (error) error.textContent = err.message; }
+  };
+
+  if (settingsForm) settingsForm.onsubmit = async event => {
+    event.preventDefault();
+    const error = document.getElementById('chore-settings-error');
+    try {
+      const response = await fetch('api/chore-settings', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          defaultStarValue: Number(document.getElementById('default-star-value').value),
+          awardsRequireConfirmation: document.getElementById('awards-require-confirmation').checked
+        })
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Unable to save star settings');
+      }
+      document.getElementById('starValue').value = (await response.json()).defaultStarValue;
+      document.getElementById('chore-settings-modal').classList.remove('show');
+    } catch (err) { if (error) error.textContent = err.message; }
+  };
+
+  document.getElementById('confirm-reward-redeem').onclick = redeemPendingReward;
+}
+
+function renderRewardManager() {
+  const list = document.getElementById('reward-manager-list');
+  if (!list) return;
+  list.innerHTML = choreRewards.length ? choreRewards.map(reward => `<div class="reward-manager-item">
+    <i class="material-icons" aria-hidden="true">${escapeHtml(reward.icon || 'card_giftcard')}</i><div><strong>${escapeHtml(reward.name)}</strong><span>${reward.starCost} stars${reward.description ? ` · ${escapeHtml(reward.description)}` : ''}</span></div>
+    <div><button type="button" class="btn btn-secondary" data-edit-reward="${escapeHtml(reward.id)}">Edit</button><button type="button" class="btn btn-danger" data-delete-reward="${escapeHtml(reward.id)}">Delete</button></div>
+  </div>`).join('') : '<p class="stars-empty">No rewards yet.</p>';
+}
+
+function openRewardForm(reward = null) {
+  const form = document.getElementById('reward-form');
+  if (!form) return;
+  form.reset();
+  document.getElementById('reward-form-error').textContent = '';
+  document.getElementById('reward-form-title').textContent = reward ? 'Edit Reward' : 'New Reward';
+  document.getElementById('reward-id').value = reward?.id || '';
+  document.getElementById('reward-name').value = reward?.name || '';
+  document.getElementById('reward-description').value = reward?.description || '';
+  document.getElementById('reward-cost').value = reward?.starCost || '';
+  document.getElementById('reward-icon').value = reward?.icon || 'card_giftcard';
+  document.getElementById('reward-image-url').value = reward?.imageUrl || '';
+  document.getElementById('reward-manager-modal').classList.remove('show');
+  document.getElementById('reward-form-modal').classList.add('show');
+}
+
+async function deleteReward(rewardId) {
+  try {
+    const response = await fetch(`api/rewards/${encodeURIComponent(rewardId)}`, { method: 'DELETE' });
+    if (!response.ok) throw new Error('Unable to delete reward');
+    await loadStarsAndRewards();
+    renderRewardManager();
+  } catch (error) { console.error(error); }
+}
+
+function openStarAdjustment() {
+  const select = document.getElementById('adjust-profile');
+  if (!select) return;
+  select.innerHTML = choreProfiles.map(profile => `<option value="${escapeHtml(profile.id)}">${escapeHtml(profile.name || 'Unnamed')}</option>`).join('');
+  document.getElementById('star-adjust-error').textContent = '';
+  document.getElementById('star-adjust-modal').classList.add('show');
+}
+
+async function openChoreSettings() {
+  const error = document.getElementById('chore-settings-error');
+  if (error) error.textContent = '';
+  try {
+    const response = await fetch('api/chore-settings');
+    if (!response.ok) throw new Error('Unable to load star settings');
+    const settings = await response.json();
+    document.getElementById('default-star-value').value = settings.defaultStarValue;
+    document.getElementById('awards-require-confirmation').checked = settings.awardsRequireConfirmation === true;
+    document.getElementById('chore-settings-modal').classList.add('show');
+  } catch (err) { if (error) error.textContent = err.message; }
+}
+
+async function loadChoreSettingsDefault() {
+  try {
+    const response = await fetch('api/chore-settings');
+    if (!response.ok) return;
+    const settings = await response.json();
+    const starValue = document.getElementById('starValue');
+    if (starValue) starValue.value = settings.defaultStarValue;
+  } catch (error) { console.error('Unable to load chore settings:', error); }
+}
+
+function openRewardRedemption(reward, profile) {
+  pendingRewardRedemption = { reward, profile };
+  document.getElementById('reward-redeem-message').textContent = `${profile.name} will spend ${reward.starCost} stars on ${reward.name}. This cannot be undone automatically.`;
+  document.getElementById('reward-redeem-modal').classList.add('show');
+}
+
+async function redeemPendingReward() {
+  if (!pendingRewardRedemption) return;
+  const button = document.getElementById('confirm-reward-redeem');
+  button.disabled = true;
+  try {
+    const response = await fetch(`api/rewards/${encodeURIComponent(pendingRewardRedemption.reward.id)}/redeem`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profileId: pendingRewardRedemption.profile.id })
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || 'Unable to redeem reward');
+    }
+    document.getElementById('reward-redeem-modal').classList.remove('show');
+    pendingRewardRedemption = null;
+    await loadStarsAndRewards();
+  } catch (error) {
+    document.getElementById('reward-redeem-message').textContent = error.message;
+  } finally { button.disabled = false; }
 }
 
 async function fetchAndDisplayMeals() {

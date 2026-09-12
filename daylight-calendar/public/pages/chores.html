@@ -26,15 +26,18 @@
           <div class="form-row">
             <div class="form-group">
               <label for="assigneeName">Assign to</label>
-              <select id="assigneeName" name="assigneeName">
-                <option value="">Unassigned</option>
-              </select>
+              <div id="chore-assignee-options" class="chore-profile-options" aria-label="Assign chore to profiles"></div>
             </div>
             <div class="form-group">
               <label for="dueDate">Due Date</label>
               <input type="date" id="dueDate" name="dueDate">
             </div>
+            <div class="form-group">
+              <label for="starValue">Stars</label>
+              <input type="number" id="starValue" name="starValue" min="1" step="1" value="1" required>
+            </div>
           </div>
+          <div id="add-chore-error" class="form-error" role="alert"></div>
           <div class="form-actions">
             <button type="button" class="btn btn-secondary modal-cancel">Cancel</button>
             <button type="submit" class="btn btn-primary"><i class="material-icons">add_circle</i> Add Chore</button>
@@ -44,9 +47,68 @@
     </div>
   </div>
 
+  <section class="stars-rewards" aria-labelledby="stars-rewards-title">
+    <div class="stars-rewards-header">
+      <div>
+        <h2 id="stars-rewards-title">Stars &amp; Rewards</h2>
+        <p>Finish a chore, collect stars, choose a reward.</p>
+      </div>
+      <div class="stars-rewards-actions">
+        <button type="button" id="manage-rewards-button" class="btn btn-secondary"><i class="material-icons">card_giftcard</i> Manage Rewards</button>
+        <button type="button" id="adjust-stars-button" class="btn btn-secondary"><i class="material-icons">stars</i> Adjust Stars</button>
+        <button type="button" id="chore-settings-button" class="btn btn-secondary"><i class="material-icons">tune</i> Star Settings</button>
+      </div>
+    </div>
+    <div id="stars-rewards-content" class="stars-rewards-content" aria-live="polite"></div>
+  </section>
+
   <!-- Kanban Board for Chores -->
   <div id="chore-board" class="kanban-board">
     <!-- Lanes will be generated dynamically by JavaScript -->
+  </div>
+
+  <div id="reward-form-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header"><h3 id="reward-form-title">New Reward</h3><button class="modal-close" type="button" aria-label="Close">&times;</button></div>
+      <div class="modal-body">
+        <form id="reward-form">
+          <input type="hidden" id="reward-id" name="id">
+          <div class="form-group"><label for="reward-name">Reward name</label><input id="reward-name" name="name" maxlength="80" required></div>
+          <div class="form-group"><label for="reward-description">Description</label><textarea id="reward-description" name="description" maxlength="240"></textarea></div>
+          <div class="form-row"><div class="form-group"><label for="reward-cost">Star cost</label><input id="reward-cost" name="starCost" type="number" min="1" step="1" required></div><div class="form-group"><label for="reward-icon">Material icon</label><input id="reward-icon" name="icon" value="card_giftcard"></div></div><div class="form-group"><label for="reward-image-url">Image URL (optional)</label><input id="reward-image-url" name="imageUrl" type="url"></div>
+          <div id="reward-form-error" class="form-error" role="alert"></div>
+          <div class="form-actions"><button type="button" class="btn btn-secondary modal-cancel">Cancel</button><button type="submit" class="btn btn-primary">Save Reward</button></div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div id="reward-manager-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header"><h3>Manage Rewards</h3><button class="modal-close" type="button" aria-label="Close">&times;</button></div>
+      <div class="modal-body"><button type="button" id="new-reward-button" class="btn btn-primary"><i class="material-icons">add</i> New Reward</button><div id="reward-manager-list" class="reward-manager-list"></div></div>
+    </div>
+  </div>
+
+  <div id="star-adjust-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header"><h3>Adjust Stars</h3><button class="modal-close" type="button" aria-label="Close">&times;</button></div>
+      <div class="modal-body"><form id="star-adjust-form"><div class="form-group"><label for="adjust-profile">Profile</label><select id="adjust-profile" name="profileId" required></select></div><div class="form-group"><label for="adjust-delta">Stars to add or remove</label><input id="adjust-delta" name="delta" type="number" step="1" required></div><div class="form-group"><label for="adjust-reason">Why this adjustment?</label><textarea id="adjust-reason" name="reason" required maxlength="240"></textarea></div><div id="star-adjust-error" class="form-error" role="alert"></div><div class="form-actions"><button type="button" class="btn btn-secondary modal-cancel">Cancel</button><button type="submit" class="btn btn-primary">Save Adjustment</button></div></form></div>
+    </div>
+  </div>
+
+  <div id="chore-settings-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header"><h3>Star Settings</h3><button class="modal-close" type="button" aria-label="Close">&times;</button></div>
+      <div class="modal-body"><form id="chore-settings-form"><div class="form-group"><label for="default-star-value">Default stars for new chores</label><input id="default-star-value" name="defaultStarValue" type="number" min="1" step="1" required></div><div class="form-group"><label class="settings-checkbox"><input id="awards-require-confirmation" name="awardsRequireConfirmation" type="checkbox"> Require an adult to confirm chore awards</label></div><div id="chore-settings-error" class="form-error" role="alert"></div><div class="form-actions"><button type="button" class="btn btn-secondary modal-cancel">Cancel</button><button type="submit" class="btn btn-primary">Save Settings</button></div></form></div>
+    </div>
+  </div>
+
+  <div id="reward-redeem-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header"><h3>Redeem Reward?</h3><button class="modal-close" type="button" aria-label="Close">&times;</button></div>
+      <div class="modal-body"><p id="reward-redeem-message"></p><div class="form-actions"><button type="button" class="btn btn-secondary modal-cancel">Keep Stars</button><button type="button" id="confirm-reward-redeem" class="btn btn-primary">Redeem</button></div></div>
+    </div>
   </div>
 </div>
 </turbo-frame>

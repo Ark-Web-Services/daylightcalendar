@@ -12,6 +12,7 @@ const fs = require('fs');
 const { exec } = require('child_process');
 const axios = require('axios');
 const WebSocket = require('ws'); // Added for HA WebSocket API
+const { randomUUID } = require('crypto');
 const caldavService = require('./scripts/caldav-service');
 
 // Main initialization function to handle async imports
@@ -515,6 +516,147 @@ async function initializeApp() {
     }
   }
 
+  // Chores themselves remain owned by Home Assistant. These files only hold
+  // Daylight's household context and an auditable stars ledger, so they must
+  // always live in DATA_DIR (which is /data inside the add-on).
+  const DEFAULT_CHORE_SETTINGS = { defaultStarValue: 1, awardsRequireConfirmation: false };
+  let householdStorageQueue = Promise.resolve();
+
+  function withHouseholdStorageLock(operation) {
+    const result = householdStorageQueue.then(operation, operation);
+    householdStorageQueue = result.catch(() => {});
+    return result;
+  }
+
+  function readJsonFile(fileName, fallback) {
+    const filePath = path.join(DATA_DIR, fileName);
+    try {
+      if (fs.existsSync(filePath)) return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    } catch (err) {
+      console.error(`Error reading ${fileName}:`, err);
+    }
+    return fallback;
+  }
+
+  function writeJsonFile(fileName, value) {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(path.join(DATA_DIR, fileName), JSON.stringify(value, null, 2));
+  }
+
+  function readChoreSettings() {
+    const settings = readJsonFile('chore_settings.json', {});
+    return {
+      defaultStarValue: Number.isInteger(settings.defaultStarValue) && settings.defaultStarValue > 0
+        ? settings.defaultStarValue : DEFAULT_CHORE_SETTINGS.defaultStarValue,
+      awardsRequireConfirmation: settings.awardsRequireConfirmation === true
+    };
+  }
+
+  function readChoreMeta() {
+    const meta = readJsonFile('chore_meta.json', {});
+    return meta && typeof meta === 'object' && !Array.isArray(meta) ? meta : {};
+  }
+
+  function normalizeChoreMeta(meta = {}, settings = readChoreSettings()) {
+    return {
+      assignedProfileIds: Array.isArray(meta.assignedProfileIds)
+        ? [...new Set(meta.assignedProfileIds.filter(id => typeof id === 'string' && id.trim()))] : [],
+      starValue: Number.isInteger(meta.starValue) && meta.starValue > 0
+        ? meta.starValue : settings.defaultStarValue,
+      upForGrabs: meta.upForGrabs === true,
+      dueDate: typeof meta.dueDate === 'string' && meta.dueDate ? meta.dueDate : null,
+      createdAt: typeof meta.createdAt === 'string' ? meta.createdAt : new Date().toISOString(),
+      lastStatus: typeof meta.lastStatus === 'string' ? meta.lastStatus : null,
+      completionKey: typeof meta.completionKey === 'string' ? meta.completionKey : null
+    };
+  }
+
+  function readStarsLedger() {
+    const ledger = readJsonFile('stars.json', []);
+    return Array.isArray(ledger) ? ledger : [];
+  }
+
+  function readRewards() {
+    const rewards = readJsonFile('rewards.json', []);
+    return Array.isArray(rewards) ? rewards : [];
+  }
+
+  function derivedBalance(ledger, profileId) {
+    return ledger.reduce((total, entry) => {
+      if (entry.profileId !== profileId || entry.status === 'pending' || entry.status === 'rejected') return total;
+      return total + (Number.isInteger(entry.delta) ? entry.delta : 0);
+    }, 0);
+  }
+
+  function makeLedgerEntry(data) {
+    return {
+      id: randomUUID(),
+      profileId: data.profileId || null,
+      delta: data.delta || 0,
+      reason: data.reason || '',
+      choreUid: data.choreUid || null,
+      completionKey: data.completionKey || null,
+      rewardId: data.rewardId || null,
+      createdAt: new Date().toISOString(),
+      ...(data.status ? { status: data.status } : {}),
+      ...(data.pendingAwardId ? { pendingAwardId: data.pendingAwardId } : {})
+    };
+  }
+
+  async function validateProfileIds(profileIds) {
+    const users = await fetchHaUsers();
+    const validIds = new Set(users.map(user => user.id));
+    return profileIds.every(id => validIds.has(id));
+  }
+
+  async function processChoreCompletions(items) {
+    return withHouseholdStorageLock(async () => {
+      const settings = readChoreSettings();
+      const metaByUid = readChoreMeta();
+      const ledger = readStarsLedger();
+      let metaChanged = false;
+      let ledgerChanged = false;
+
+      items.forEach(item => {
+        if (!item.uid) return;
+        const existing = metaByUid[item.uid];
+        const meta = normalizeChoreMeta(existing, settings);
+        const transitionedToComplete = meta.lastStatus === 'needs_action' && item.status === 'completed';
+
+        if (transitionedToComplete) {
+          const completedAt = item.completed_at || item.completedAt || new Date().toISOString();
+          const completionKey = `${item.uid}:${completedAt}`;
+          meta.completionKey = completionKey;
+          meta.assignedProfileIds.forEach(profileId => {
+            const alreadyRecorded = ledger.some(entry => entry.profileId === profileId &&
+              entry.choreUid === item.uid && entry.completionKey === completionKey &&
+              (entry.status === 'pending' || entry.reason === 'Chore completed'));
+            if (alreadyRecorded) return;
+            ledger.push(makeLedgerEntry({
+              profileId,
+              delta: meta.starValue,
+              reason: 'Chore completed',
+              choreUid: item.uid,
+              completionKey,
+              status: settings.awardsRequireConfirmation ? 'pending' : 'confirmed'
+            }));
+            ledgerChanged = true;
+          });
+        }
+
+        if (!existing || meta.lastStatus !== item.status || meta.completionKey !== existing.completionKey) {
+          meta.lastStatus = item.status;
+          metaByUid[item.uid] = meta;
+          metaChanged = true;
+        }
+      });
+
+      if (metaChanged) writeJsonFile('chore_meta.json', metaByUid);
+      if (ledgerChanged) writeJsonFile('stars.json', ledger);
+      return { metaByUid, settings };
+    });
+  }
+
   // Meal planning is local add-on state, so it must live in DATA_DIR rather than
   // the application image. Keep malformed files from preventing the calendar
   // from starting; an empty plan is always a safe fallback.
@@ -979,8 +1121,28 @@ async function initializeApp() {
     }
   }
 
+  // Standalone mode keeps an in-memory copy so the mock todo service can be
+  // exercised without a Home Assistant instance. Runtime production chores are
+  // always fetched from HA and are never copied into Daylight storage.
+  let standaloneTodoItems = null;
+
+  function getStandaloneTodoItems() {
+    if (standaloneTodoItems) return standaloneTodoItems;
+    try {
+      const fixture = JSON.parse(fs.readFileSync(path.join(__dirname, 'mock-data', 'chores.json'), 'utf8'));
+      standaloneTodoItems = Array.isArray(fixture.items) ? fixture.items : [];
+    } catch (error) {
+      console.warn('[MOCK] Could not load mock chores:', error.message);
+      standaloneTodoItems = [];
+    }
+    return standaloneTodoItems;
+  }
+
   // Function to fetch todo items
   async function fetchTodoItems() {
+    if (isStandaloneDev) {
+      return { entityId: 'todo.daylight_mock', items: getStandaloneTodoItems() };
+    }
     // 1. Determine which entity to use
     let todoEntityId = config.todo_entity_id;
 
@@ -2183,7 +2345,15 @@ async function initializeApp() {
       if (result.error) {
         return res.status(500).json(result);
       }
-      res.json(result);
+      const { metaByUid } = await processChoreCompletions(result.items || []);
+      const settings = readChoreSettings();
+      res.json({
+        ...result,
+        items: (result.items || []).map(item => ({
+          ...item,
+          ...normalizeChoreMeta(metaByUid[item.uid], settings)
+        }))
+      });
     } catch (error) {
       console.error('[ERROR] Error in GET /api/chores:', error.message);
       res.status(500).json({ error: error.message });
@@ -2191,9 +2361,15 @@ async function initializeApp() {
   });
 
   app.post('/api/chores', async (req, res) => {
-    const { item, entityId } = req.body;
+    const { item, entityId, assignedProfileIds = [], starValue, dueDate } = req.body;
     if (!item) {
       return res.status(400).json({ error: 'Item title is required' });
+    }
+    if (!Array.isArray(assignedProfileIds) || !(await validateProfileIds(assignedProfileIds))) {
+      return res.status(400).json({ error: 'One or more assigned profiles are unknown' });
+    }
+    if (starValue !== undefined && (!Number.isInteger(starValue) || starValue <= 0)) {
+      return res.status(400).json({ error: 'Star value must be a positive integer' });
     }
 
     // Use provided entityId or find one
@@ -2209,16 +2385,69 @@ async function initializeApp() {
     }
 
     try {
-      await callHaApi('/services/todo/add_item', {
-        method: 'POST',
-        body: JSON.stringify({
-          entity_id: targetEntityId,
-          item: item
-        })
-      });
-      res.json({ success: true });
+      const before = await fetchTodoItems();
+      const existingUids = new Set((before.items || []).map(todo => todo.uid));
+      if (isStandaloneDev) {
+        getStandaloneTodoItems().push({
+          uid: `mock_chore_${randomUUID()}`,
+          summary: item,
+          status: 'needs_action'
+        });
+      } else {
+        await callHaApi('/services/todo/add_item', {
+          method: 'POST',
+          body: JSON.stringify({
+            entity_id: targetEntityId,
+            item: item
+          })
+        });
+      }
+      const after = await fetchTodoItems();
+      const created = (after.items || []).find(todo => !existingUids.has(todo.uid) && todo.summary === item) ||
+        (after.items || []).find(todo => !existingUids.has(todo.uid));
+      let metadataSaved = false;
+      if (created?.uid) {
+        await withHouseholdStorageLock(async () => {
+          const settings = readChoreSettings();
+          const meta = readChoreMeta();
+          meta[created.uid] = normalizeChoreMeta({
+            assignedProfileIds,
+            starValue,
+            dueDate,
+            createdAt: new Date().toISOString(),
+            lastStatus: created.status || 'needs_action'
+          }, settings);
+          writeJsonFile('chore_meta.json', meta);
+        });
+        metadataSaved = true;
+      }
+      res.json({ success: true, uid: created?.uid || null, metadataSaved });
     } catch (error) {
       console.error('[ERROR] Error in POST /api/chores:', error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.put('/api/chores/:uid/meta', async (req, res) => {
+    const { uid } = req.params;
+    const { assignedProfileIds = [], starValue, dueDate } = req.body;
+    if (!Array.isArray(assignedProfileIds) || !(await validateProfileIds(assignedProfileIds))) {
+      return res.status(400).json({ error: 'One or more assigned profiles are unknown' });
+    }
+    if (starValue !== undefined && (!Number.isInteger(starValue) || starValue <= 0)) {
+      return res.status(400).json({ error: 'Star value must be a positive integer' });
+    }
+    try {
+      const saved = await withHouseholdStorageLock(async () => {
+        const settings = readChoreSettings();
+        const meta = readChoreMeta();
+        meta[uid] = normalizeChoreMeta({ ...meta[uid], assignedProfileIds, starValue, dueDate }, settings);
+        writeJsonFile('chore_meta.json', meta);
+        return meta[uid];
+      });
+      res.json(saved);
+    } catch (error) {
+      console.error('[ERROR] Error saving chore metadata:', error.message);
       res.status(500).json({ error: error.message });
     }
   });
@@ -2239,6 +2468,17 @@ async function initializeApp() {
     }
 
     try {
+      if (isStandaloneDev) {
+        const todo = getStandaloneTodoItems().find(candidate => candidate.uid === itemId);
+        if (!todo) return res.status(404).json({ error: 'Chore not found' });
+        if (status) {
+          todo.status = status;
+          if (status === 'completed') todo.completed_at = new Date().toISOString();
+          if (status === 'needs_action') delete todo.completed_at;
+        }
+        if (item && item !== itemId) todo.summary = item;
+        return res.json({ success: true });
+      }
       const payload = {
         entity_id: targetEntityId,
         item: item || itemId // Some todo integrations use UID, some use summary. HA service uses 'item' (summary) or 'uid'? 
@@ -2275,6 +2515,168 @@ async function initializeApp() {
       console.error('[ERROR] Error in PATCH /api/chores:', error.message);
       res.status(500).json({ error: error.message });
     }
+  });
+
+  app.get('/api/stars', async (req, res) => {
+    try {
+      const [users, snapshot] = await Promise.all([
+        fetchHaUsers(),
+        withHouseholdStorageLock(async () => ({ ledger: readStarsLedger() }))
+      ]);
+      const entries = snapshot.ledger.slice(-50).reverse();
+      res.json({
+        profiles: users.map(profile => ({ ...profile, balance: derivedBalance(snapshot.ledger, profile.id) })),
+        entries,
+        pendingAwards: snapshot.ledger.filter(entry => entry.status === 'pending').reverse()
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get('/api/chore-settings', (req, res) => res.json(readChoreSettings()));
+
+  app.put('/api/chore-settings', async (req, res) => {
+    const { defaultStarValue, awardsRequireConfirmation } = req.body;
+    if (!Number.isInteger(defaultStarValue) || defaultStarValue <= 0) {
+      return res.status(400).json({ error: 'Default star value must be a positive integer' });
+    }
+    if (typeof awardsRequireConfirmation !== 'boolean') {
+      return res.status(400).json({ error: 'Awards confirmation setting must be true or false' });
+    }
+    try {
+      const settings = await withHouseholdStorageLock(async () => {
+        const next = { defaultStarValue, awardsRequireConfirmation };
+        writeJsonFile('chore_settings.json', next);
+        return next;
+      });
+      res.json(settings);
+    } catch (error) { res.status(500).json({ error: error.message }); }
+  });
+
+  app.get('/api/stars/:profileId', async (req, res) => {
+    try {
+      const profileId = req.params.profileId;
+      const users = await fetchHaUsers();
+      const profile = users.find(user => user.id === profileId);
+      if (!profile) return res.status(404).json({ error: 'Profile not found' });
+      const ledger = await withHouseholdStorageLock(async () => readStarsLedger());
+      res.json({ profile: { ...profile, balance: derivedBalance(ledger, profileId) }, entries: ledger.filter(entry => entry.profileId === profileId).reverse() });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post('/api/stars/adjust', async (req, res) => {
+    const { profileId, delta, reason } = req.body;
+    if (typeof reason !== 'string' || !reason.trim()) return res.status(400).json({ error: 'A reason is required for a star adjustment' });
+    if (!Number.isInteger(delta) || delta === 0) return res.status(400).json({ error: 'Adjustment must be a non-zero integer' });
+    if (!(await validateProfileIds([profileId]))) return res.status(400).json({ error: 'Unknown profile' });
+    try {
+      const entry = await withHouseholdStorageLock(async () => {
+        const ledger = readStarsLedger();
+        const next = makeLedgerEntry({ profileId, delta, reason: reason.trim(), status: 'confirmed' });
+        ledger.push(next);
+        writeJsonFile('stars.json', ledger);
+        return next;
+      });
+      res.status(201).json(entry);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post('/api/stars/:entryId/confirm', async (req, res) => {
+    try {
+      const confirmed = await withHouseholdStorageLock(async () => {
+        const ledger = readStarsLedger();
+        const pending = ledger.find(entry => entry.id === req.params.entryId && entry.status === 'pending');
+        if (!pending) return null;
+        if (ledger.some(entry => entry.pendingAwardId === pending.id)) return { alreadyHandled: true };
+        const next = makeLedgerEntry({ ...pending, status: 'confirmed', pendingAwardId: pending.id, reason: 'Confirmed chore award' });
+        ledger.push(next);
+        writeJsonFile('stars.json', ledger);
+        return next;
+      });
+      if (!confirmed) return res.status(404).json({ error: 'Pending award not found' });
+      res.json(confirmed);
+    } catch (error) { res.status(500).json({ error: error.message }); }
+  });
+
+  app.post('/api/stars/:entryId/reject', async (req, res) => {
+    try {
+      const rejected = await withHouseholdStorageLock(async () => {
+        const ledger = readStarsLedger();
+        const pending = ledger.find(entry => entry.id === req.params.entryId && entry.status === 'pending');
+        if (!pending) return null;
+        if (ledger.some(entry => entry.pendingAwardId === pending.id)) return { alreadyHandled: true };
+        const next = makeLedgerEntry({ ...pending, delta: 0, status: 'rejected', pendingAwardId: pending.id, reason: 'Rejected chore award' });
+        ledger.push(next);
+        writeJsonFile('stars.json', ledger);
+        return next;
+      });
+      if (!rejected) return res.status(404).json({ error: 'Pending award not found' });
+      res.json(rejected);
+    } catch (error) { res.status(500).json({ error: error.message }); }
+  });
+
+  app.get('/api/rewards', (req, res) => res.json(readRewards()));
+
+  function validateRewardInput(data) {
+    if (typeof data.name !== 'string' || !data.name.trim()) return 'Reward name is required';
+    if (!Number.isInteger(data.starCost) || data.starCost <= 0) return 'Star cost must be a positive integer';
+    return null;
+  }
+
+  app.post('/api/rewards', async (req, res) => {
+    const validationError = validateRewardInput(req.body);
+    if (validationError) return res.status(400).json({ error: validationError });
+    const reward = await withHouseholdStorageLock(async () => {
+      const rewards = readRewards();
+      const next = { id: randomUUID(), name: req.body.name.trim(), description: String(req.body.description || ''), starCost: req.body.starCost, icon: String(req.body.icon || 'card_giftcard'), imageUrl: String(req.body.imageUrl || ''), active: req.body.active !== false, createdAt: new Date().toISOString() };
+      rewards.push(next); writeJsonFile('rewards.json', rewards); return next;
+    });
+    res.status(201).json(reward);
+  });
+
+  app.put('/api/rewards/:id', async (req, res) => {
+    const validationError = validateRewardInput(req.body);
+    if (validationError) return res.status(400).json({ error: validationError });
+    const reward = await withHouseholdStorageLock(async () => {
+      const rewards = readRewards(); const index = rewards.findIndex(candidate => candidate.id === req.params.id);
+      if (index < 0) return null;
+      rewards[index] = { ...rewards[index], name: req.body.name.trim(), description: String(req.body.description || ''), starCost: req.body.starCost, icon: String(req.body.icon || 'card_giftcard'), imageUrl: String(req.body.imageUrl || ''), active: req.body.active !== false };
+      writeJsonFile('rewards.json', rewards); return rewards[index];
+    });
+    if (!reward) return res.status(404).json({ error: 'Reward not found' });
+    res.json(reward);
+  });
+
+  app.delete('/api/rewards/:id', async (req, res) => {
+    const removed = await withHouseholdStorageLock(async () => {
+      const rewards = readRewards(); const index = rewards.findIndex(candidate => candidate.id === req.params.id);
+      if (index < 0) return false;
+      rewards.splice(index, 1); writeJsonFile('rewards.json', rewards); return true;
+    });
+    if (!removed) return res.status(404).json({ error: 'Reward not found' });
+    res.json({ success: true });
+  });
+
+  app.post('/api/rewards/:id/redeem', async (req, res) => {
+    const { profileId } = req.body;
+    if (!(await validateProfileIds([profileId]))) return res.status(400).json({ error: 'Unknown profile' });
+    try {
+      const redemption = await withHouseholdStorageLock(async () => {
+        const rewards = readRewards(); const reward = rewards.find(candidate => candidate.id === req.params.id && candidate.active !== false);
+        if (!reward) return { error: 'Reward not found or inactive' };
+        const ledger = readStarsLedger(); const balance = derivedBalance(ledger, profileId);
+        if (balance < reward.starCost) return { error: `Not enough stars: ${reward.starCost - balance} more needed` };
+        const entry = makeLedgerEntry({ profileId, delta: -reward.starCost, reason: `Redeemed: ${reward.name}`, rewardId: reward.id, status: 'confirmed' });
+        ledger.push(entry); writeJsonFile('stars.json', ledger); return { entry, balance: balance - reward.starCost };
+      });
+      if (redemption.error) return res.status(400).json({ error: redemption.error });
+      res.status(201).json(redemption);
+    } catch (error) { res.status(500).json({ error: error.message }); }
   });
 
   // Enhanced diagnostics endpoint
