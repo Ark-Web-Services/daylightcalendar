@@ -1,4 +1,20 @@
 # Changelog
+## [1.1.9.12] - 2026-09-11
+
+### Fixed
+- **Collapsed sidebar never restored correctly after a page refresh.** Two independent
+  implementations were bound to the same toggle element: `initializeSidebar()` in `script.js`
+  toggled `#app.sidebar-collapsed`, while `js/sidebar-fix.js` toggled `#sidebar.collapsed` plus
+  `.main-content.expanded` and owned the localStorage persistence. On load only the latter was
+  restored, so the two states disagreed and the next click drove them in opposite directions —
+  which is why collapsing and expanding within one session worked, but surviving a refresh did
+  not. `script.js` no longer binds a listener, and a single `applySidebarState()` in
+  `sidebar-fix.js` sets every participating class together for both toggle and restore.
+- **People filter chips drew stray rectangles around their contents.** `.user-toggle` had three
+  competing definitions; the original pinned it to a fixed 36x36 circle, so the initials disc and
+  name label added in 1.1.9.11 overflowed that box. Consolidated to one pill definition and
+  dropped the `transform: scale()` hover/active rules that distorted it.
+
 ## [1.1.9.11] - 2026-09-11
 
 Informed by a Skylight Calendar UI/VOC teardown whose central finding is that profile

@@ -1221,8 +1221,17 @@ main {
 }
 
 .fc-event.calendar-event-unassigned {
-  outline: 1px dashed rgba(255, 255, 255, 0.75);
+  outline: 2px dashed var(--md-outline);
   outline-offset: -2px;
+}
+
+.fc-event.calendar-event-label {
+  box-shadow: inset 0 -3px 0 var(--md-surface);
+}
+
+.fc-event.calendar-event-multi-profile {
+  outline: 2px solid var(--md-surface);
+  outline-offset: -3px;
 }
 
 .fc-day-today {
@@ -1362,24 +1371,25 @@ footer {
   gap: var(--md-space-2);
 }
 
+/* People filter chip. Was a fixed 36px circle holding a generic icon; it now holds
+   an initials disc plus a name, so the fixed box made the contents overflow. */
 .user-toggle {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background-color: var(--md-surface-variant);
-  color: var(--md-on-surface-variant);
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 4px 14px 4px 4px;
+  border: 2px solid var(--md-outline);
+  border-radius: 22px;
+  background-color: transparent;
+  color: var(--md-on-surface);
   cursor: pointer;
-  transition: all var(--md-transition-standard);
-  font-size: 1rem;
-  box-shadow: var(--md-shadow-1);
+  font: inherit;
+  transition: background-color 140ms ease, color 140ms ease;
 }
 
 .user-toggle.active {
-  box-shadow: var(--md-shadow-2);
-  transform: scale(1.05);
+  box-shadow: var(--md-shadow-1);
 }
 
 .user-toggle.inactive {
@@ -1387,7 +1397,7 @@ footer {
 }
 
 .user-toggle:hover {
-  transform: scale(1.1);
+  border-color: var(--md-primary);
 }
 
 .no-users-msg {
@@ -2151,9 +2161,10 @@ header i,
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
+  border: 3px solid var(--profile-color, var(--md-primary));
   border-radius: 50%;
-  background-color: var(--profile-color, var(--md-primary));
-  color: #fff;
+  background-color: var(--md-surface);
+  color: var(--profile-color, var(--md-primary));
   font-weight: 700;
 }
 
@@ -2737,6 +2748,10 @@ button.meal-empty:focus-visible {
   transition: background-color var(--md-transition-standard), opacity var(--md-transition-standard);
 }
 
+.calendar-routing-controls {
+  grid-column: 1 / -1;
+}
+
 .calendar-management-item + .calendar-management-item {
   border-top: 1px solid var(--md-outline-variant);
 }
@@ -2757,7 +2772,7 @@ button.meal-empty:focus-visible {
   width: 16px;
   height: 44px;
   border-radius: var(--md-shape-small);
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.14);
+  border: 1px solid var(--md-outline);
 }
 
 .calendar-management-details {
@@ -2780,6 +2795,7 @@ button.meal-empty:focus-visible {
   margin-top: var(--md-space-1);
   color: var(--md-on-surface-variant);
   font-size: 0.75rem;
+  flex-wrap: wrap;
 }
 
 .calendar-source-badge {
@@ -2812,6 +2828,7 @@ button.meal-empty:focus-visible {
   gap: var(--md-space-2);
   margin: 0 !important;
   cursor: pointer;
+  min-height: 44px;
 }
 
 .calendar-visibility-status {
@@ -2951,6 +2968,219 @@ button.meal-empty:focus-visible {
   }
 }
 
+.calendar-label-form {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  align-items: end;
+  gap: var(--md-space-3);
+  margin-bottom: var(--md-space-4);
+  padding: var(--md-space-3);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: var(--md-shape-medium);
+  background-color: var(--md-surface-2);
+}
+
+.calendar-label-form .form-group {
+  margin: 0;
+}
+
+.calendar-label-form input,
+.calendar-label-form .btn,
+.calendar-routing-save {
+  min-height: 44px;
+}
+
+.calendar-label-status {
+  grid-column: 1 / -1;
+  min-height: 1.25rem;
+  color: var(--md-on-surface-variant);
+  font-size: 0.8rem;
+}
+
+.calendar-label-status.error,
+.calendar-routing-status.error {
+  color: var(--md-error);
+}
+
+.calendar-source-account {
+  overflow: hidden;
+  max-width: 34ch;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calendar-read-only-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 var(--md-space-2);
+  border: 1px solid var(--md-outline);
+  border-radius: 999px;
+  background-color: var(--md-surface-variant);
+  color: var(--md-on-surface-variant);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.calendar-routing-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 240px);
+  gap: var(--md-space-3) var(--md-space-4);
+  padding-top: var(--md-space-3);
+  border-top: 1px solid var(--md-outline-variant);
+}
+
+.calendar-routing-heading {
+  grid-column: 1 / -1;
+  color: var(--md-on-surface);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.calendar-profile-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--md-space-2);
+}
+
+.calendar-profile-option {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--md-space-2);
+  min-height: 44px;
+  padding: var(--md-space-1) var(--md-space-3) var(--md-space-1) var(--md-space-1);
+  border: 1px solid var(--md-outline);
+  border-radius: 999px;
+  background-color: var(--md-surface);
+  color: var(--md-on-surface);
+  cursor: pointer;
+  font: inherit;
+}
+
+.calendar-profile-option[aria-pressed="true"] {
+  border-color: var(--profile-color);
+  background-color: var(--md-primary-container);
+  color: var(--md-on-primary-container);
+}
+
+.calendar-profile-option:focus-visible,
+.user-toggle:focus-visible,
+.user-item:focus-visible {
+  outline: 3px solid var(--md-secondary-container);
+  outline-offset: 2px;
+}
+
+.calendar-profile-initials {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 2px solid var(--profile-color);
+  border-radius: 50%;
+  background-color: var(--md-surface);
+  color: var(--profile-color);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.calendar-profile-options-empty {
+  color: var(--md-on-surface-variant);
+  font-size: 0.8rem;
+}
+
+.calendar-label-control {
+  display: flex !important;
+  flex-direction: column;
+  gap: var(--md-space-1);
+  margin: 0 !important;
+  color: var(--md-on-surface-variant) !important;
+  font-size: 0.75rem;
+}
+
+.calendar-label-control select {
+  width: 100%;
+  min-height: 44px;
+  padding: var(--md-space-2);
+  border: 1px solid var(--md-outline);
+  border-radius: var(--md-shape-small);
+  background-color: var(--md-surface);
+  color: var(--md-on-surface);
+  font: inherit;
+}
+
+.calendar-routing-preview {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--md-space-2);
+  margin: 0;
+  padding: var(--md-space-3);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: var(--md-shape-medium);
+  background-color: var(--md-surface-variant);
+  color: var(--md-on-surface-variant);
+  font-size: 0.875rem;
+}
+
+.calendar-routing-preview .material-icons {
+  flex: 0 0 auto;
+  font-size: 20px;
+}
+
+.routing-preview-identity {
+  color: var(--md-on-surface);
+  white-space: nowrap;
+}
+
+.routing-preview-identity::before {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin: 0 var(--md-space-1);
+  border: 1px solid var(--md-outline);
+  border-radius: 50%;
+  background-color: var(--identity-color);
+  content: '';
+}
+
+.calendar-routing-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--md-space-3);
+}
+
+.calendar-routing-status {
+  color: var(--md-on-surface-variant);
+  font-size: 0.75rem;
+}
+
+.calendar-routing-status.is-dirty {
+  color: var(--md-primary);
+}
+
+@media (max-width: 640px) {
+  .calendar-label-form,
+  .calendar-routing-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .calendar-routing-heading,
+  .calendar-routing-preview,
+  .calendar-routing-actions,
+  .calendar-label-status {
+    grid-column: 1;
+  }
+
+  .calendar-routing-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
 /* ── CalDAV Account Management ────────────────────────────────────────── */
 
 .caldav-sync-logs {
@@ -3070,9 +3300,16 @@ button.meal-empty:focus-visible {
   display: flex;
   align-items: center;
   gap: var(--md-space-3);
+  width: 100%;
+  min-height: 64px;
   padding: var(--md-space-3) var(--md-space-4);
+  border: 1px solid var(--md-outline-variant);
   background-color: var(--md-surface-2);
+  color: var(--md-on-surface);
   border-radius: var(--md-shape-medium);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
   transition: all var(--md-transition-standard);
 }
 
@@ -3093,15 +3330,17 @@ button.meal-empty:focus-visible {
 }
 
 .user-avatar-placeholder {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background-color: var(--md-primary);
-  color: var(--md-on-primary);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 500;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border: 3px solid var(--profile-color, var(--md-primary));
+  border-radius: 50%;
+  background-color: var(--md-surface);
+  color: var(--profile-color, var(--md-primary));
+  font-weight: 700;
   font-size: 0.875rem;
 }
 
@@ -3111,12 +3350,14 @@ button.meal-empty:focus-visible {
 }
 
 .user-name {
+  display: block;
   font-weight: 500;
   color: var(--md-on-surface);
   font-size: 0.95rem;
 }
 
 .user-details {
+  display: block;
   font-size: 0.8rem;
   color: var(--md-on-surface-variant);
   margin-top: 2px;
@@ -3163,9 +3404,68 @@ button.meal-empty:focus-visible {
   margin-top: 5px;
 }
 
+.calendar-checkbox-list {
+  max-height: 220px;
+  overflow-y: auto;
+  padding: var(--md-space-2);
+  border: 1px solid var(--md-outline);
+  border-radius: var(--md-shape-medium);
+  background-color: var(--md-surface-variant);
+  color: var(--md-on-surface-variant);
+}
+
+.calendar-checkbox-option {
+  display: flex !important;
+  align-items: center;
+  gap: var(--md-space-2);
+  min-height: 44px;
+  margin: 0 !important;
+  padding: var(--md-space-1) var(--md-space-2);
+  border-radius: var(--md-shape-small);
+  color: var(--md-on-surface) !important;
+  cursor: pointer;
+  font-size: 0.875rem;
+}
+
+.calendar-checkbox-option:focus-within {
+  background-color: var(--md-primary-container);
+  color: var(--md-on-primary-container) !important;
+}
+
+.calendar-checkbox-option .cal-checkbox {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+}
+
+.calendar-checkbox-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.calendar-event-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  min-height: 24px;
+  padding: 0 var(--md-space-1);
+  border-radius: 999px;
+  background-color: var(--md-surface-3);
+  color: var(--md-on-surface-variant);
+  font-size: 0.75rem;
+}
+
+.calendar-checkbox-empty,
+.loading-calendars {
+  padding: var(--md-space-2);
+  color: var(--md-on-surface-variant);
+}
+
 .color-option {
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   border: 2px solid transparent;
   cursor: pointer;
@@ -3178,18 +3478,18 @@ button.meal-empty:focus-visible {
 }
 
 .color-option.active {
-  border-color: var(--text-color, #333);
+  border-color: var(--md-on-surface);
   transform: scale(1.15);
-  box-shadow: 0 0 5px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--md-shadow-1);
 }
 
 .icon-option {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: 8px;
-  border: 1px solid var(--border-color, #ddd);
-  background-color: var(--card-bg, #fff);
-  color: var(--text-color, #333);
+  border: 1px solid var(--md-outline);
+  background-color: var(--md-surface);
+  color: var(--md-on-surface);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -3198,13 +3498,13 @@ button.meal-empty:focus-visible {
 }
 
 .icon-option.active {
-  border-color: var(--primary-color, #4285f4);
-  background-color: rgba(66, 133, 244, 0.1);
-  color: var(--primary-color, #4285f4);
+  border-color: var(--md-primary);
+  background-color: var(--md-primary-container);
+  color: var(--md-on-primary-container);
 }
 
 .icon-option:hover {
-  background-color: var(--hover-color, #f5f5f5);
+  background-color: var(--md-surface-variant);
 }
 
 /* CalDAV sync log output.
@@ -3256,14 +3556,25 @@ button.meal-empty:focus-visible {
   border-radius: 16px;
   font-size: 0.875rem;
   font-weight: 500;
-  color: var(--md-on-primary);
-  background: var(--chip-color, var(--md-primary));
+  border: 2px solid var(--chip-color, var(--md-primary));
+  background: var(--md-surface);
+  color: var(--md-on-surface);
 }
 
 .event-detail-chip-muted {
   color: var(--md-on-surface-variant);
   background: var(--md-surface-variant);
   border: 1px solid var(--md-outline);
+}
+
+.event-detail-access {
+  margin: 0 0 var(--md-space-3);
+  padding: var(--md-space-3);
+  border: 1px solid var(--md-outline);
+  border-radius: var(--md-shape-medium);
+  background-color: var(--md-secondary-container);
+  color: var(--md-on-secondary-container);
+  line-height: 1.45;
 }
 
 .event-detail-location,
@@ -3360,21 +3671,10 @@ button.meal-empty:focus-visible {
   transition: opacity 120ms ease;
 }
 
-/* People filter chips.
-   Previously every profile rendered an identical generic person icon in the same
-   default blue, so the row was unreadable as identity. Now initials plus name. */
-.user-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 44px;           /* finger target on a wall display */
-  padding: 4px 14px 4px 4px;
-  border: 2px solid var(--md-outline);
-  border-radius: 22px;
-  background: transparent;
-  cursor: pointer;
-  font: inherit;
-  transition: background-color 140ms ease, color 140ms ease;
+
+.user-toggle.active {
+  background-color: var(--md-primary-container);
+  color: var(--md-on-primary-container);
 }
 
 .user-toggle-initials {
@@ -3383,8 +3683,10 @@ button.meal-empty:focus-visible {
   justify-content: center;
   width: 32px;
   height: 32px;
+  border: 2px solid var(--profile-color, var(--md-outline));
   border-radius: 50%;
-  background: rgb(0 0 0 / 0.12);
+  background: var(--md-surface);
+  color: var(--profile-color, var(--md-on-surface));
   font-size: 0.8125rem;
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -3409,7 +3711,9 @@ button.meal-empty:focus-visible {
 /* Read-only markers. Daylight reads synced calendars but has no CalDAV write
    path, so nothing may imply an event can be edited here. */
 .calendar-readonly-badge,
-.event-detail-chip-readonly {
+.calendar-read-only-badge,
+.event-detail-chip-readonly,
+.event-detail-read-only {
   display: inline-flex;
   align-items: center;
   padding: 2px 8px;

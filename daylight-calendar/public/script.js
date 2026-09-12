@@ -12,6 +12,7 @@ let weatherPrecipitationUnit = '';
 let activeWeatherPopover = null;
 let calendar;
 let allCalendarUsers = [];
+let settingsProfileCache = [];
 let activeCalendarUsers = new Set();
 let calendarUserFiltersReady = false;
 const supportedThemes = ['light', 'dark', 'pastel', 'forest', 'ocean', 'sunset'];
@@ -451,10 +452,10 @@ async function loadGameProfiles(profileList = document.getElementById('profile-l
       profile.type = 'button';
       profile.className = 'profile-item';
       profile.dataset.profile = user.id;
+      profile.style.setProperty('--profile-color', getValidCalendarColor(user.color));
 
       const avatar = document.createElement('span');
       avatar.className = 'profile-avatar';
-      avatar.style.backgroundColor = getValidCalendarColor(user.color);
       avatar.textContent = getProfileInitials(user.name);
 
       const name = document.createElement('span');
@@ -617,6 +618,7 @@ function initializeSettingsPage() {
       addUserBtn.addEventListener('click', () => {
         modal.classList.add('show');
         populateUserDropdowns();
+        setSuggestedNewProfileColor(settingsProfileCache);
         const input = document.getElementById('new-user-name');
         if (input) input.focus();
       });
@@ -663,18 +665,13 @@ function initializeSidebar() {
   const sidebarToggle = document.getElementById('sidebar-logo');
   const app = document.getElementById('app');
 
-  if (sidebarToggle) {
-    sidebarToggle.addEventListener('click', function () {
-      app.classList.toggle('sidebar-collapsed');
+  // Sidebar collapse is owned solely by js/sidebar-fix.js. This used to bind a
 
-      // If we have a calendar instance, update its size after sidebar animation completes
-      setTimeout(() => {
-        if (typeof calendar !== 'undefined' && calendar && calendar.updateSize) {
-          calendar.updateSize();
-        }
-      }, 300); // Match transition-speed CSS variable
-    });
-  }
+  // second listener to the same element toggling a different class on #app, so
+
+  // after a reload the two states disagreed and expanding never restored.
+
+  void sidebarToggle;
 
   // Setup tab navigation
   const tabItems = document.querySelectorAll('.tab-item');
@@ -993,10 +990,14 @@ function setupColorAndIconSelectors() {
     btns.forEach(btn => {
       btn.onclick = (e) => {
         e.preventDefault();
-        btns.forEach(b => b.classList.remove('active'));
+        btns.forEach(b => {
+          b.classList.remove('active');
+          b.setAttribute('aria-pressed', 'false');
+        });
         btn.classList.add('active');
-            btn.setAttribute('aria-pressed', 'true');
+        btn.setAttribute('aria-pressed', 'true');
         input.value = btn.dataset.color;
+        if (input.id === 'new-user-color') input.dataset.defaultColor = 'false';
       };
     });
   });
@@ -1115,30 +1116,37 @@ function setupCalendar() {
           })
           .then(events => {
             const filtered = events.filter(e => {
-              // Unassigned calendars are always visible. People toggles only filter assigned events.
-              if (!e.userId || !calendarUserFiltersReady) return true;
-              return activeCalendarUsers.has(e.userId);
+              // Labels and unassigned sources stay visible; profile toggles filter people only.
+              const profileIds = Array.isArray(e.profileIds) ? e.profileIds : (e.userId ? [e.userId] : []);
+              if (profileIds.length === 0 || !calendarUserFiltersReady) return true;
+              return profileIds.some(profileId => activeCalendarUsers.has(profileId));
             });
 
             const neutralColor = getNeutralCalendarColor();
 
-            // Assigned events use the person's color; unassigned events keep their calendar color.
+            // The same destination identity determines color in day, week, and month views.
             filtered.forEach(e => {
-              if (e.userId) {
-                const user = allCalendarUsers.find(u => u.id === e.userId);
+              const profileIds = Array.isArray(e.profileIds) ? e.profileIds : (e.userId ? [e.userId] : []);
+              if (profileIds.length > 0) {
+                const user = allCalendarUsers.find(u => u.id === profileIds[0]);
                 if (user && user.color) {
                   e.backgroundColor = user.color;
                   e.borderColor = user.color;
                 }
+                if (profileIds.length > 1) {
+                  e.classNames = [...(e.classNames || []), 'calendar-event-multi-profile'];
+                }
+              } else if (e.labelId && e.labelColor) {
+                const labelColor = getValidCalendarColor(e.labelColor, neutralColor);
+                e.backgroundColor = labelColor;
+                e.borderColor = labelColor;
+                e.classNames = [...(e.classNames || []), 'calendar-event-label'];
               } else {
-                const calendarColor = getValidCalendarColor(
-                  e.calendarColor || e.color || e.backgroundColor,
-                  neutralColor
-                );
-                e.backgroundColor = calendarColor;
-                e.borderColor = calendarColor;
+                e.backgroundColor = neutralColor;
+                e.borderColor = neutralColor;
                 e.classNames = [...(e.classNames || []), 'calendar-event-unassigned'];
               }
+              e.textColor = getReadableCalendarTextColor(e.backgroundColor);
             });
 
             successCallback(filtered);
@@ -1246,6 +1254,44 @@ function getValidCalendarColor(color, fallback = getNeutralCalendarColor()) {
   return typeof color === 'string' && window.CSS && CSS.supports('color', color)
     ? color
     : fallback;
+}
+
+function parseColorChannels(color) {
+  const value = String(color || '').trim();
+  const hex = value.match(/^#([0-9a-f]{6})$/i);
+  if (hex) {
+    return [0, 2, 4].map(offset => parseInt(hex[1].slice(offset, offset + 2), 16));
+  }
+  const rgb = value.match(/^rgba?\(\s*(\d+)\D+(\d+)\D+(\d+)/i);
+  return rgb ? [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])] : null;
+}
+
+function relativeLuminance(color) {
+  const channels = parseColorChannels(color);
+  if (!channels) return null;
+  const linear = channels.map(channel => {
+    const normalized = channel / 255;
+    return normalized <= 0.03928
+      ? normalized / 12.92
+      : Math.pow((normalized + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+}
+
+function getReadableCalendarTextColor(backgroundColor) {
+  const styles = getComputedStyle(document.documentElement);
+  const surface = styles.getPropertyValue('--md-surface').trim();
+  const onSurface = styles.getPropertyValue('--md-on-surface').trim();
+  const backgroundLum = relativeLuminance(backgroundColor);
+  const surfaceLum = relativeLuminance(surface);
+  const onSurfaceLum = relativeLuminance(onSurface);
+  if ([backgroundLum, surfaceLum, onSurfaceLum].some(value => value === null)) {
+    return 'var(--md-on-surface)';
+  }
+  const contrast = (a, b) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+  return contrast(backgroundLum, surfaceLum) > contrast(backgroundLum, onSurfaceLum)
+    ? 'var(--md-surface)'
+    : 'var(--md-on-surface)';
 }
 
 function openCalendarConnectionSettings() {
@@ -1699,13 +1745,13 @@ async function loadUserToggles() {
 
     const calendarUsers = userTogglesContainer.closest('.calendar-users');
     const toggleLabel = calendarUsers ? calendarUsers.querySelector('.users-toggle-label') : null;
-    if (toggleLabel) toggleLabel.textContent = 'People:';
+    if (toggleLabel) toggleLabel.textContent = 'Profiles:';
 
     let unassignedNote = calendarUsers ? calendarUsers.querySelector('.unassigned-filter-note') : null;
     if (calendarUsers && !unassignedNote) {
       unassignedNote = document.createElement('span');
       unassignedNote.className = 'unassigned-filter-note';
-      unassignedNote.innerHTML = '<i class="material-icons" aria-hidden="true">visibility</i> Unassigned events are always shown';
+      unassignedNote.innerHTML = '<i class="material-icons" aria-hidden="true">visibility</i> Labels and unassigned events stay visible';
       calendarUsers.appendChild(unassignedNote);
     }
 
@@ -1718,27 +1764,26 @@ async function loadUserToggles() {
       const btn = document.createElement('button');
       const isActive = activeCalendarUsers.has(user.id);
 
+      btn.type = 'button';
       btn.className = 'user-toggle ' + (isActive ? 'active' : '');
       btn.innerHTML =
           `<span class="user-toggle-initials">${escapeHtml(getProfileInitials(user.name))}</span>` +
           `<span class="user-toggle-name">${escapeHtml(user.name || 'Unnamed')}</span>`;
-      btn.title = user.name;
-      btn.style.backgroundColor = isActive ? user.color : 'transparent';
-      btn.style.color = isActive ? '#fff' : user.color;
-      btn.style.borderColor = user.color || 'var(--md-outline)';
+      btn.setAttribute('aria-pressed', String(isActive));
+      btn.setAttribute('aria-label', `${isActive ? 'Hide' : 'Show'} events for ${user.name || 'unnamed profile'}`);
+      btn.style.setProperty('--profile-color', getValidCalendarColor(user.color));
 
       btn.addEventListener('click', () => {
         if (activeCalendarUsers.has(user.id)) {
           activeCalendarUsers.delete(user.id);
           btn.classList.remove('active');
-            btn.setAttribute('aria-pressed', 'false');
-          btn.style.backgroundColor = 'transparent';
-          btn.style.color = user.color;
+          btn.setAttribute('aria-pressed', 'false');
+          btn.setAttribute('aria-label', `Show events for ${user.name || 'unnamed profile'}`);
         } else {
           activeCalendarUsers.add(user.id);
           btn.classList.add('active');
-          btn.style.backgroundColor = user.color;
-          btn.style.color = '#fff';
+          btn.setAttribute('aria-pressed', 'true');
+          btn.setAttribute('aria-label', `Hide events for ${user.name || 'unnamed profile'}`);
         }
 
         // Trigger calendar refetch to apply filters
@@ -2177,13 +2222,14 @@ async function populateUserDropdowns() {
       calendarSelect.innerHTML = calendars.map(c => {
         const count = eventCounts[c.entity_id] || 0;
         return `
-          <label style="display:flex; align-items:center; margin-bottom: 6px; cursor: pointer; color: #fff; font-size: 14px;">
-            <input type="checkbox" value="${c.entity_id}" class="cal-checkbox" style="margin-right: 8px;">
-            <span style="flex-grow: 1;">${c.name}</span>
-            <span style="background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 12px; font-size: 11px;">${count}</span>
+          <label class="calendar-checkbox-option">
+            <input type="checkbox" value="${c.entity_id}" class="cal-checkbox">
+            <span class="calendar-checkbox-name">${c.name}</span>
+            ${c.readOnly ? '<span class="calendar-read-only-badge">Read-only</span>' : ''}
+            <span class="calendar-event-count">${count}</span>
           </label>
         `;
-      }).join('') || '<div style="color: #a1b2c3;">No calendars found</div>';
+      }).join('') || '<div class="calendar-checkbox-empty">No calendars found</div>';
     }
 
     if (notifyResp.ok) {
@@ -2227,13 +2273,14 @@ async function populateEditDropdowns(currentCalendar, currentNotify) {
         const count = eventCounts[c.entity_id] || 0;
         const isChecked = currentCals.includes(c.entity_id) ? 'checked' : '';
         return `
-          <label style="display:flex; align-items:center; margin-bottom: 6px; cursor: pointer; color: #fff; font-size: 14px;">
-            <input type="checkbox" value="${c.entity_id}" class="cal-checkbox" style="margin-right: 8px;" ${isChecked}>
-            <span style="flex-grow: 1;">${c.name}</span>
-            <span style="background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 12px; font-size: 11px;">${count}</span>
+          <label class="calendar-checkbox-option">
+            <input type="checkbox" value="${c.entity_id}" class="cal-checkbox" ${isChecked}>
+            <span class="calendar-checkbox-name">${c.name}</span>
+            ${c.readOnly ? '<span class="calendar-read-only-badge">Read-only</span>' : ''}
+            <span class="calendar-event-count">${count}</span>
           </label>
         `;
-      }).join('') || '<div style="color: #a1b2c3;">No calendars found</div>';
+      }).join('') || '<div class="calendar-checkbox-empty">No calendars found</div>';
     }
 
     if (notifyResp.ok) {
@@ -2248,6 +2295,22 @@ async function populateEditDropdowns(currentCalendar, currentNotify) {
   }
 }
 
+function setSuggestedNewProfileColor(profiles) {
+  const colorInput = document.getElementById('new-user-color');
+  const colorButtons = [...document.querySelectorAll('#new-user-color-selector .color-option')];
+  if (!colorInput || colorButtons.length === 0) return;
+
+  const usedColors = new Set((profiles || []).map(profile => String(profile.color || '').toLowerCase()));
+  const suggested = colorButtons.find(button => !usedColors.has(String(button.dataset.color).toLowerCase()));
+  colorInput.value = suggested ? suggested.dataset.color : '';
+  colorInput.dataset.defaultColor = 'true';
+  colorButtons.forEach(button => {
+    const isActive = button === suggested;
+    button.classList.toggle('active', isActive);
+    button.setAttribute('aria-pressed', String(isActive));
+  });
+}
+
 async function fetchUsers() {
   const listContainer = document.getElementById('user-list');
   if (!listContainer) return;
@@ -2256,44 +2319,55 @@ async function fetchUsers() {
     const resp = await fetch('api/users');
     if (!resp.ok) throw new Error('Failed to fetch users');
     const users = await resp.json();
+    settingsProfileCache = Array.isArray(users) ? users : [];
 
     if (users.length === 0) {
-      listContainer.innerHTML = '<div class="no-users">No users found.</div>';
+      listContainer.innerHTML = '<div class="no-users">No profiles yet.</div>';
       return;
     }
 
-    let html = '';
+    listContainer.innerHTML = '';
     users.forEach(user => {
-      const initials = user.name ? user.name.substring(0, 2).toUpperCase() : '??';
-      const avatarUrl = user.picture || user.entity_picture;
+      const calendarIds = Array.isArray(user.calendar_entity_id)
+        ? user.calendar_entity_id
+        : (user.calendar_entity_id ? [user.calendar_entity_id] : []);
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'user-item';
+      row.style.setProperty('--profile-color', getValidCalendarColor(user.color));
 
-      let avatarHtml;
-      if (avatarUrl) {
-        avatarHtml = `<img src="${avatarUrl}" alt="${user.name}" class="user-avatar-img">`;
-      } else {
-        avatarHtml = `<div class="user-avatar-placeholder">${initials}</div>`;
-      }
+      const avatar = document.createElement('span');
+      avatar.className = 'user-avatar-placeholder';
+      avatar.textContent = getProfileInitials(user.name);
+      avatar.setAttribute('aria-hidden', 'true');
 
-      const calLabel = user.calendar_entity_id
-        ? `<span class="user-calendar-label"><i class="material-icons" style="font-size:14px;vertical-align:middle;">event</i> ${user.calendar_entity_id}</span>`
-        : '<span class="user-calendar-label" style="opacity:0.5;">No calendar linked</span>';
+      const info = document.createElement('span');
+      info.className = 'user-info';
+      const name = document.createElement('span');
+      name.className = 'user-name';
+      name.textContent = user.name || 'Unnamed profile';
+      const details = document.createElement('span');
+      details.className = 'user-details';
+      details.textContent = calendarIds.length > 0
+        ? `${calendarIds.length} routed calendar${calendarIds.length === 1 ? '' : 's'}`
+        : 'No calendars routed';
+      info.append(name, details);
 
-      html += `
-        <div class="user-item" data-user-id="${user.id}" data-user-name="${user.name || ''}" data-calendar="${user.calendar_entity_id || ''}" data-notify="${user.notify_service || ''}" style="cursor:pointer;" onclick="openEditUserModal('${user.id}', '${(user.name || '').replace(/'/g, "\\'")}', '${user.calendar_entity_id || ''}', '${user.notify_service || ''}', '${user.color || '#4285f4'}', '${user.icon || 'person'}')">
-          <div class="user-avatar">
-            ${avatarHtml}
-          </div>
-          <div class="user-info">
-            <div class="user-name">${user.name || 'Unknown'}</div>
-            <div class="user-details">${calLabel}</div>
-          </div>
-          <div class="user-edit-icon">
-            <i class="material-icons">edit</i>
-          </div>
-        </div>
-      `;
+      const edit = document.createElement('span');
+      edit.className = 'user-edit-icon';
+      edit.innerHTML = '<i class="material-icons" aria-hidden="true">edit</i>';
+      row.setAttribute('aria-label', `Edit ${user.name || 'unnamed profile'}`);
+      row.addEventListener('click', () => openEditUserModal(
+        user.id,
+        user.name || '',
+        calendarIds.join(','),
+        user.notify_service || '',
+        user.color,
+        user.icon || 'person'
+      ));
+      row.append(avatar, info, edit);
+      listContainer.appendChild(row);
     });
-    listContainer.innerHTML = html;
 
   } catch (err) {
     console.error('Error fetching users:', err);
@@ -2363,6 +2437,7 @@ async function handleUpdateUser(e) {
 
     document.getElementById('edit-user-modal').classList.remove('show');
     fetchUsers(); // Refresh list
+    loadCalendarManagement();
   } catch (err) {
     alert('Error: ' + err.message);
   } finally {
@@ -2392,7 +2467,9 @@ async function handleCreateUser(e) {
           document.querySelectorAll('#new-user-calendar .cal-checkbox:checked')
         ).map(cb => cb.value),
         notify_service: document.getElementById('new-user-notify').value || null,
-        color: document.getElementById('new-user-color')?.value || '#4285f4',
+        color: document.getElementById('new-user-color')?.dataset.defaultColor === 'true'
+          ? null
+          : (document.getElementById('new-user-color')?.value || null),
         icon: document.getElementById('new-user-icon')?.value || 'person'
       })
     });
@@ -2406,7 +2483,8 @@ async function handleCreateUser(e) {
     document.getElementById('add-user-modal').classList.remove('show');
     nameInput.value = '';
     fetchUsers(); // Refresh list
-    alert(`User "${name}" created successfully!`);
+    loadCalendarManagement();
+    alert(`Profile "${name}" created successfully!`);
 
   } catch (err) {
     alert('Error: ' + err.message);
@@ -2475,10 +2553,272 @@ function renderCalendarManagementEmptyState(container, summary) {
     ?.addEventListener('click', openCalendarConnectionSettings);
 }
 
+function renderCalendarRoutingPreview(preview, calendarItem, profileIds, labelId, profiles, labels) {
+  preview.innerHTML = '';
+  const icon = document.createElement('i');
+  icon.className = 'material-icons';
+  icon.setAttribute('aria-hidden', 'true');
+  icon.textContent = 'visibility';
+  preview.appendChild(icon);
+
+  const sentence = document.createElement('span');
+  const calendarName = calendarItem.name || calendarItem.entity_id;
+  const selectedProfiles = profiles.filter(profile => profileIds.includes(profile.id));
+  const selectedLabel = labels.find(label => label.id === labelId);
+
+  if (selectedProfiles.length === 1) {
+    sentence.append(`Events from ${calendarName} will appear in `);
+    const profile = selectedProfiles[0];
+    const identity = document.createElement('strong');
+    identity.className = 'routing-preview-identity';
+    identity.style.setProperty('--identity-color', getValidCalendarColor(profile.color));
+    identity.textContent = `${profile.name || 'Unnamed profile'}'s color`;
+    sentence.append(identity, '.');
+  } else if (selectedProfiles.length > 1) {
+    sentence.append(`Events from ${calendarName} will be shared with `);
+    selectedProfiles.forEach((profile, index) => {
+      if (index > 0) sentence.append(index === selectedProfiles.length - 1 ? ' and ' : ', ');
+      const identity = document.createElement('strong');
+      identity.className = 'routing-preview-identity';
+      identity.style.setProperty('--identity-color', getValidCalendarColor(profile.color));
+      identity.textContent = profile.name || 'Unnamed profile';
+      sentence.appendChild(identity);
+    });
+    sentence.append(` and use ${selectedProfiles[0].name || 'the first profile'}'s color.`);
+  } else if (selectedLabel) {
+    sentence.append(`Events from ${calendarName} will appear in the `);
+    const identity = document.createElement('strong');
+    identity.className = 'routing-preview-identity';
+    identity.style.setProperty('--identity-color', getValidCalendarColor(selectedLabel.color));
+    identity.textContent = selectedLabel.name;
+    sentence.append(identity, ' label color.');
+  } else {
+    sentence.textContent = `Events from ${calendarName} will use the neutral unassigned style.`;
+  }
+  preview.appendChild(sentence);
+}
+
+function setupCalendarLabelForm() {
+  const form = document.getElementById('calendar-label-form');
+  const input = document.getElementById('calendar-label-name');
+  const status = document.getElementById('calendar-label-status');
+  if (!form || !input || !status) return;
+
+  form.onsubmit = async event => {
+    event.preventDefault();
+    const name = input.value.trim();
+    if (!name) {
+      status.textContent = 'Enter a label name.';
+      status.classList.add('error');
+      return;
+    }
+
+    const button = form.querySelector('button[type="submit"]');
+    button.disabled = true;
+    status.textContent = 'Adding…';
+    status.classList.remove('error');
+    try {
+      const response = await fetch('api/calendar-labels', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || 'Could not add label');
+      input.value = '';
+      status.textContent = `${result.name} is ready to assign.`;
+      await loadCalendarManagement();
+    } catch (error) {
+      status.textContent = error.message;
+      status.classList.add('error');
+    } finally {
+      button.disabled = false;
+    }
+  };
+}
+
+function renderCalendarManagementRow(calendarItem, route, profiles, labels, isEnabled) {
+  const row = document.createElement('article');
+  row.className = `calendar-management-item${isEnabled ? '' : ' is-disabled'}`;
+
+  const swatch = document.createElement('span');
+  swatch.className = 'calendar-color-swatch';
+  swatch.style.backgroundColor = getValidCalendarColor(calendarItem.color);
+  swatch.setAttribute('aria-hidden', 'true');
+
+  const details = document.createElement('div');
+  details.className = 'calendar-management-details';
+  const name = document.createElement('div');
+  name.className = 'calendar-management-name';
+  name.textContent = calendarItem.name || calendarItem.entity_id;
+  const meta = document.createElement('div');
+  meta.className = 'calendar-management-meta';
+  const source = document.createElement('span');
+  source.className = `calendar-source-badge calendar-source-${calendarItem.source === 'caldav' ? 'icloud' : 'ha'}`;
+  source.textContent = calendarItem.source === 'caldav' ? 'iCloud / CalDAV' : 'Home Assistant';
+  const account = document.createElement('span');
+  account.className = 'calendar-source-account';
+  account.textContent = calendarItem.accountName || (calendarItem.source === 'caldav' ? 'Connected iCloud account' : 'Home Assistant');
+  meta.append(source, account);
+  if (calendarItem.readOnly) {
+    const readOnly = document.createElement('span');
+    readOnly.className = 'calendar-read-only-badge';
+    readOnly.textContent = 'Read-only';
+    meta.appendChild(readOnly);
+  }
+  details.append(name, meta);
+
+  const control = document.createElement('label');
+  control.className = 'calendar-visibility-control';
+  const visibilityStatus = document.createElement('span');
+  visibilityStatus.className = 'calendar-visibility-status';
+  visibilityStatus.textContent = isEnabled ? 'Shown' : 'Hidden';
+  const toggle = document.createElement('input');
+  toggle.type = 'checkbox';
+  toggle.className = 'calendar-visibility-toggle';
+  toggle.checked = isEnabled;
+  toggle.setAttribute('role', 'switch');
+  toggle.setAttribute('aria-checked', String(isEnabled));
+  toggle.setAttribute('aria-label', `Show ${calendarItem.name || calendarItem.entity_id} on the calendar`);
+  const track = document.createElement('span');
+  track.className = 'calendar-toggle-track';
+  track.setAttribute('aria-hidden', 'true');
+  toggle.addEventListener('change', () => {
+    updateCalendarVisibility(calendarItem.entity_id, toggle.checked, toggle, row, visibilityStatus);
+  });
+  control.append(visibilityStatus, toggle, track);
+
+  const routing = document.createElement('div');
+  routing.className = 'calendar-routing-controls';
+  const routeHeading = document.createElement('div');
+  routeHeading.className = 'calendar-routing-heading';
+  routeHeading.textContent = 'Destination';
+  const profileOptions = document.createElement('div');
+  profileOptions.className = 'calendar-profile-options';
+  profileOptions.setAttribute('aria-label', 'Route to profiles');
+  let selectedProfileIds = [...new Set(route.profileIds || [])].filter(id => profiles.some(profile => profile.id === id));
+  let selectedLabelId = route.labelId && labels.some(label => label.id === route.labelId) ? route.labelId : null;
+  let savedProfileIds = [...selectedProfileIds];
+  let savedLabelId = selectedLabelId;
+
+  const labelControl = document.createElement('label');
+  labelControl.className = 'calendar-label-control';
+  const labelText = document.createElement('span');
+  labelText.textContent = 'Or non-person label';
+  const labelSelect = document.createElement('select');
+  labelSelect.setAttribute('aria-label', `Non-person label for ${calendarItem.name || calendarItem.entity_id}`);
+  const noLabelOption = document.createElement('option');
+  noLabelOption.value = '';
+  noLabelOption.textContent = 'None';
+  labelSelect.appendChild(noLabelOption);
+  labels.forEach(label => {
+    const option = document.createElement('option');
+    option.value = label.id;
+    option.textContent = label.name;
+    option.selected = label.id === selectedLabelId;
+    labelSelect.appendChild(option);
+  });
+  labelControl.append(labelText, labelSelect);
+
+  const preview = document.createElement('p');
+  preview.className = 'calendar-routing-preview';
+  preview.setAttribute('aria-live', 'polite');
+  const actions = document.createElement('div');
+  actions.className = 'calendar-routing-actions';
+  const routeStatus = document.createElement('span');
+  routeStatus.className = 'calendar-routing-status';
+  const saveButton = document.createElement('button');
+  saveButton.type = 'button';
+  saveButton.className = 'btn btn-primary calendar-routing-save';
+  saveButton.textContent = 'Save routing';
+  saveButton.disabled = true;
+  actions.append(routeStatus, saveButton);
+
+  const profileButtons = profiles.map(profile => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'calendar-profile-option';
+    button.style.setProperty('--profile-color', getValidCalendarColor(profile.color));
+    button.innerHTML = `<span class="calendar-profile-initials">${escapeHtml(getProfileInitials(profile.name))}</span><span>${escapeHtml(profile.name || 'Unnamed')}</span>`;
+    button.setAttribute('aria-pressed', String(selectedProfileIds.includes(profile.id)));
+    button.addEventListener('click', () => {
+      if (selectedProfileIds.includes(profile.id)) {
+        selectedProfileIds = selectedProfileIds.filter(id => id !== profile.id);
+      } else {
+        selectedProfileIds.push(profile.id);
+        selectedLabelId = null;
+        labelSelect.value = '';
+      }
+      button.setAttribute('aria-pressed', String(selectedProfileIds.includes(profile.id)));
+      updateRouteState();
+    });
+    profileOptions.appendChild(button);
+    return button;
+  });
+  if (profiles.length === 0) {
+    const empty = document.createElement('span');
+    empty.className = 'calendar-profile-options-empty';
+    empty.textContent = 'Add a profile below to route person-owned events.';
+    profileOptions.appendChild(empty);
+  }
+
+  function updateRouteState() {
+    const sameProfiles = [...selectedProfileIds].sort().join('|') === [...savedProfileIds].sort().join('|');
+    const isDirty = !sameProfiles || selectedLabelId !== savedLabelId;
+    saveButton.disabled = !isDirty;
+    routeStatus.textContent = isDirty ? 'Previewing unsaved routing' : 'Routing saved';
+    routeStatus.classList.toggle('is-dirty', isDirty);
+    renderCalendarRoutingPreview(preview, calendarItem, selectedProfileIds, selectedLabelId, profiles, labels);
+  }
+
+  labelSelect.addEventListener('change', () => {
+    selectedLabelId = labelSelect.value || null;
+    if (selectedLabelId) {
+      selectedProfileIds = [];
+      profileButtons.forEach(button => button.setAttribute('aria-pressed', 'false'));
+    }
+    updateRouteState();
+  });
+
+  saveButton.addEventListener('click', async () => {
+    saveButton.disabled = true;
+    routeStatus.textContent = 'Saving…';
+    routeStatus.classList.remove('error');
+    try {
+      const response = await fetch('api/calendar-routing', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          calendarId: calendarItem.entity_id,
+          profileIds: selectedProfileIds,
+          labelId: selectedLabelId
+        })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || 'Could not save routing');
+      savedProfileIds = [...selectedProfileIds];
+      savedLabelId = selectedLabelId;
+      updateRouteState();
+      if (calendar) calendar.refetchEvents();
+      fetchUsers();
+    } catch (error) {
+      routeStatus.textContent = `${error.message} — try again`;
+      routeStatus.classList.add('error');
+      saveButton.disabled = false;
+    }
+  });
+
+  routing.append(routeHeading, profileOptions, labelControl, preview, actions);
+  row.append(swatch, details, control, routing);
+  updateRouteState();
+  return row;
+}
+
 async function loadCalendarManagement() {
   const container = document.getElementById('calendar-management-list');
   const summary = document.getElementById('calendar-management-summary');
   if (!container || !summary) return;
+  setupCalendarLabelForm();
 
   container.innerHTML = `
     <div class="calendar-management-loading">
@@ -2489,103 +2829,39 @@ async function loadCalendarManagement() {
   summary.textContent = 'Loading…';
 
   try {
-    const [calendarsResponse, settingsResponse] = await Promise.all([
+    const [calendarsResponse, settingsResponse, routingResponse, profilesResponse] = await Promise.all([
       fetch('api/ha/calendars'),
-      fetch('api/calendar-settings')
+      fetch('api/calendar-settings'),
+      fetch('api/calendar-routing'),
+      fetch('api/users')
     ]);
-
-    if (!calendarsResponse.ok || !settingsResponse.ok) {
-      throw new Error('Failed to load calendar settings');
+    if (![calendarsResponse, settingsResponse, routingResponse, profilesResponse].every(response => response.ok)) {
+      throw new Error('Failed to load calendar routing');
     }
 
     const calendars = await calendarsResponse.json();
     const settings = await settingsResponse.json();
+    const routingData = await routingResponse.json();
+    const profiles = await profilesResponse.json();
+    settingsProfileCache = Array.isArray(profiles) ? profiles : [];
     if (!Array.isArray(calendars) || calendars.length === 0) {
       renderCalendarManagementEmptyState(container, summary);
       return;
     }
 
     const disabledCalendarIds = new Set(settings.disabledCalendarIds || []);
+    const routes = routingData.routes || {};
+    const labels = Array.isArray(routingData.labels) ? routingData.labels : [];
     container.innerHTML = '';
-
     calendars.forEach(calendarItem => {
-      const isEnabled = !disabledCalendarIds.has(calendarItem.entity_id);
-      const sourceName = calendarItem.source === 'caldav' ? 'iCloud' : 'Home Assistant';
-      const hasCalendarColor = typeof calendarItem.color === 'string' &&
-        window.CSS && CSS.supports('color', calendarItem.color);
-      const calendarColor = getValidCalendarColor(calendarItem.color);
-
-      const row = document.createElement('div');
-      row.className = `calendar-management-item${isEnabled ? '' : ' is-disabled'}`;
-
-      const swatch = document.createElement('span');
-      swatch.className = 'calendar-color-swatch';
-      swatch.style.backgroundColor = calendarColor;
-      swatch.title = hasCalendarColor ? calendarItem.color : 'Default calendar color';
-      swatch.setAttribute('aria-hidden', 'true');
-
-      const details = document.createElement('div');
-      details.className = 'calendar-management-details';
-
-      const name = document.createElement('div');
-      name.className = 'calendar-management-name';
-      name.textContent = calendarItem.name || calendarItem.entity_id;
-
-      const meta = document.createElement('div');
-      meta.className = 'calendar-management-meta';
-
-      const source = document.createElement('span');
-      source.className = `calendar-source-badge calendar-source-${calendarItem.source === 'caldav' ? 'icloud' : 'ha'}`;
-      source.textContent = sourceName;
-
-      const colorLabel = document.createElement('span');
-      colorLabel.className = 'calendar-color-label';
-      colorLabel.textContent = hasCalendarColor ? calendarItem.color : 'Default color';
-
-      // Daylight reads synced calendars but never writes back: caldav-service has
-
-      // no create/update/delete. Say so rather than implying editability.
-
-      const readOnly = document.createElement('span');
-
-      readOnly.className = 'calendar-readonly-badge';
-
-      readOnly.textContent = 'Read-only';
-
-      readOnly.title = 'Daylight displays this calendar but cannot change it. Edit events in the source app.';
-
-
-      meta.append(source, colorLabel, readOnly);
-      details.append(name, meta);
-
-      const control = document.createElement('label');
-      control.className = 'calendar-visibility-control';
-
-      const status = document.createElement('span');
-      status.className = 'calendar-visibility-status';
-      status.textContent = isEnabled ? 'Shown' : 'Hidden';
-
-      const toggle = document.createElement('input');
-      toggle.type = 'checkbox';
-      toggle.className = 'calendar-visibility-toggle';
-      toggle.checked = isEnabled;
-      toggle.setAttribute('role', 'switch');
-      toggle.setAttribute('aria-checked', String(isEnabled));
-      toggle.setAttribute('aria-label', `Show ${calendarItem.name || calendarItem.entity_id} on the calendar`);
-
-      const track = document.createElement('span');
-      track.className = 'calendar-toggle-track';
-      track.setAttribute('aria-hidden', 'true');
-
-      toggle.addEventListener('change', () => {
-        updateCalendarVisibility(calendarItem.entity_id, toggle.checked, toggle, row, status);
-      });
-
-      control.append(status, toggle, track);
-      row.append(swatch, details, control);
-      container.appendChild(row);
+      container.appendChild(renderCalendarManagementRow(
+        calendarItem,
+        routes[calendarItem.entity_id] || { profileIds: [], labelId: null },
+        settingsProfileCache,
+        labels,
+        !disabledCalendarIds.has(calendarItem.entity_id)
+      ));
     });
-
     updateCalendarManagementSummary();
   } catch (err) {
     console.error('[ERROR] Failed to load calendar management:', err);
@@ -2593,7 +2869,7 @@ async function loadCalendarManagement() {
     container.innerHTML = `
       <div class="calendar-management-error">
         <i class="material-icons" aria-hidden="true">error_outline</i>
-        <span>Calendars could not be loaded.</span>
+        <span>Calendar routing could not be loaded.</span>
         <button type="button" class="btn btn-secondary" id="retry-calendar-management">Retry</button>
       </div>
     `;
@@ -2651,7 +2927,6 @@ async function connectAppleCalendar() {
 
   const appleId = appleIdInput.value.trim();
   const appPassword = passwordInput.value.trim();
-  const userId = document.getElementById('caldav-user-select')?.value || null;
 
   if (!appleId || !appPassword) {
     statusEl.textContent = 'Please enter your Apple ID and app-specific password.';
@@ -2670,7 +2945,7 @@ async function connectAppleCalendar() {
     const resp = await fetch('api/caldav/connect', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ appleId, appPassword, userId })
+      body: JSON.stringify({ appleId, appPassword })
     });
 
     if (!resp.ok) {
@@ -2754,8 +3029,6 @@ function initializeCalDAVSettings() {
     editForm.addEventListener('submit', handleUpdateUser);
   }
 
-  // Populate user dropdown for CalDAV
-  populateCalDAVUserDropdown();
 }
 
 async function handleCalDAVSync() {
@@ -2792,29 +3065,6 @@ async function handleCalDAVSync() {
   } finally {
     syncBtn.disabled = false;
     syncBtn.innerHTML = '<i class="material-icons" style="font-size: 18px;">sync</i> Sync Now';
-  }
-}
-
-async function populateCalDAVUserDropdown() {
-  const select = document.getElementById('caldav-user-select');
-  if (!select) return;
-
-  try {
-    const resp = await fetch('api/users');
-    if (!resp.ok) throw new Error('Failed to fetch users');
-    const users = await resp.json();
-
-    if (users.length === 0) {
-      select.innerHTML = '<option value="">-- No user (Unassigned) --</option>';
-      return;
-    }
-
-    select.innerHTML = '<option value="">-- No user (Unassigned) --</option>' +
-      users.map(u => `<option value="${u.id}">${u.name}</option>`).join('');
-
-  } catch (err) {
-    console.error('Failed to populate CalDAV user dropdown:', err);
-    select.innerHTML = '<option value="">Error loading users</option>';
   }
 }
 
@@ -2942,23 +3192,35 @@ function showEventDetails(ev) {
   set('event-detail-when', formatEventWhen(ev));
   set('event-detail-location', props.location, true);
   set('event-detail-description', props.description, true);
+  set(
+    'event-detail-access',
+    props.readOnly ? 'Read-only sync · Edit this event in Apple Calendar.' : '',
+    true
+  );
 
   const meta = document.getElementById('event-detail-meta');
   if (meta) {
     const chips = [];
-    const owner = props.userId && typeof allCalendarUsers !== 'undefined'
-      ? (allCalendarUsers || []).find(u => u.id === props.userId)
-      : null;
-    if (owner) {
-      chips.push(`<span class="event-detail-chip" style="--chip-color:${owner.color || 'var(--md-primary)'}">${escapeHtml(owner.name)}</span>`);
+    const profileIds = Array.isArray(props.profileIds) ? props.profileIds : (props.userId ? [props.userId] : []);
+    const owners = typeof allCalendarUsers !== 'undefined'
+      ? profileIds.map(profileId => (allCalendarUsers || []).find(user => user.id === profileId)).filter(Boolean)
+      : [];
+    if (owners.length > 0) {
+      owners.forEach(owner => {
+        chips.push(`<span class="event-detail-chip" style="--chip-color:${getValidCalendarColor(owner.color)}">${escapeHtml(owner.name)}</span>`);
+      });
+    } else if (props.labelId && props.labelName) {
+      chips.push(`<span class="event-detail-chip" style="--chip-color:${getValidCalendarColor(props.labelColor)}">${escapeHtml(props.labelName)}</span>`);
     } else {
       chips.push('<span class="event-detail-chip event-detail-chip-muted">Unassigned</span>');
     }
     const calName = props.calendarName || props.calendar_entity_id;
     if (calName) chips.push(`<span class="event-detail-chip event-detail-chip-muted">${escapeHtml(String(calName))}</span>`);
-    chips.push('<span class="event-detail-chip event-detail-chip-readonly" '
-      + 'title="Daylight cannot change synced events. Edit this in the calendar it came from.">'
-      + 'Read-only</span>');
+    const sourceName = (props.sourceType || props.source) === 'caldav'
+      ? `iCloud / CalDAV${props.sourceAccountName ? ` · ${props.sourceAccountName}` : ''}`
+      : 'Home Assistant';
+    chips.push(`<span class="event-detail-chip event-detail-chip-muted">${escapeHtml(sourceName)}</span>`);
+    if (props.readOnly) chips.push('<span class="event-detail-chip event-detail-chip-readonly">Read-only</span>');
     meta.innerHTML = chips.join('');
   }
 

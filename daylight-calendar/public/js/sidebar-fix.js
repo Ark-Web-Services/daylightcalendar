@@ -36,22 +36,7 @@
     newSidebarLogo.addEventListener('click', function() {
       console.log("SidebarFix: Sidebar toggle clicked");
 
-      // Toggle collapsed class on sidebar
-      sidebar.classList.toggle('collapsed');
-
-      // Adjust main content area
-      if (mainContent) {
-        mainContent.classList.toggle('expanded');
-      }
-
-      // Store sidebar state in localStorage
-      try {
-        const isCollapsed = sidebar.classList.contains('collapsed');
-        localStorage.setItem('sidebar-collapsed', isCollapsed ? 'true' : 'false');
-        console.log(`SidebarFix: Saved sidebar state: ${isCollapsed ? 'collapsed' : 'expanded'}`);
-      } catch (error) {
-        console.warn("SidebarFix: Could not save sidebar state to localStorage", error);
-      }
+      applySidebarState(!sidebar.classList.contains('collapsed'), true);
     });
 
     // Remove hover effect behavior
@@ -70,13 +55,10 @@
     // Restore sidebar state from localStorage
     try {
       const savedState = localStorage.getItem('sidebar-collapsed');
-      if (savedState === 'true') {
-        sidebar.classList.add('collapsed');
-        if (mainContent) {
-          mainContent.classList.add('expanded');
-        }
-        console.log("SidebarFix: Restored collapsed sidebar state");
-      }
+      // Apply BOTH the sidebar's own classes and #app.sidebar-collapsed. Only the
+      // former used to be restored, so after a reload the two disagreed and the
+      // next expand never took effect.
+      applySidebarState(savedState === 'true', false);
     } catch (error) {
       console.warn("SidebarFix: Could not restore sidebar state from localStorage", error);
     }
@@ -106,3 +88,29 @@
     }
   }
 })();
+
+// Single source of truth for sidebar collapse: every class that participates in the
+// collapsed layout is set together, so toggle and restore cannot disagree.
+function applySidebarState(collapsed, persist) {
+  const sidebar = document.getElementById('sidebar');
+  const mainContent = document.querySelector('.main-content') || document.getElementById('main-content');
+  const app = document.getElementById('app');
+
+  if (sidebar) sidebar.classList.toggle('collapsed', collapsed);
+  if (mainContent) mainContent.classList.toggle('expanded', collapsed);
+  if (app) app.classList.toggle('sidebar-collapsed', collapsed);
+
+  if (persist) {
+    try {
+      localStorage.setItem('sidebar-collapsed', collapsed ? 'true' : 'false');
+    } catch (error) {
+      console.warn("SidebarFix: Could not save sidebar state", error);
+    }
+  }
+
+  setTimeout(function () {
+    if (typeof calendar !== 'undefined' && calendar && calendar.updateSize) {
+      calendar.updateSize();
+    }
+  }, 300);
+}
