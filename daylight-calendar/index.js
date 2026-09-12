@@ -558,6 +558,10 @@ async function initializeApp() {
   }
 
   function normalizeChoreMeta(meta = {}, settings = readChoreSettings()) {
+    const subtasks = Array.isArray(meta.subtasks) ? meta.subtasks
+      .filter(item => item && typeof item.id === 'string' && typeof item.text === 'string')
+      .map((item, index) => ({ id: item.id, text: item.text.trim(), checked: item.checked === true, position: Number.isInteger(item.position) ? item.position : index }))
+      .filter(item => item.text) : [];
     return {
       assignedProfileIds: Array.isArray(meta.assignedProfileIds)
         ? [...new Set(meta.assignedProfileIds.filter(id => typeof id === 'string' && id.trim()))] : [],
@@ -567,7 +571,8 @@ async function initializeApp() {
       dueDate: typeof meta.dueDate === 'string' && meta.dueDate ? meta.dueDate : null,
       createdAt: typeof meta.createdAt === 'string' ? meta.createdAt : new Date().toISOString(),
       lastStatus: typeof meta.lastStatus === 'string' ? meta.lastStatus : null,
-      completionKey: typeof meta.completionKey === 'string' ? meta.completionKey : null
+      completionKey: typeof meta.completionKey === 'string' ? meta.completionKey : null,
+      subtasks
     };
   }
 
@@ -579,6 +584,66 @@ async function initializeApp() {
   function readRewards() {
     const rewards = readJsonFile('rewards.json', []);
     return Array.isArray(rewards) ? rewards : [];
+  }
+
+  function readRoutines() {
+    const routines = readJsonFile('routines.json', []);
+    return Array.isArray(routines) ? routines : [];
+  }
+
+  function readRoutineProgress() {
+    const progress = readJsonFile('routine_progress.json', {});
+    return progress && typeof progress === 'object' && !Array.isArray(progress) ? progress : {};
+  }
+
+  function getServerLocalDate(override) {
+    // The optional date is deliberately available only in standalone mode for
+    // deterministic fixture checks. Production always uses the add-on server's local date.
+    if (isStandaloneDev && typeof override === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(override)) return override;
+    const now = new Date();
+    const offset = now.getTimezoneOffset() * 60000;
+    return new Date(now.getTime() - offset).toISOString().slice(0, 10);
+  }
+
+  function normalizeRoutine(input = {}, existing = null) {
+    const days = Array.isArray(input.schedule?.days) ? [...new Set(input.schedule.days.filter(day => Number.isInteger(day) && day >= 0 && day <= 6))] : [];
+    const steps = Array.isArray(input.steps) ? input.steps
+      .filter(step => step && typeof step.text === 'string' && step.text.trim())
+      .map((step, index) => ({ id: typeof step.id === 'string' && step.id ? step.id : randomUUID(), text: step.text.trim(), position: Number.isInteger(step.position) ? step.position : index })) : [];
+    return {
+      id: existing?.id || (typeof input.id === 'string' && input.id ? input.id : randomUUID()),
+      name: typeof input.name === 'string' ? input.name.trim() : '',
+      icon: typeof input.icon === 'string' && input.icon.trim() ? input.icon.trim() : 'routine',
+      assignedProfileIds: Array.isArray(input.assignedProfileIds) ? [...new Set(input.assignedProfileIds.filter(id => typeof id === 'string' && id.trim()))] : [],
+      schedule: { days, timeOfDay: ['morning', 'afternoon', 'evening'].includes(input.schedule?.timeOfDay) ? input.schedule.timeOfDay : 'morning' },
+      steps,
+      starValue: Number.isInteger(input.starValue) && input.starValue > 0 ? input.starValue : 1,
+      active: input.active !== false,
+      createdAt: existing?.createdAt || new Date().toISOString()
+    };
+  }
+
+  function validateRoutineInput(routine) {
+    if (!routine.name) return 'Routine name is required';
+    if (!routine.schedule.days.length) return 'Choose at least one day';
+    if (!routine.steps.length) return 'Add at least one step';
+    return null;
+  }
+
+  function routineIsDueToday(routine, date) {
+    const day = new Date(`${date}T12:00:00`).getDay();
+    return routine.active !== false && routine.schedule?.days?.includes(day);
+  }
+
+  function getRoutineTodayPayload(date) {
+    const progressByDate = readRoutineProgress()[date] || {};
+    return readRoutines().filter(routine => routineIsDueToday(routine, date)).map(routine => ({
+      ...routine,
+      profiles: routine.assignedProfileIds.map(profileId => {
+        const completedStepIds = progressByDate[routine.id]?.[profileId]?.completedStepIds || [];
+        return { profileId, completedStepIds, completed: routine.steps.length > 0 && routine.steps.every(step => completedStepIds.includes(step.id)) };
+      })
+    }));
   }
 
   function derivedBalance(ledger, profileId) {
@@ -2361,7 +2426,7 @@ async function initializeApp() {
   });
 
   app.post('/api/chores', async (req, res) => {
-    const { item, entityId, assignedProfileIds = [], starValue, dueDate } = req.body;
+    const { item, entityId, assignedProfileIds = [], starValue, dueDate, upForGrabs } = req.body;
     if (!item) {
       return res.status(400).json({ error: 'Item title is required' });
     }
@@ -2414,6 +2479,7 @@ async function initializeApp() {
             assignedProfileIds,
             starValue,
             dueDate,
+            upForGrabs: upForGrabs === true && assignedProfileIds.length === 0,
             createdAt: new Date().toISOString(),
             lastStatus: created.status || 'needs_action'
           }, settings);
@@ -2430,7 +2496,7 @@ async function initializeApp() {
 
   app.put('/api/chores/:uid/meta', async (req, res) => {
     const { uid } = req.params;
-    const { assignedProfileIds = [], starValue, dueDate } = req.body;
+    const { assignedProfileIds = [], starValue, dueDate, upForGrabs } = req.body;
     if (!Array.isArray(assignedProfileIds) || !(await validateProfileIds(assignedProfileIds))) {
       return res.status(400).json({ error: 'One or more assigned profiles are unknown' });
     }
@@ -2441,7 +2507,7 @@ async function initializeApp() {
       const saved = await withHouseholdStorageLock(async () => {
         const settings = readChoreSettings();
         const meta = readChoreMeta();
-        meta[uid] = normalizeChoreMeta({ ...meta[uid], assignedProfileIds, starValue, dueDate }, settings);
+        meta[uid] = normalizeChoreMeta({ ...meta[uid], assignedProfileIds, starValue, dueDate, upForGrabs: upForGrabs === true && assignedProfileIds.length === 0 }, settings);
         writeJsonFile('chore_meta.json', meta);
         return meta[uid];
       });
@@ -2450,6 +2516,103 @@ async function initializeApp() {
       console.error('[ERROR] Error saving chore metadata:', error.message);
       res.status(500).json({ error: error.message });
     }
+  });
+
+  app.post('/api/chores/:uid/claim', async (req, res) => {
+    const { profileId } = req.body;
+    if (!(await validateProfileIds([profileId]))) return res.status(400).json({ error: 'Unknown profile' });
+    try {
+      const claimed = await withHouseholdStorageLock(async () => {
+        const users = await fetchHaUsers();
+        const meta = readChoreMeta();
+        const settings = readChoreSettings();
+        const current = normalizeChoreMeta(meta[req.params.uid], settings);
+        if (!current.upForGrabs || current.assignedProfileIds.length) {
+          const owner = users.find(user => user.id === current.assignedProfileIds[0]);
+          return { conflict: `Already claimed by ${owner?.name || 'another household member'}` };
+        }
+        current.assignedProfileIds = [profileId];
+        current.upForGrabs = false;
+        meta[req.params.uid] = current;
+        writeJsonFile('chore_meta.json', meta);
+        return { meta: current };
+      });
+      if (claimed.conflict) return res.status(409).json({ error: claimed.conflict });
+      res.json(claimed.meta);
+    } catch (error) { res.status(500).json({ error: error.message }); }
+  });
+
+  app.post('/api/chores/:uid/release', async (req, res) => {
+    try {
+      const released = await withHouseholdStorageLock(async () => {
+        const meta = readChoreMeta();
+        const settings = readChoreSettings();
+        const current = normalizeChoreMeta(meta[req.params.uid], settings);
+        current.assignedProfileIds = [];
+        current.upForGrabs = true;
+        meta[req.params.uid] = current;
+        writeJsonFile('chore_meta.json', meta);
+        return current;
+      });
+      res.json(released);
+    } catch (error) { res.status(500).json({ error: error.message }); }
+  });
+
+  function findSubtask(meta, subtaskId) {
+    return meta.subtasks.find(item => item.id === subtaskId);
+  }
+
+  app.post('/api/chores/:uid/subtasks', async (req, res) => {
+    if (typeof req.body.text !== 'string' || !req.body.text.trim()) return res.status(400).json({ error: 'Subtask text is required' });
+    const saved = await withHouseholdStorageLock(async () => {
+      const meta = readChoreMeta(); const settings = readChoreSettings();
+      const current = normalizeChoreMeta(meta[req.params.uid], settings);
+      const subtask = { id: randomUUID(), text: req.body.text.trim(), checked: false, position: current.subtasks.length };
+      current.subtasks.push(subtask); meta[req.params.uid] = current; writeJsonFile('chore_meta.json', meta); return subtask;
+    });
+    res.status(201).json(saved);
+  });
+
+  app.post('/api/chores/:uid/subtasks/:subtaskId/toggle', async (req, res) => {
+    const saved = await withHouseholdStorageLock(async () => {
+      const meta = readChoreMeta(); const settings = readChoreSettings(); const current = normalizeChoreMeta(meta[req.params.uid], settings);
+      const subtask = findSubtask(current, req.params.subtaskId); if (!subtask) return null;
+      subtask.checked = !subtask.checked; meta[req.params.uid] = current; writeJsonFile('chore_meta.json', meta); return { subtask, allDone: current.subtasks.length > 0 && current.subtasks.every(item => item.checked) };
+    });
+    if (!saved) return res.status(404).json({ error: 'Subtask not found' });
+    res.json(saved);
+  });
+
+  app.put('/api/chores/:uid/subtasks/:subtaskId', async (req, res) => {
+    if (typeof req.body.text !== 'string' || !req.body.text.trim()) return res.status(400).json({ error: 'Subtask text is required' });
+    const saved = await withHouseholdStorageLock(async () => {
+      const meta = readChoreMeta(); const settings = readChoreSettings(); const current = normalizeChoreMeta(meta[req.params.uid], settings);
+      const subtask = findSubtask(current, req.params.subtaskId); if (!subtask) return null;
+      subtask.text = req.body.text.trim(); meta[req.params.uid] = current; writeJsonFile('chore_meta.json', meta); return subtask;
+    });
+    if (!saved) return res.status(404).json({ error: 'Subtask not found' });
+    res.json(saved);
+  });
+
+  app.post('/api/chores/:uid/subtasks/reorder', async (req, res) => {
+    if (!Array.isArray(req.body.orderedIds)) return res.status(400).json({ error: 'orderedIds is required' });
+    const saved = await withHouseholdStorageLock(async () => {
+      const meta = readChoreMeta(); const settings = readChoreSettings(); const current = normalizeChoreMeta(meta[req.params.uid], settings);
+      if (req.body.orderedIds.length !== current.subtasks.length || new Set(req.body.orderedIds).size !== current.subtasks.length || !current.subtasks.every(item => req.body.orderedIds.includes(item.id))) return { invalid: true };
+      current.subtasks = req.body.orderedIds.map((id, position) => ({ ...findSubtask(current, id), position })); meta[req.params.uid] = current; writeJsonFile('chore_meta.json', meta); return current.subtasks;
+    });
+    if (saved.invalid) return res.status(400).json({ error: 'orderedIds must contain every subtask exactly once' });
+    res.json(saved);
+  });
+
+  app.delete('/api/chores/:uid/subtasks/:subtaskId', async (req, res) => {
+    const deleted = await withHouseholdStorageLock(async () => {
+      const meta = readChoreMeta(); const settings = readChoreSettings(); const current = normalizeChoreMeta(meta[req.params.uid], settings);
+      const index = current.subtasks.findIndex(item => item.id === req.params.subtaskId); if (index < 0) return false;
+      current.subtasks.splice(index, 1); current.subtasks.forEach((item, position) => { item.position = position; }); meta[req.params.uid] = current; writeJsonFile('chore_meta.json', meta); return true;
+    });
+    if (!deleted) return res.status(404).json({ error: 'Subtask not found' });
+    res.json({ success: true });
   });
 
   app.patch('/api/chores/:itemId', async (req, res) => {
@@ -2677,6 +2840,70 @@ async function initializeApp() {
       if (redemption.error) return res.status(400).json({ error: redemption.error });
       res.status(201).json(redemption);
     } catch (error) { res.status(500).json({ error: error.message }); }
+  });
+
+  app.get('/api/routines/today', (req, res) => {
+    const date = getServerLocalDate(req.query.date);
+    res.json({ date, routines: getRoutineTodayPayload(date) });
+  });
+
+  app.get('/api/routines', (req, res) => res.json(readRoutines()));
+
+  app.post('/api/routines', async (req, res) => {
+    const routine = normalizeRoutine(req.body);
+    const validationError = validateRoutineInput(routine);
+    if (validationError) return res.status(400).json({ error: validationError });
+    if (!(await validateProfileIds(routine.assignedProfileIds))) return res.status(400).json({ error: 'One or more assigned profiles are unknown' });
+    const saved = await withHouseholdStorageLock(async () => { const routines = readRoutines(); routines.push(routine); writeJsonFile('routines.json', routines); return routine; });
+    res.status(201).json(saved);
+  });
+
+  app.put('/api/routines/:id', async (req, res) => {
+    const existing = readRoutines().find(routine => routine.id === req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Routine not found' });
+    const routine = normalizeRoutine(req.body, existing);
+    const validationError = validateRoutineInput(routine);
+    if (validationError) return res.status(400).json({ error: validationError });
+    if (!(await validateProfileIds(routine.assignedProfileIds))) return res.status(400).json({ error: 'One or more assigned profiles are unknown' });
+    const saved = await withHouseholdStorageLock(async () => { const routines = readRoutines(); const index = routines.findIndex(candidate => candidate.id === req.params.id); if (index < 0) return null; routines[index] = routine; writeJsonFile('routines.json', routines); return routine; });
+    if (!saved) return res.status(404).json({ error: 'Routine not found' });
+    res.json(saved);
+  });
+
+  app.delete('/api/routines/:id', async (req, res) => {
+    const deleted = await withHouseholdStorageLock(async () => { const routines = readRoutines(); const index = routines.findIndex(routine => routine.id === req.params.id); if (index < 0) return false; routines.splice(index, 1); writeJsonFile('routines.json', routines); return true; });
+    if (!deleted) return res.status(404).json({ error: 'Routine not found' });
+    res.json({ success: true });
+  });
+
+  app.post('/api/routines/:id/steps/:stepId/toggle', async (req, res) => {
+    const { profileId } = req.body;
+    if (!(await validateProfileIds([profileId]))) return res.status(400).json({ error: 'Unknown profile' });
+    const date = getServerLocalDate(req.query.date);
+    const result = await withHouseholdStorageLock(async () => {
+      const routines = readRoutines(); const routine = routines.find(candidate => candidate.id === req.params.id);
+      if (!routine) return { error: 'Routine not found', status: 404 };
+      if (!routineIsDueToday(routine, date)) return { error: 'Routine is not due today', status: 400 };
+      if (!routine.assignedProfileIds.includes(profileId)) return { error: 'This routine is not assigned to that profile', status: 403 };
+      if (!routine.steps.some(step => step.id === req.params.stepId)) return { error: 'Routine step not found', status: 404 };
+      const progress = readRoutineProgress(); progress[date] = progress[date] || {}; progress[date][routine.id] = progress[date][routine.id] || {};
+      const state = progress[date][routine.id][profileId] || { completedStepIds: [] };
+      state.completedStepIds = Array.isArray(state.completedStepIds) ? state.completedStepIds : [];
+      state.completedStepIds = state.completedStepIds.includes(req.params.stepId) ? state.completedStepIds.filter(id => id !== req.params.stepId) : [...state.completedStepIds, req.params.stepId];
+      progress[date][routine.id][profileId] = state; writeJsonFile('routine_progress.json', progress);
+      const completed = routine.steps.every(step => state.completedStepIds.includes(step.id));
+      let award = null;
+      if (completed) {
+        const ledger = readStarsLedger(); const completionKey = `routine:${routine.id}:${profileId}:${date}`;
+        if (!ledger.some(entry => entry.profileId === profileId && entry.completionKey === completionKey)) {
+          award = makeLedgerEntry({ profileId, delta: routine.starValue, reason: `Routine completed: ${routine.name}`, completionKey, status: 'confirmed' });
+          ledger.push(award); writeJsonFile('stars.json', ledger);
+        }
+      }
+      return { completedStepIds: state.completedStepIds, completed, award, date };
+    });
+    if (result.error) return res.status(result.status).json({ error: result.error });
+    res.json(result);
   });
 
   // Enhanced diagnostics endpoint

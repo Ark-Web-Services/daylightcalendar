@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.1.9.17] - 2026-09-12
+
+The household loop previously stopped at recording stars and rewards on the Chores page. That
+left recurring habits, unassigned work, and the daily reason to participate out of sight of the
+calendar screen families actually use together.
+
+### Added
+- **Up for Grabs, routines, and chore checklists.** Unassigned chores can now be claimed or
+  released safely, multi-step routines award once per person per local day, and chore subtasks
+  stay beside their Home Assistant todo identity without completing the todo by surprise.
+- **A compact, collapsible household-momentum strip on the calendar.** It shows each profile’s
+  stars, next-reward progress, routine steps, and available household work, while honestly
+  explains when the household has not set those features up yet.
+
 ## [1.1.9.16] - 2026-09-12
 
 The chore board previously treated chores as a two-column checklist and then discarded the

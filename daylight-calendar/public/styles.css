@@ -1989,6 +1989,66 @@ footer {
 .pending-award { display: flex; align-items: center; justify-content: space-between; gap: var(--md-space-3); padding: var(--md-space-3); color: var(--md-on-surface); background: var(--md-surface); border-radius: var(--md-shape-small); box-shadow: var(--md-shadow-1); }
 .pending-award > div { display: flex; flex-wrap: wrap; gap: var(--md-space-2); }
 
+/* Household routines and the compact calendar motivation surface share the
+   existing Material tokens so each of Daylight's themes stays legible. */
+.routines-panel { margin: var(--md-space-5) 0 var(--md-space-4); padding: var(--md-space-5); background: var(--md-surface-2); border-radius: var(--md-shape-large); }
+.routines-header, .home-motivation-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--md-space-4); }
+.routines-header h2, .home-motivation-header h2 { margin: 0 0 var(--md-space-1); font-size: 1.35rem; }
+.routines-header p, .home-motivation-header p { margin: 0; color: var(--md-on-surface-variant); }
+.routines-content { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--md-space-4); margin-top: var(--md-space-4); }
+.routine-card { padding: var(--md-space-4); background: var(--md-surface); border-radius: var(--md-shape-medium); box-shadow: var(--md-shadow-1); }
+.routine-card > header, .routine-profile-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--md-space-2); }
+.routine-card > header > div:first-child { display: flex; align-items: center; min-width: 0; gap: var(--md-space-2); }
+.routine-card h3 { margin: 0; font-size: 1.05rem; }
+.routine-card header span { color: var(--md-on-surface-variant); font-size: .8125rem; }
+.routine-card-actions, .subtask-actions { display: flex; gap: var(--md-space-1); }
+.routine-profile { margin-top: var(--md-space-4); padding-top: var(--md-space-3); border-top: 1px solid var(--md-outline-variant); }
+.routine-profile-heading > span, .home-loop-avatar { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; color: var(--profile-color); border: 2px solid var(--profile-color); border-radius: 50%; font-size: .75rem; font-weight: 700; }
+.routine-profile-heading strong { flex: 1; }
+.routine-profile-heading small { color: var(--md-on-surface-variant); }
+.routine-step-list { display: grid; gap: var(--md-space-2); margin-top: var(--md-space-3); }
+.routine-step { display: flex; align-items: center; min-height: 48px; gap: var(--md-space-2); padding: var(--md-space-2) var(--md-space-3); color: var(--md-on-surface); background: var(--md-surface-variant); border: 1px solid var(--md-outline-variant); border-radius: var(--md-shape-small); font: inherit; text-align: left; cursor: pointer; }
+.routine-step.is-done { color: var(--md-on-tertiary-container); background: var(--md-tertiary-container); border-color: var(--md-tertiary); text-decoration: line-through; }
+.routine-step:focus-visible, .claim-profile:focus-visible, .home-motivation-header button:focus-visible { outline: 3px solid var(--md-secondary-container); outline-offset: 2px; }
+.routine-done { margin: var(--md-space-3) 0 0; color: var(--md-on-tertiary-container); font-weight: 700; }
+.routine-days { display: flex; flex-wrap: wrap; gap: var(--md-space-2); }
+.routine-days label { min-height: 44px; padding: var(--md-space-2); color: var(--md-on-surface); background: var(--md-surface-variant); border-radius: var(--md-shape-small); }
+.chore-grabs-option { align-self: end; }
+.claim-profile-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--md-space-3); }
+.claim-profile { display: flex; align-items: center; min-height: 52px; gap: var(--md-space-2); padding: var(--md-space-2) var(--md-space-3); color: var(--md-on-surface); background: var(--md-surface-variant); border: 1px solid var(--md-outline); border-radius: var(--md-shape-small); font: inherit; cursor: pointer; }
+.claim-profile span { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; color: var(--profile-color); border: 2px solid var(--profile-color); border-radius: 50%; font-weight: 700; }
+.chore-subtasks { display: grid; gap: var(--md-space-2); padding-top: var(--md-space-2); border-top: 1px solid var(--md-outline-variant); }
+.subtask-summary { color: var(--md-on-surface-variant); font-size: .8125rem; font-weight: 700; }
+.chore-subtasks ul { display: grid; gap: var(--md-space-1); margin: 0; padding: 0; list-style: none; }
+.chore-subtask { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: var(--md-space-1); color: var(--md-on-surface); }
+.chore-subtask.is-checked > span { color: var(--md-on-surface-variant); text-decoration: line-through; }
+.btn-icon { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; padding: 0; color: var(--md-on-surface-variant); background: transparent; border: 0; border-radius: 50%; cursor: pointer; }
+.btn-icon:disabled { color: var(--md-outline); cursor: default; }
+.subtask-add-form { display: flex; gap: var(--md-space-2); }
+.subtask-add-form input { min-width: 0; flex: 1; }
+.subtasks-ready { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--md-space-2); padding: var(--md-space-3); color: var(--md-on-tertiary-container); background: var(--md-tertiary-container); border-radius: var(--md-shape-small); }
+.home-motivation-loop { margin: var(--md-space-3) 0; padding: var(--md-space-3) var(--md-space-4); background: var(--md-surface-2); border-radius: var(--md-shape-large); }
+.home-motivation-header h2 { font-size: 1rem; }
+.home-motivation-header p { font-size: .8125rem; }
+.home-motivation-header .btn { min-height: 44px; }
+.home-motivation-content { display: flex; align-items: stretch; flex-wrap: wrap; gap: var(--md-space-2); margin-top: var(--md-space-3); }
+.home-loop-profile { display: flex; align-items: center; min-width: 220px; flex: 1 1 220px; gap: var(--md-space-2); padding: var(--md-space-2); color: var(--md-on-surface); background: var(--md-surface); border-radius: var(--md-shape-small); }
+.home-loop-profile > span:nth-child(2) { display: grid; min-width: 0; flex: 1; gap: 2px; }
+.home-loop-profile small, .home-loop-routine, .home-loop-grabs, .home-loop-empty { color: var(--md-on-surface-variant); font-size: .75rem; }
+.home-loop-routine { white-space: nowrap; }
+.home-loop-grabs { display: inline-flex; align-items: center; gap: var(--md-space-1); padding: var(--md-space-2); }
+.home-motivation-loop.is-collapsed .home-motivation-content { display: none; }
+.home-motivation-loop.is-collapsed [data-home-loop-toggle] .material-icons { transform: rotate(180deg); }
+
+@media (max-width: 640px) {
+  .routines-panel { padding: var(--md-space-4); }
+  .routines-header, .home-motivation-header { align-items: stretch; flex-direction: column; }
+  .routines-header .btn, .home-motivation-header .btn { width: 100%; }
+  .subtask-add-form { flex-direction: column; }
+  .subtask-add-form .btn { width: 100%; }
+  .home-loop-profile { min-width: 100%; }
+}
+
 @media (max-width: 640px) {
   .stars-rewards { padding: var(--md-space-4); }
   .stars-rewards-header { flex-direction: column; }

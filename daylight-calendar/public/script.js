@@ -149,6 +149,7 @@ function initializeCalendarPage() {
     if (hasCalendars) {
       setupCalendar();
     }
+    initializeHomeMotivationLoop();
 
     console.log('[INFO] Calendar page initialized');
   }, 100);
@@ -226,7 +227,8 @@ function initializeChoresPage() {
               item: choreData.choreName,
               assignedProfileIds,
               dueDate: choreData.dueDate || null,
-              starValue: Number(choreData.starValue)
+              starValue: Number(choreData.starValue),
+              upForGrabs: document.getElementById('chore-up-for-grabs')?.checked === true
             })
           });
 
@@ -248,6 +250,7 @@ function initializeChoresPage() {
     }
 
     setupStarsAndRewardsHandlers();
+    setupRoutineHandlers();
     await populateChoreAssignees();
     loadChoreSettingsDefault();
     fetchAndDisplayChores();
@@ -2131,13 +2134,14 @@ async function fetchAndDisplayChores() {
     // Create kanban board lanes
     // HA Todo items have status: 'needs_action' or 'completed'
     const lanes = [
-      { id: 'needs_action', title: 'To Do' },
-      { id: 'completed', title: 'Done' }
+      { id: 'up-for-grabs', title: 'Up for Grabs', chores: chores.filter(chore => chore.status === 'needs_action' && chore.upForGrabs === true && !(chore.assignedProfileIds || []).length) },
+      { id: 'needs_action', title: 'To Do', chores: chores.filter(chore => chore.status === 'needs_action' && !(chore.upForGrabs === true && !(chore.assignedProfileIds || []).length)) },
+      { id: 'completed', title: 'Done', chores: chores.filter(chore => chore.status === 'completed') }
     ];
 
     let boardHTML = '';
     lanes.forEach(lane => {
-      const laneChores = chores.filter(chore => chore.status === lane.id && (showCompletedChores || lane.id !== 'completed'));
+      const laneChores = lane.chores.filter(chore => showCompletedChores || lane.id !== 'completed');
 
       boardHTML += `
         <div class="kanban-lane" data-lane="${lane.id}">
@@ -2159,6 +2163,9 @@ async function fetchAndDisplayChores() {
                   <span class="chore-stars"><i class="material-icons" aria-hidden="true">stars</i> ${Number(chore.starValue) || 1}</span>
                   ${(chore.dueDate || chore.due) ? `<span class="chore-due">Due: ${escapeHtml(formatChoreDueDate(chore.dueDate || chore.due))}</span>` : ''}
                 </div>
+                ${renderChoreSubtasks(chore)}
+                ${chore.upForGrabs === true && !(chore.assignedProfileIds || []).length ? `<button type="button" class="btn btn-primary claim-chore-btn" data-claim-chore="${escapeHtml(chore.uid)}">Claim</button>` : ''}
+                ${chore.upForGrabs !== true && (chore.assignedProfileIds || []).length ? `<button type="button" class="btn btn-secondary release-chore-btn" data-release-chore="${escapeHtml(chore.uid)}">Release to household</button>` : ''}
               </div>
             `).join('')}
           </div>
@@ -2169,6 +2176,30 @@ async function fetchAndDisplayChores() {
     choreBoard.innerHTML = boardHTML;
     console.log('[INFO] Chore board populated with real data');
     choreBoard.onclick = async event => {
+      const claimButton = event.target.closest('[data-claim-chore]');
+      if (claimButton) return openClaimChore(claimButton.dataset.claimChore, chores.find(chore => chore.uid === claimButton.dataset.claimChore));
+      const releaseButton = event.target.closest('[data-release-chore]');
+      if (releaseButton) {
+        releaseButton.disabled = true;
+        try { await choreRequest(`api/chores/${encodeURIComponent(releaseButton.dataset.releaseChore)}/release`, { method: 'POST' }); await fetchAndDisplayChores(); } catch (error) { releaseButton.disabled = false; }
+        return;
+      }
+      const subtaskButton = event.target.closest('[data-subtask-toggle]');
+      if (subtaskButton) {
+        subtaskButton.disabled = true;
+        try {
+          const result = await choreRequest(`api/chores/${encodeURIComponent(subtaskButton.dataset.choreId)}/subtasks/${encodeURIComponent(subtaskButton.dataset.subtaskToggle)}/toggle`, { method: 'POST' });
+          await fetchAndDisplayChores();
+          if (result.allDone) showSubtasksReady(subtaskButton.dataset.choreId, entityId);
+        } catch (error) { subtaskButton.disabled = false; }
+        return;
+      }
+      const addSubtask = event.target.closest('[data-add-subtask]');
+      if (addSubtask) return addChoreSubtask(addSubtask.dataset.addSubtask);
+      const moveButton = event.target.closest('[data-subtask-move]');
+      if (moveButton) return moveChoreSubtask(moveButton.dataset.choreId, moveButton.dataset.subtaskMove, moveButton.dataset.direction);
+      const deleteButton = event.target.closest('[data-subtask-delete]');
+      if (deleteButton) { try { await choreRequest(`api/chores/${encodeURIComponent(deleteButton.dataset.choreId)}/subtasks/${encodeURIComponent(deleteButton.dataset.subtaskDelete)}`, { method: 'DELETE' }); await fetchAndDisplayChores(); } catch (error) {} return; }
       const button = event.target.closest('[data-chore-toggle]');
       if (!button) return;
       const newStatus = button.dataset.status === 'completed' ? 'needs_action' : 'completed';
@@ -2185,7 +2216,14 @@ async function fetchAndDisplayChores() {
         button.disabled = false;
       }
     };
+    choreBoard.onsubmit = event => {
+      const form = event.target.closest('.subtask-add-form');
+      if (!form) return;
+      event.preventDefault();
+      addChoreSubtask(form.dataset.choreId);
+    };
     loadStarsAndRewards();
+    loadRoutines();
 
   } catch (error) {
     console.error('[ERROR] Error fetching chores:', error);
@@ -2202,6 +2240,60 @@ function renderChoreProfiles(profileIds) {
   const profiles = profileIds.map(id => choreProfiles.find(profile => profile.id === id)).filter(Boolean);
   if (!profiles.length) return '<span class="chore-unassigned">Unassigned</span>';
   return `<span class="chore-assignees">${profiles.map(profile => `<span class="chore-assignee" title="${escapeHtml(profile.name)}" style="--profile-color:${escapeHtml(getValidCalendarColor(profile.color))}">${escapeHtml(getProfileInitials(profile.name))}</span>`).join('')}</span>`;
+}
+
+function renderChoreSubtasks(chore) {
+  const subtasks = [...(chore.subtasks || [])].sort((a, b) => a.position - b.position);
+  const done = subtasks.filter(subtask => subtask.checked).length;
+  const rows = subtasks.map((subtask, index) => `<li class="chore-subtask${subtask.checked ? ' is-checked' : ''}">
+    <button type="button" class="btn-icon" data-subtask-toggle="${escapeHtml(subtask.id)}" data-chore-id="${escapeHtml(chore.uid)}" aria-label="${subtask.checked ? 'Mark incomplete' : 'Mark complete'}: ${escapeHtml(subtask.text)}"><i class="material-icons" aria-hidden="true">${subtask.checked ? 'check_circle' : 'radio_button_unchecked'}</i></button>
+    <span>${escapeHtml(subtask.text)}</span>
+    <span class="subtask-actions"><button type="button" class="btn-icon" data-subtask-move="${escapeHtml(subtask.id)}" data-chore-id="${escapeHtml(chore.uid)}" data-direction="up" ${index === 0 ? 'disabled' : ''} aria-label="Move ${escapeHtml(subtask.text)} up"><i class="material-icons">arrow_upward</i></button><button type="button" class="btn-icon" data-subtask-move="${escapeHtml(subtask.id)}" data-chore-id="${escapeHtml(chore.uid)}" data-direction="down" ${index === subtasks.length - 1 ? 'disabled' : ''} aria-label="Move ${escapeHtml(subtask.text)} down"><i class="material-icons">arrow_downward</i></button><button type="button" class="btn-icon" data-subtask-delete="${escapeHtml(subtask.id)}" data-chore-id="${escapeHtml(chore.uid)}" aria-label="Delete ${escapeHtml(subtask.text)}"><i class="material-icons">delete</i></button></span>
+  </li>`).join('');
+  return `<section class="chore-subtasks"><div class="subtask-summary">${subtasks.length ? `${done}/${subtasks.length} steps` : 'No steps yet'}</div>${subtasks.length ? `<ul>${rows}</ul>` : ''}<form class="subtask-add-form" data-chore-id="${escapeHtml(chore.uid)}"><label class="sr-only" for="subtask-${escapeHtml(chore.uid)}">Add a step</label><input id="subtask-${escapeHtml(chore.uid)}" name="text" maxlength="160" placeholder="Add a step"><button type="submit" class="btn btn-secondary">Add step</button></form></section>`;
+}
+
+function choreRequest(url, options = {}) {
+  return fetch(url, { ...options, headers: { 'Content-Type': 'application/json', ...(options.headers || {}) } }).then(async response => {
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'Unable to update this chore');
+    return data;
+  });
+}
+
+async function addChoreSubtask(uid) {
+  const input = document.querySelector(`.subtask-add-form[data-chore-id="${CSS.escape(uid)}"] input`);
+  if (!input?.value.trim()) return input?.focus();
+  try { await choreRequest(`api/chores/${encodeURIComponent(uid)}/subtasks`, { method: 'POST', body: JSON.stringify({ text: input.value }) }); await fetchAndDisplayChores(); } catch (error) { input.setCustomValidity(error.message); input.reportValidity(); input.setCustomValidity(''); }
+}
+
+async function moveChoreSubtask(uid, subtaskId, direction) {
+  const card = document.querySelector(`.chore-card[data-chore-id="${CSS.escape(uid)}"]`);
+  const ids = [...card.querySelectorAll('[data-subtask-toggle]')].map(button => button.dataset.subtaskToggle);
+  const index = ids.indexOf(subtaskId); const target = direction === 'up' ? index - 1 : index + 1;
+  if (target < 0 || target >= ids.length) return;
+  [ids[index], ids[target]] = [ids[target], ids[index]];
+  try { await choreRequest(`api/chores/${encodeURIComponent(uid)}/subtasks/reorder`, { method: 'POST', body: JSON.stringify({ orderedIds: ids }) }); await fetchAndDisplayChores(); } catch (error) { console.error(error); }
+}
+
+function showSubtasksReady(uid, entityId) {
+  const card = document.querySelector(`.chore-card[data-chore-id="${CSS.escape(uid)}"]`);
+  if (!card || card.querySelector('.subtasks-ready')) return;
+  const message = document.createElement('div'); message.className = 'subtasks-ready';
+  message.innerHTML = '<span>All subtasks done — mark the chore complete?</span><button type="button" class="btn btn-primary">Mark complete</button>';
+  message.querySelector('button').addEventListener('click', async () => { await choreRequest(`api/chores/${encodeURIComponent(uid)}`, { method: 'PATCH', body: JSON.stringify({ status: 'completed', entityId }) }); await fetchAndDisplayChores(); });
+  card.appendChild(message);
+}
+
+function openClaimChore(uid, chore) {
+  const options = document.getElementById('claim-profile-options');
+  const error = document.getElementById('claim-chore-error');
+  if (!options) return;
+  error.textContent = '';
+  document.getElementById('claim-chore-message').textContent = `Who is claiming ${chore?.summary || 'this chore'}?`;
+  options.innerHTML = choreProfiles.map(profile => `<button type="button" class="claim-profile" data-profile-id="${escapeHtml(profile.id)}" style="--profile-color:${escapeHtml(getValidCalendarColor(profile.color))}"><span>${escapeHtml(getProfileInitials(profile.name))}</span>${escapeHtml(profile.name || 'Unnamed')}</button>`).join('');
+  options.onclick = async event => { const button = event.target.closest('[data-profile-id]'); if (!button) return; button.disabled = true; try { await choreRequest(`api/chores/${encodeURIComponent(uid)}/claim`, { method: 'POST', body: JSON.stringify({ profileId: button.dataset.profileId }) }); document.getElementById('claim-chore-modal').classList.remove('show'); await fetchAndDisplayChores(); } catch (err) { error.textContent = err.message; button.disabled = false; } };
+  document.getElementById('claim-chore-modal').classList.add('show');
 }
 
 async function loadStarsAndRewards() {
@@ -2385,6 +2477,103 @@ async function deleteReward(rewardId) {
     await loadStarsAndRewards();
     renderRewardManager();
   } catch (error) { console.error(error); }
+}
+
+function setupRoutineHandlers() {
+  const frame = document.getElementById('chores-content');
+  if (!frame || frame.dataset.routinesInitialized === 'true') return;
+  frame.dataset.routinesInitialized = 'true';
+  document.getElementById('new-routine-button').onclick = () => openRoutineForm();
+  document.getElementById('manage-routines-button').onclick = () => openRoutineForm();
+  document.getElementById('routine-form').onsubmit = submitRoutineForm;
+  document.getElementById('routines-content').onclick = async event => {
+    const toggle = event.target.closest('[data-routine-toggle]');
+    const edit = event.target.closest('[data-edit-routine]');
+    const remove = event.target.closest('[data-delete-routine]');
+    if (edit) return openRoutineForm(edit._routine);
+    if (remove) {
+      try { await choreRequest(`api/routines/${encodeURIComponent(remove.dataset.deleteRoutine)}`, { method: 'DELETE' }); await loadRoutines(); } catch (error) { console.error(error); }
+      return;
+    }
+    if (!toggle) return;
+    toggle.disabled = true;
+    try { await choreRequest(`api/routines/${encodeURIComponent(toggle.dataset.routineId)}/steps/${encodeURIComponent(toggle.dataset.routineToggle)}/toggle`, { method: 'POST', body: JSON.stringify({ profileId: toggle.dataset.profileId }) }); await loadRoutines(); refreshHomeMotivationLoop(); } catch (error) { toggle.disabled = false; }
+  };
+}
+
+async function loadRoutines() {
+  const content = document.getElementById('routines-content');
+  if (!content) return;
+  try {
+    const response = await fetch('api/routines/today');
+    if (!response.ok) throw new Error('Unable to load routines');
+    const data = await response.json();
+    renderRoutines(data.routines || []);
+  } catch (error) { content.innerHTML = `<p class="stars-empty">${escapeHtml(error.message)}</p>`; }
+}
+
+function renderRoutines(routines) {
+  const content = document.getElementById('routines-content');
+  if (!content) return;
+  if (!routines.length) { content.innerHTML = '<p class="stars-empty">No routines are due today. Add one for a sequence you repeat.</p>'; return; }
+  content.innerHTML = routines.map(routine => {
+    const profiles = routine.profiles || [];
+    const profileSections = profiles.map(progress => {
+      const profile = choreProfiles.find(candidate => candidate.id === progress.profileId) || { name: 'Unknown profile', color: '' };
+      const completeCount = routine.steps.filter(step => progress.completedStepIds.includes(step.id)).length;
+      return `<section class="routine-profile" style="--profile-color:${escapeHtml(getValidCalendarColor(profile.color))}"><div class="routine-profile-heading"><span>${escapeHtml(getProfileInitials(profile.name))}</span><strong>${escapeHtml(profile.name)}</strong><small>${completeCount}/${routine.steps.length}</small></div><div class="routine-step-list">${routine.steps.slice().sort((a, b) => a.position - b.position).map(step => `<button type="button" class="routine-step${progress.completedStepIds.includes(step.id) ? ' is-done' : ''}" data-routine-toggle="${escapeHtml(step.id)}" data-routine-id="${escapeHtml(routine.id)}" data-profile-id="${escapeHtml(progress.profileId)}" aria-pressed="${progress.completedStepIds.includes(step.id)}"><i class="material-icons" aria-hidden="true">${progress.completedStepIds.includes(step.id) ? 'check_circle' : 'radio_button_unchecked'}</i><span>${escapeHtml(step.text)}</span></button>`).join('')}</div>${progress.completed ? '<p class="routine-done">Done — stars earned for today.</p>' : ''}</section>`;
+    }).join('');
+    return `<article class="routine-card"><header><div><i class="material-icons" aria-hidden="true">${escapeHtml(routine.icon || 'routine')}</i><h3>${escapeHtml(routine.name)}</h3><span>${escapeHtml(routine.schedule.timeOfDay)} · ${routine.starValue} stars</span></div><div class="routine-card-actions"><button type="button" class="btn-icon" data-edit-routine="${escapeHtml(routine.id)}" aria-label="Edit ${escapeHtml(routine.name)}"><i class="material-icons">edit</i></button><button type="button" class="btn-icon" data-delete-routine="${escapeHtml(routine.id)}" aria-label="Delete ${escapeHtml(routine.name)}"><i class="material-icons">delete</i></button></div></header>${profileSections}</article>`;
+  }).join('');
+  routines.forEach(routine => content.querySelector(`[data-edit-routine="${CSS.escape(routine.id)}"]`)._routine = routine);
+}
+
+function openRoutineForm(routine = null) {
+  const form = document.getElementById('routine-form');
+  if (!form) return;
+  form.reset(); document.getElementById('routine-form-error').textContent = '';
+  document.getElementById('routine-form-title').textContent = routine ? 'Edit Routine' : 'New Routine';
+  document.getElementById('routine-id').value = routine?.id || '';
+  document.getElementById('routine-name').value = routine?.name || '';
+  document.getElementById('routine-icon').value = routine?.icon || 'routine';
+  document.getElementById('routine-time-band').value = routine?.schedule?.timeOfDay || 'morning';
+  document.getElementById('routine-star-value').value = routine?.starValue || 1;
+  document.getElementById('routine-steps').value = (routine?.steps || []).slice().sort((a, b) => a.position - b.position).map(step => step.text).join('\n');
+  document.getElementById('routine-profile-options').innerHTML = choreProfiles.map(profile => `<label class="chore-profile-option" style="--profile-color:${escapeHtml(getValidCalendarColor(profile.color))}"><input type="checkbox" value="${escapeHtml(profile.id)}" ${(routine?.assignedProfileIds || []).includes(profile.id) ? 'checked' : ''}><span class="calendar-profile-initials">${escapeHtml(getProfileInitials(profile.name))}</span><span>${escapeHtml(profile.name || 'Unnamed')}</span></label>`).join('');
+  document.querySelectorAll('#routine-days input').forEach(input => { input.checked = (routine?.schedule?.days || []).includes(Number(input.value)); });
+  document.getElementById('routine-form-modal').classList.add('show');
+}
+
+async function submitRoutineForm(event) {
+  event.preventDefault();
+  const id = document.getElementById('routine-id').value;
+  const payload = { name: document.getElementById('routine-name').value, icon: document.getElementById('routine-icon').value, assignedProfileIds: [...document.querySelectorAll('#routine-profile-options input:checked')].map(input => input.value), schedule: { days: [...document.querySelectorAll('#routine-days input:checked')].map(input => Number(input.value)), timeOfDay: document.getElementById('routine-time-band').value }, steps: document.getElementById('routine-steps').value.split('\n').map((text, position) => ({ text, position })).filter(step => step.text.trim()), starValue: Number(document.getElementById('routine-star-value').value), active: true };
+  try { await choreRequest(id ? `api/routines/${encodeURIComponent(id)}` : 'api/routines', { method: id ? 'PUT' : 'POST', body: JSON.stringify(payload) }); document.getElementById('routine-form-modal').classList.remove('show'); await loadRoutines(); refreshHomeMotivationLoop(); } catch (error) { document.getElementById('routine-form-error').textContent = error.message; }
+}
+
+function initializeHomeMotivationLoop() {
+  const panel = document.getElementById('home-motivation-loop');
+  if (!panel || panel.dataset.initialized === 'true') return;
+  panel.dataset.initialized = 'true';
+  const collapsed = localStorage.getItem('daylight-home-motivation-collapsed') === 'true';
+  panel.classList.toggle('is-collapsed', collapsed);
+  panel.querySelector('[data-home-loop-toggle]').setAttribute('aria-expanded', String(!collapsed));
+  panel.querySelector('[data-home-loop-toggle]').addEventListener('click', () => { const next = !panel.classList.contains('is-collapsed'); panel.classList.toggle('is-collapsed', next); panel.querySelector('[data-home-loop-toggle]').setAttribute('aria-expanded', String(!next)); localStorage.setItem('daylight-home-motivation-collapsed', String(next)); });
+  refreshHomeMotivationLoop();
+}
+
+async function refreshHomeMotivationLoop() {
+  const content = document.getElementById('home-motivation-content');
+  if (!content) return;
+  try {
+    const [starsResponse, rewardsResponse, routinesResponse, choresResponse] = await Promise.all([fetch('api/stars'), fetch('api/rewards'), fetch('api/routines/today'), fetch('api/chores')]);
+    if (![starsResponse, rewardsResponse, routinesResponse, choresResponse].every(response => response.ok)) throw new Error('Household progress is unavailable');
+    const stars = await starsResponse.json(); const rewards = (await rewardsResponse.json()).filter(reward => reward.active !== false).sort((a, b) => a.starCost - b.starCost); const routines = (await routinesResponse.json()).routines || []; const chores = (await choresResponse.json()).items || [];
+    const grabs = chores.filter(chore => chore.status === 'needs_action' && chore.upForGrabs === true && !(chore.assignedProfileIds || []).length).length;
+    const profiles = stars.profiles || [];
+    if (!rewards.length && !routines.length && !(stars.entries || []).length && grabs === 0) { content.innerHTML = '<p class="home-loop-empty">Nothing set up yet — add a routine, reward, or up-for-grabs chore to start.</p>'; return; }
+    content.innerHTML = `${profiles.map(profile => { const balance = Number(profile.balance) || 0; const next = rewards.find(reward => reward.starCost > balance); const profileRoutines = routines.filter(routine => routine.assignedProfileIds.includes(profile.id)); const steps = profileRoutines.reduce((sum, routine) => sum + routine.steps.length, 0); const complete = profileRoutines.reduce((sum, routine) => sum + ((routine.profiles.find(progress => progress.profileId === profile.id)?.completedStepIds || []).length), 0); return `<div class="home-loop-profile" style="--profile-color:${escapeHtml(getValidCalendarColor(profile.color))}"><span class="home-loop-avatar">${escapeHtml(getProfileInitials(profile.name))}</span><span><strong>${escapeHtml(profile.name || 'Unnamed')}</strong><small>${balance} stars${next ? ` · ${escapeHtml(next.name)} ${balance}/${next.starCost}` : ''}</small></span><span class="home-loop-routine">${steps ? `${complete}/${steps} routine steps` : 'No routine today'}</span></div>`; }).join('')}<div class="home-loop-grabs"><i class="material-icons" aria-hidden="true">volunteer_activism</i><span>${grabs ? `${grabs} chore${grabs === 1 ? '' : 's'} up for grabs` : 'No chores up for grabs'}</span></div>`;
+  } catch (error) { content.innerHTML = `<p class="home-loop-empty">${escapeHtml(error.message)}</p>`; }
 }
 
 function openStarAdjustment() {
