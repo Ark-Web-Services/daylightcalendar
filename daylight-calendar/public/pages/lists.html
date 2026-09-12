@@ -1,0 +1,25 @@
+<turbo-frame id="lists-content">
+  <header class="content-header">
+    <h1>Lists</h1>
+    <div class="lists-sync" id="lists-sync-status" role="status" aria-live="polite">Not synced yet</div>
+  </header>
+  <div class="content-scrollable lists-page">
+    <div class="lists-layout">
+      <aside class="lists-sidebar" aria-label="Your lists">
+        <div id="lists-nav" class="lists-nav"><div class="lists-empty">Loading lists…</div></div>
+        <form id="new-list-form" class="new-list-form">
+          <input id="new-list-name" name="name" type="text" maxlength="80" placeholder="New list name" aria-label="New list name" required>
+          <select id="new-list-type" name="type" aria-label="New list type">
+            <option value="grocery">Grocery</option>
+            <option value="todo">To-do</option>
+            <option value="custom">Custom</option>
+          </select>
+          <button type="submit" class="btn btn-secondary"><i class="material-icons" aria-hidden="true">add</i> New List</button>
+        </form>
+      </aside>
+      <section class="list-workspace" aria-label="Selected list">
+        <div id="list-workspace-content" class="lists-empty">Choose a list to get started.</div>
+      </section>
+    </div>
+  </div>
+</turbo-frame>

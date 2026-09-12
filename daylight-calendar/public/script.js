@@ -24,6 +24,11 @@ let persistedMealTypes = ['Breakfast', 'Lunch', 'Dinner'];
 let recipeBookRecipes = [];
 let selectedRecipeId = null;
 let recipePickerActive = false;
+let householdLists = [];
+let selectedListId = null;
+let listsPollTimer = null;
+let listEditInProgress = false;
+let listPeople = [];
 
 // Display settings (default values)
 let displaySettings = {
@@ -104,6 +109,9 @@ function initializeLoadedFrame(frame) {
       break;
     case 'meals-content':
       initializeMealsPage();
+      break;
+    case 'lists-content':
+      initializeListsPage();
       break;
     case 'games-content':
       initializeGamesPage();
@@ -320,6 +328,7 @@ function initializeMealsPage() {
       groceryListBtn.onclick = () => {
         console.log('[INFO] Grocery list button clicked');
         groceryListModal.classList.add('show');
+        loadGroceryList();
       };
     }
 
@@ -405,12 +414,22 @@ function initializeMealsPage() {
     });
 
     if (addGroceryForm) {
-      addGroceryForm.onsubmit = (e) => {
+      addGroceryForm.onsubmit = async (e) => {
         e.preventDefault();
-        console.log('[INFO] Add grocery item form submitted');
         const formData = new FormData(addGroceryForm);
-        console.log('[INFO] Grocery item data:', Object.fromEntries(formData));
-        addGroceryForm.reset();
+        const input = document.getElementById('groceryItemName');
+        try {
+          const grocery = await getDefaultGroceryList();
+          await listRequest(`api/lists/${encodeURIComponent(grocery.id)}/items`, {
+            method: 'POST',
+            body: JSON.stringify({ text: formData.get('groceryItemName'), quantity: formData.get('groceryItemQuantity') })
+          });
+          addGroceryForm.reset();
+          await loadGroceryList();
+          input?.focus();
+        } catch (error) {
+          showGroceryListError(error.message);
+        }
       };
     }
 
@@ -478,6 +497,247 @@ function initializeGamesPage() {
       loadGameProfiles(profileList);
     }
   }, 100);
+}
+
+function listRequest(url, options = {}) {
+  return fetch(url, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }
+  }).then(async response => {
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'Unable to sync lists');
+    return data;
+  });
+}
+
+function setListsSyncStatus(message, isError = false) {
+  const status = document.getElementById('lists-sync-status');
+  if (!status) return;
+  status.textContent = message;
+  status.classList.toggle('is-error', isError);
+}
+
+function formatListTime(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+function isListsPageVisible() {
+  return document.getElementById('lists-content')?.classList.contains('active-content');
+}
+
+async function loadHouseholdLists({ preserveEdit = false } = {}) {
+  if (preserveEdit && listEditInProgress) return;
+  try {
+    householdLists = await listRequest('api/lists');
+    if (!Array.isArray(householdLists)) householdLists = [];
+    if (!selectedListId || !householdLists.some(list => list.id === selectedListId)) selectedListId = householdLists[0]?.id || null;
+    renderListsPage();
+    setListsSyncStatus(`Synced ${formatListTime(new Date().toISOString())}`);
+  } catch (error) {
+    setListsSyncStatus(`Sync failed: ${error.message}`, true);
+    const workspace = document.getElementById('list-workspace-content');
+    if (workspace && !householdLists.length) workspace.innerHTML = `<div class="lists-error">${escapeHtml(error.message)}. Your changes have not been discarded.</div>`;
+  }
+}
+
+async function loadListPeople() {
+  try {
+    const users = await listRequest('api/users');
+    listPeople = Array.isArray(users) ? users.filter(user => user?.name).map(user => user.name) : [];
+  } catch (error) {
+    listPeople = [];
+  }
+}
+
+function renderListsPage() {
+  const nav = document.getElementById('lists-nav');
+  const workspace = document.getElementById('list-workspace-content');
+  if (!nav || !workspace) return;
+  if (!householdLists.length) {
+    nav.innerHTML = '<div class="lists-empty">No lists yet.</div>';
+    workspace.innerHTML = '<div class="lists-empty">Create a list to begin.</div>';
+    return;
+  }
+  nav.innerHTML = householdLists.map(list => `
+    <button type="button" class="list-nav-item${list.id === selectedListId ? ' is-selected' : ''}" data-list-id="${escapeHtml(list.id)}">
+      <i class="material-icons" aria-hidden="true">${escapeHtml(list.icon || 'checklist')}</i>
+      <span>${escapeHtml(list.name)}</span><small>${(list.items || []).filter(item => !item.checked).length}</small>
+    </button>`).join('');
+  const list = householdLists.find(candidate => candidate.id === selectedListId);
+  if (!list) return;
+  const items = [...(list.items || [])].sort((a, b) => a.position - b.position);
+  const checkerOptions = [`<option value="Household">Household</option>`, ...listPeople.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`)].join('');
+  workspace.innerHTML = `
+    <div class="list-workspace-header">
+      <form id="edit-list-form" class="edit-list-form">
+        <input id="edit-list-name" maxlength="80" value="${escapeHtml(list.name)}" aria-label="List name">
+        <input id="edit-list-icon" maxlength="40" value="${escapeHtml(list.icon || 'checklist')}" aria-label="Material icon name">
+        <button type="submit" class="btn btn-secondary"><i class="material-icons" aria-hidden="true">save</i> Save List</button>
+      </form>
+      <button type="button" id="delete-list-button" class="btn btn-danger"><i class="material-icons" aria-hidden="true">delete</i> Delete List</button>
+    </div>
+    <form id="add-list-item-form" class="list-quick-add">
+      <input id="list-item-text" name="text" type="text" maxlength="200" placeholder="Add an item…" autocomplete="off" required>
+      <input id="list-item-quantity" name="quantity" type="text" maxlength="80" placeholder="Quantity" autocomplete="off">
+      <button type="submit" class="btn btn-primary"><i class="material-icons" aria-hidden="true">add</i> Add Item</button>
+    </form>
+    <div class="list-controls">
+      <label>Checking as <select id="list-checker">${checkerOptions}</select></label>
+      <button type="button" id="clear-checked-button" class="btn btn-secondary"${items.some(item => item.checked) ? '' : ' disabled'}><i class="material-icons" aria-hidden="true">delete_sweep</i> Clear Checked</button>
+    </div>
+    <ul id="list-items" class="list-items">
+      ${items.length ? items.map((item, index) => `
+        <li class="list-item${item.checked ? ' is-checked' : ''}" data-item-id="${escapeHtml(item.id)}">
+          <button type="button" class="list-item-check" data-action="toggle" aria-label="${item.checked ? 'Mark incomplete' : 'Mark complete'}"><i class="material-icons" aria-hidden="true">${item.checked ? 'check_circle' : 'radio_button_unchecked'}</i></button>
+          <div class="list-item-fields">
+            <input class="list-item-text-edit" value="${escapeHtml(item.text)}" aria-label="Item text">
+            <input class="list-item-quantity-edit" value="${escapeHtml(item.quantity || '')}" aria-label="Item quantity">
+            ${item.checked ? `<span class="list-item-meta">Checked by ${escapeHtml(item.checkedBy || 'Household')} · ${escapeHtml(formatListTime(item.checkedAt))}</span>` : ''}
+          </div>
+          <div class="list-item-actions" aria-label="Item actions">
+            <button type="button" class="btn-icon" data-action="save" aria-label="Save item"><i class="material-icons" aria-hidden="true">save</i></button>
+            <button type="button" class="btn-icon" data-action="up" aria-label="Move item up"${index === 0 ? ' disabled' : ''}><i class="material-icons" aria-hidden="true">arrow_upward</i></button>
+            <button type="button" class="btn-icon" data-action="down" aria-label="Move item down"${index === items.length - 1 ? ' disabled' : ''}><i class="material-icons" aria-hidden="true">arrow_downward</i></button>
+            <button type="button" class="btn-icon" data-action="delete" aria-label="Delete item"><i class="material-icons" aria-hidden="true">delete</i></button>
+          </div>
+        </li>`).join('') : '<li class="lists-empty">Nothing here yet. Add the first item above.</li>'}
+    </ul>`;
+  bindListsWorkspace(list);
+}
+
+function bindListsWorkspace(list) {
+  const workspace = document.getElementById('list-workspace-content');
+  if (!workspace) return;
+  workspace.querySelectorAll('input, select').forEach(control => {
+    control.addEventListener('focusin', () => { listEditInProgress = true; });
+    control.addEventListener('focusout', () => { listEditInProgress = false; });
+  });
+  document.getElementById('edit-list-form')?.addEventListener('submit', async event => {
+    event.preventDefault();
+    try {
+      await listRequest(`api/lists/${encodeURIComponent(list.id)}`, { method: 'PUT', body: JSON.stringify({ name: document.getElementById('edit-list-name').value, icon: document.getElementById('edit-list-icon').value }) });
+      await loadHouseholdLists();
+    } catch (error) { setListsSyncStatus(`Save failed: ${error.message}`, true); }
+  });
+  document.getElementById('add-list-item-form')?.addEventListener('submit', async event => {
+    event.preventDefault();
+    const text = document.getElementById('list-item-text');
+    const quantity = document.getElementById('list-item-quantity');
+    try {
+      await listRequest(`api/lists/${encodeURIComponent(list.id)}/items`, { method: 'POST', body: JSON.stringify({ text: text.value, quantity: quantity.value }) });
+      text.value = '';
+      quantity.value = '';
+      await loadHouseholdLists();
+      text.focus();
+    } catch (error) { setListsSyncStatus(`Add failed: ${error.message}. Your text is still here.`, true); }
+  });
+  document.getElementById('delete-list-button')?.addEventListener('click', async () => {
+    if (!window.confirm(`Delete ${list.name}?`)) return;
+    try {
+      await listRequest(`api/lists/${encodeURIComponent(list.id)}`, { method: 'DELETE' });
+      selectedListId = null;
+      await loadHouseholdLists();
+    } catch (error) { setListsSyncStatus(`Delete failed: ${error.message}`, true); }
+  });
+  document.getElementById('clear-checked-button')?.addEventListener('click', async () => {
+    try {
+      await listRequest(`api/lists/${encodeURIComponent(list.id)}/checked`, { method: 'DELETE' });
+      await loadHouseholdLists();
+    } catch (error) { setListsSyncStatus(`Clear failed: ${error.message}`, true); }
+  });
+  workspace.querySelector('#list-items')?.addEventListener('click', async event => {
+    const button = event.target.closest('button[data-action]');
+    const row = event.target.closest('.list-item');
+    if (!button || !row) return;
+    const itemId = row.dataset.itemId;
+    const action = button.dataset.action;
+    try {
+      if (action === 'toggle') {
+        const item = list.items.find(candidate => candidate.id === itemId);
+        await listRequest(`api/lists/${encodeURIComponent(list.id)}/items/${encodeURIComponent(itemId)}`, { method: 'PUT', body: JSON.stringify({ checked: !item.checked, checkedBy: document.getElementById('list-checker')?.value || 'Household' }) });
+      } else if (action === 'save') {
+        await listRequest(`api/lists/${encodeURIComponent(list.id)}/items/${encodeURIComponent(itemId)}`, { method: 'PUT', body: JSON.stringify({ text: row.querySelector('.list-item-text-edit').value, quantity: row.querySelector('.list-item-quantity-edit').value }) });
+      } else if (action === 'delete') {
+        await listRequest(`api/lists/${encodeURIComponent(list.id)}/items/${encodeURIComponent(itemId)}`, { method: 'DELETE' });
+      } else {
+        const ordered = [...(list.items || [])].sort((a, b) => a.position - b.position).map(item => item.id);
+        const from = ordered.indexOf(itemId);
+        const to = action === 'up' ? from - 1 : from + 1;
+        [ordered[from], ordered[to]] = [ordered[to], ordered[from]];
+        await listRequest(`api/lists/${encodeURIComponent(list.id)}/items/reorder`, { method: 'POST', body: JSON.stringify({ orderedIds: ordered }) });
+      }
+      await loadHouseholdLists();
+    } catch (error) { setListsSyncStatus(`${action === 'toggle' ? 'Update' : 'Save'} failed: ${error.message}`, true); }
+  });
+}
+
+function initializeListsPage() {
+  const frame = document.getElementById('lists-content');
+  if (!frame || frame.dataset.listsInitialized === 'true') return;
+  frame.dataset.listsInitialized = 'true';
+  document.getElementById('lists-nav')?.addEventListener('click', event => {
+    const button = event.target.closest('[data-list-id]');
+    if (!button) return;
+    selectedListId = button.dataset.listId;
+    renderListsPage();
+  });
+  document.getElementById('new-list-form')?.addEventListener('submit', async event => {
+    event.preventDefault();
+    const name = document.getElementById('new-list-name');
+    try {
+      const list = await listRequest('api/lists', { method: 'POST', body: JSON.stringify({ name: name.value, type: document.getElementById('new-list-type').value, icon: 'checklist' }) });
+      selectedListId = list.id;
+      name.value = '';
+      await loadHouseholdLists();
+    } catch (error) { setListsSyncStatus(`Create failed: ${error.message}. Your name is still here.`, true); }
+  });
+  loadListPeople();
+  loadHouseholdLists();
+  if (!listsPollTimer) {
+    listsPollTimer = window.setInterval(() => {
+      if (!document.hidden && isListsPageVisible() && !listEditInProgress) loadHouseholdLists({ preserveEdit: true });
+    }, 12000);
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && isListsPageVisible() && !listEditInProgress) loadHouseholdLists({ preserveEdit: true });
+    });
+  }
+}
+
+async function getDefaultGroceryList() {
+  const lists = await listRequest('api/lists');
+  const grocery = lists.find(list => list.type === 'grocery') || lists.find(list => list.name.toLowerCase() === 'grocery');
+  if (!grocery) throw new Error('No grocery list is available');
+  return grocery;
+}
+
+function showGroceryListError(message) {
+  const items = document.getElementById('grocery-items-list');
+  if (items) items.insertAdjacentHTML('afterbegin', `<li class="lists-error">${escapeHtml(message)}</li>`);
+}
+
+async function loadGroceryList() {
+  const items = document.getElementById('grocery-items-list');
+  if (!items) return;
+  try {
+    const grocery = await getDefaultGroceryList();
+    const orderedItems = [...(grocery.items || [])].sort((a, b) => a.position - b.position);
+    items.innerHTML = orderedItems.length ? orderedItems.map(item => `<li class="grocery-live-item${item.checked ? ' is-checked' : ''}" data-item-id="${escapeHtml(item.id)}"><button type="button" class="btn-icon grocery-toggle" aria-label="${item.checked ? 'Mark incomplete' : 'Mark complete'}"><i class="material-icons" aria-hidden="true">${item.checked ? 'check_circle' : 'radio_button_unchecked'}</i></button><span>${escapeHtml(item.text)}${item.quantity ? ` <small>${escapeHtml(item.quantity)}</small>` : ''}</span><button type="button" class="btn-icon grocery-delete" aria-label="Delete ${escapeHtml(item.text)}"><i class="material-icons" aria-hidden="true">delete</i></button></li>`).join('') : '<li class="lists-empty">No grocery items yet.</li>';
+    items.onclick = async event => {
+      const row = event.target.closest('[data-item-id]');
+      if (!row) return;
+      try {
+        if (event.target.closest('.grocery-toggle')) {
+          const item = grocery.items.find(candidate => candidate.id === row.dataset.itemId);
+          await listRequest(`api/lists/${encodeURIComponent(grocery.id)}/items/${encodeURIComponent(item.id)}`, { method: 'PUT', body: JSON.stringify({ checked: !item.checked, checkedBy: 'Household' }) });
+        } else if (event.target.closest('.grocery-delete')) {
+          await listRequest(`api/lists/${encodeURIComponent(grocery.id)}/items/${encodeURIComponent(row.dataset.itemId)}`, { method: 'DELETE' });
+        } else return;
+        await loadGroceryList();
+      } catch (error) { showGroceryListError(`Sync failed: ${error.message}`); }
+    };
+  } catch (error) { items.innerHTML = `<li class="lists-error">${escapeHtml(error.message)}</li>`; }
 }
 
 async function loadGameProfiles(profileList = document.getElementById('profile-list')) {
@@ -2173,9 +2433,62 @@ function showRecipeDetail(recipe) {
   }
   document.getElementById('edit-recipe-button').onclick = () => openRecipeForm(recipe);
   document.getElementById('delete-recipe-button').onclick = () => deleteRecipe(recipe);
+  document.getElementById('add-recipe-to-grocery').onclick = () => addRecipeIngredientsToGrocery(recipe);
+  populateRecipeGroceryLists();
   document.querySelectorAll('#recipe-book-modal .recipe-list-item').forEach(item => {
     item.classList.toggle('is-selected', item.dataset.recipeId === recipe.id);
   });
+}
+
+async function populateRecipeGroceryLists() {
+  const select = document.getElementById('recipe-grocery-list-select');
+  if (!select) return;
+  try {
+    const lists = await listRequest('api/lists');
+    const groceryLists = lists.filter(list => list.type === 'grocery');
+    if (!groceryLists.length) {
+      select.innerHTML = '<option value="">No grocery list</option>';
+      select.disabled = true;
+      return;
+    }
+    select.disabled = false;
+    select.innerHTML = groceryLists.map(list => `<option value="${escapeHtml(list.id)}">${escapeHtml(list.name)}</option>`).join('');
+    // One grocery list needs no decision; multiple lists remain visibly selectable.
+    select.hidden = groceryLists.length === 1;
+  } catch (error) {
+    select.innerHTML = '<option value="">Lists unavailable</option>';
+    select.disabled = true;
+  }
+}
+
+async function addRecipeIngredientsToGrocery(recipe) {
+  const status = document.getElementById('recipe-grocery-status');
+  const select = document.getElementById('recipe-grocery-list-select');
+  const button = document.getElementById('add-recipe-to-grocery');
+  if (!recipe?.ingredients?.length) {
+    if (status) status.textContent = 'This recipe has no ingredients to add.';
+    return;
+  }
+  button.disabled = true;
+  if (status) status.textContent = 'Adding ingredients…';
+  try {
+    const lists = await listRequest('api/lists');
+    const groceryLists = lists.filter(list => list.type === 'grocery');
+    const list = groceryLists.find(candidate => candidate.id === select?.value) || groceryLists[0];
+    if (!list) throw new Error('No grocery list is available');
+    const existingNames = new Set((list.items || []).map(item => String(item.text || '').trim().toLowerCase()));
+    const newIngredients = recipe.ingredients.filter(ingredient => ingredient?.name && !existingNames.has(ingredient.name.trim().toLowerCase()));
+    await Promise.all(newIngredients.map(ingredient => listRequest(`api/lists/${encodeURIComponent(list.id)}/items`, {
+      method: 'POST',
+      body: JSON.stringify({ text: ingredient.name, quantity: ingredient.quantity || '' })
+    })));
+    const skipped = recipe.ingredients.length - newIngredients.length;
+    if (status) status.textContent = `Added ${newIngredients.length} ingredient${newIngredients.length === 1 ? '' : 's'} to ${list.name}.${skipped ? ` ${skipped} already on the list were left unchanged.` : ''}`;
+  } catch (error) {
+    if (status) status.textContent = `Could not add ingredients: ${error.message}. Nothing was hidden.`;
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function openRecipeForm(recipe) {

@@ -2640,6 +2640,265 @@ button.meal-slot.has-meal:focus-visible {
   color: var(--md-on-surface-variant);
 }
 
+/* Household lists: intentionally roomy controls for a wall-mounted display. */
+.lists-page {
+  padding-bottom: var(--md-space-6);
+}
+
+.lists-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.42fr) minmax(0, 1fr);
+  gap: var(--md-space-5);
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.lists-sidebar,
+.list-workspace {
+  min-width: 0;
+  padding: var(--md-space-4);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: var(--md-shape-large);
+  background: var(--md-surface-2);
+}
+
+.lists-nav,
+.list-items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.list-nav-item {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--md-space-2);
+  min-height: 52px;
+  width: 100%;
+  padding: var(--md-space-2) var(--md-space-3);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: var(--md-shape-medium);
+  background: var(--md-surface-1);
+  color: var(--md-on-surface);
+  font: inherit;
+  text-align: left;
+}
+
+.list-nav-item span,
+.list-nav-item small,
+.list-item-meta {
+  overflow-wrap: anywhere;
+}
+
+.list-nav-item small {
+  color: var(--md-on-surface-variant);
+}
+
+.list-nav-item.is-selected,
+.list-nav-item:focus-visible {
+  border-color: var(--md-primary);
+  background: var(--md-primary-container);
+  color: var(--md-on-primary-container);
+}
+
+.new-list-form,
+.edit-list-form,
+.list-quick-add,
+.list-controls,
+.list-workspace-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--md-space-2);
+}
+
+.new-list-form {
+  margin-top: var(--md-space-4);
+  padding-top: var(--md-space-4);
+  border-top: 1px solid var(--md-outline-variant);
+}
+
+.new-list-form input,
+.new-list-form select,
+.edit-list-form input,
+.list-quick-add input,
+.list-controls select,
+.list-item-fields input,
+.recipe-grocery-list-select {
+  min-height: 44px;
+  box-sizing: border-box;
+  border: 1px solid var(--md-outline);
+  border-radius: var(--md-shape-small);
+  background: var(--md-surface-1);
+  color: var(--md-on-surface);
+  font: inherit;
+  padding: var(--md-space-2) var(--md-space-3);
+}
+
+.new-list-form input,
+.list-quick-add input:first-child,
+.edit-list-form input:first-child {
+  flex: 1 1 170px;
+}
+
+.list-quick-add {
+  margin: var(--md-space-4) 0;
+  padding: var(--md-space-3);
+  border-radius: var(--md-shape-medium);
+  background: var(--md-primary-container);
+}
+
+.list-quick-add input {
+  background: var(--md-surface-1);
+}
+
+.list-workspace-header {
+  justify-content: space-between;
+}
+
+.list-controls {
+  justify-content: space-between;
+  margin-bottom: var(--md-space-3);
+  color: var(--md-on-surface-variant);
+}
+
+.list-controls label {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--md-space-2);
+}
+
+.list-item {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--md-space-2);
+  padding: var(--md-space-2);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: var(--md-shape-medium);
+  background: var(--md-surface-1);
+  color: var(--md-on-surface);
+}
+
+.list-item.is-checked {
+  background: var(--md-surface-3);
+}
+
+.list-item.is-checked .list-item-text-edit {
+  text-decoration: line-through;
+}
+
+.list-item-check,
+.list-item-actions .btn-icon,
+.grocery-live-item .btn-icon {
+  min-width: 44px;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: var(--md-shape-small);
+  background: var(--md-surface-variant);
+  color: var(--md-on-surface-variant);
+}
+
+.list-item-check {
+  color: var(--md-primary);
+}
+
+.list-item-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(90px, 0.32fr);
+  gap: var(--md-space-2);
+}
+
+.list-item-meta {
+  grid-column: 1 / -1;
+  color: var(--md-on-surface-variant);
+  font-size: 0.875rem;
+}
+
+.list-item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--md-space-1);
+}
+
+.lists-empty,
+.lists-error {
+  padding: var(--md-space-4);
+  color: var(--md-on-surface-variant);
+  text-align: center;
+}
+
+.lists-error,
+.lists-sync.is-error {
+  color: var(--md-error);
+}
+
+.lists-sync {
+  color: var(--md-on-surface-variant);
+  font-size: 0.875rem;
+}
+
+.grocery-live-item {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  align-items: center;
+  gap: var(--md-space-2);
+  min-height: 52px;
+  margin-bottom: var(--md-space-2);
+  color: var(--md-on-surface);
+}
+
+.grocery-live-item span {
+  overflow-wrap: anywhere;
+}
+
+.grocery-live-item small {
+  color: var(--md-on-surface-variant);
+}
+
+.grocery-live-item.is-checked span {
+  color: var(--md-on-surface-variant);
+  text-decoration: line-through;
+}
+
+.recipe-grocery-status {
+  min-height: 1.25em;
+  margin: var(--md-space-2) 0 0;
+  color: var(--md-on-surface-variant);
+}
+
+@media (max-width: 760px) {
+  .lists-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .list-workspace-header,
+  .list-controls {
+    align-items: stretch;
+  }
+
+  .list-workspace-header > .btn,
+  .list-controls > .btn {
+    width: 100%;
+  }
+
+  .list-item {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+
+  .list-item-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+}
+
 @media (max-width: 760px) {
   .recipe-book {
     grid-template-columns: 1fr;

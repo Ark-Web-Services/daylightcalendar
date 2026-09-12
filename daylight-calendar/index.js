@@ -545,6 +545,66 @@ async function initializeApp() {
     }
   }
 
+  // Lists are deliberately kept in one durable file alongside the other local
+  // add-on state. Writes pass through one queue so two panels cannot both read
+  // the same old file and overwrite one another's changes.
+  const listsFile = path.join(DATA_DIR, 'lists.json');
+  let listWriteQueue = Promise.resolve();
+
+  function makeListId() {
+    return `list_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  function makeItemId() {
+    return `item_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  function makeDefaultGroceryList() {
+    const now = new Date().toISOString();
+    return {
+      id: makeListId(),
+      name: 'Grocery',
+      type: 'grocery',
+      icon: 'shopping_basket',
+      items: [],
+      createdAt: now,
+      updatedAt: now
+    };
+  }
+
+  function readLists() {
+    if (!fs.existsSync(listsFile)) return [makeDefaultGroceryList()];
+    try {
+      const lists = JSON.parse(fs.readFileSync(listsFile, 'utf8'));
+      return Array.isArray(lists) ? lists : [makeDefaultGroceryList()];
+    } catch (err) {
+      console.error('Error reading lists:', err);
+      return [makeDefaultGroceryList()];
+    }
+  }
+
+  function saveLists(lists) {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(listsFile, JSON.stringify(lists, null, 2));
+    return lists;
+  }
+
+  function withListWrite(mutator) {
+    const write = listWriteQueue.then(() => {
+      const lists = readLists();
+      const result = mutator(lists);
+      saveLists(lists);
+      return result;
+    });
+    // Keep the queue usable after a failed disk write while still returning the
+    // original failure to the request that caused it.
+    listWriteQueue = write.catch(() => undefined);
+    return write;
+  }
+
+  // Make a fresh installation useful before its first write.
+  if (!fs.existsSync(listsFile)) saveLists([makeDefaultGroceryList()]);
+
   function readMealPlan() {
     const mealPlanFile = path.join(DATA_DIR, 'meal_plan.json');
     if (fs.existsSync(mealPlanFile)) {
@@ -1429,6 +1489,206 @@ async function initializeApp() {
       res.json(deleted);
     } catch (err) {
       console.error('Delete recipe failed:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // API: Household lists. Mutations use withListWrite so each request sees the
+  // result of the previous request even when phones and the wall panel write at
+  // the same time.
+  app.get('/api/lists', (req, res) => {
+    res.json(readLists());
+  });
+
+  app.post('/api/lists', async (req, res) => {
+    const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+    if (!name) return res.status(400).json({ error: 'List name is required' });
+    const type = ['grocery', 'todo', 'custom'].includes(req.body?.type) ? req.body.type : 'custom';
+    try {
+      const list = await withListWrite(lists => {
+        const now = new Date().toISOString();
+        const created = {
+          id: makeListId(),
+          name,
+          type,
+          icon: typeof req.body?.icon === 'string' && req.body.icon.trim() ? req.body.icon.trim() : 'checklist',
+          items: [],
+          createdAt: now,
+          updatedAt: now
+        };
+        lists.push(created);
+        return created;
+      });
+      res.status(201).json(list);
+    } catch (err) {
+      console.error('Create list failed:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.put('/api/lists/:id', async (req, res) => {
+    try {
+      const list = await withListWrite(lists => {
+        const found = lists.find(candidate => candidate.id === req.params.id);
+        if (!found) return null;
+        if (typeof req.body?.name === 'string') {
+          const name = req.body.name.trim();
+          if (!name) throw new Error('List name is required');
+          found.name = name;
+        }
+        if (typeof req.body?.icon === 'string' && req.body.icon.trim()) found.icon = req.body.icon.trim();
+        found.updatedAt = new Date().toISOString();
+        return found;
+      });
+      if (!list) return res.status(404).json({ error: 'List not found' });
+      res.json(list);
+    } catch (err) {
+      const status = err.message === 'List name is required' ? 400 : 500;
+      if (status === 500) console.error('Update list failed:', err);
+      res.status(status).json({ error: err.message });
+    }
+  });
+
+  app.delete('/api/lists/:id', async (req, res) => {
+    try {
+      const deleted = await withListWrite(lists => {
+        const index = lists.findIndex(candidate => candidate.id === req.params.id);
+        return index === -1 ? null : lists.splice(index, 1)[0];
+      });
+      if (!deleted) return res.status(404).json({ error: 'List not found' });
+      res.json(deleted);
+    } catch (err) {
+      console.error('Delete list failed:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/lists/:id/items', (req, res) => {
+    const list = readLists().find(candidate => candidate.id === req.params.id);
+    if (!list) return res.status(404).json({ error: 'List not found' });
+    res.json(list.items || []);
+  });
+
+  app.post('/api/lists/:id/items', async (req, res) => {
+    const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
+    if (!text) return res.status(400).json({ error: 'Item text is required' });
+    try {
+      const result = await withListWrite(lists => {
+        const list = lists.find(candidate => candidate.id === req.params.id);
+        if (!list) return null;
+        const item = {
+          id: makeItemId(),
+          text,
+          quantity: typeof req.body?.quantity === 'string' || typeof req.body?.quantity === 'number'
+            ? String(req.body.quantity).trim() : '',
+          checked: false,
+          checkedBy: null,
+          checkedAt: null,
+          position: list.items.length,
+          addedAt: new Date().toISOString()
+        };
+        list.items.push(item);
+        list.updatedAt = new Date().toISOString();
+        return { list, item };
+      });
+      if (!result) return res.status(404).json({ error: 'List not found' });
+      res.status(201).json(result.item);
+    } catch (err) {
+      console.error('Create list item failed:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.put('/api/lists/:id/items/:itemId', async (req, res) => {
+    try {
+      const result = await withListWrite(lists => {
+        const list = lists.find(candidate => candidate.id === req.params.id);
+        if (!list) return null;
+        const item = (list.items || []).find(candidate => candidate.id === req.params.itemId);
+        if (!item) return { list, item: null };
+        if (typeof req.body?.text === 'string') {
+          const text = req.body.text.trim();
+          if (!text) throw new Error('Item text is required');
+          item.text = text;
+        }
+        if (typeof req.body?.quantity === 'string' || typeof req.body?.quantity === 'number') item.quantity = String(req.body.quantity).trim();
+        if (typeof req.body?.position === 'number' && Number.isFinite(req.body.position)) item.position = req.body.position;
+        if (typeof req.body?.checked === 'boolean') {
+          item.checked = req.body.checked;
+          item.checkedAt = item.checked ? new Date().toISOString() : null;
+          item.checkedBy = item.checked ? (typeof req.body?.checkedBy === 'string' && req.body.checkedBy.trim() ? req.body.checkedBy.trim() : 'Household') : null;
+        }
+        list.updatedAt = new Date().toISOString();
+        return { list, item };
+      });
+      if (!result) return res.status(404).json({ error: 'List not found' });
+      if (!result.item) return res.status(404).json({ error: 'List item not found' });
+      res.json(result.item);
+    } catch (err) {
+      const status = err.message === 'Item text is required' ? 400 : 500;
+      if (status === 500) console.error('Update list item failed:', err);
+      res.status(status).json({ error: err.message });
+    }
+  });
+
+  app.delete('/api/lists/:id/items/:itemId', async (req, res) => {
+    try {
+      const result = await withListWrite(lists => {
+        const list = lists.find(candidate => candidate.id === req.params.id);
+        if (!list) return null;
+        const index = (list.items || []).findIndex(candidate => candidate.id === req.params.itemId);
+        if (index === -1) return { list, item: null };
+        const item = list.items.splice(index, 1)[0];
+        list.items.forEach((candidate, position) => { candidate.position = position; });
+        list.updatedAt = new Date().toISOString();
+        return { list, item };
+      });
+      if (!result) return res.status(404).json({ error: 'List not found' });
+      if (!result.item) return res.status(404).json({ error: 'List item not found' });
+      res.json(result.item);
+    } catch (err) {
+      console.error('Delete list item failed:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/lists/:id/items/reorder', async (req, res) => {
+    if (!Array.isArray(req.body?.orderedIds)) return res.status(400).json({ error: 'orderedIds must be an array' });
+    try {
+      const list = await withListWrite(lists => {
+        const found = lists.find(candidate => candidate.id === req.params.id);
+        if (!found) return null;
+        const ids = req.body.orderedIds;
+        const byId = new Map((found.items || []).map(item => [item.id, item]));
+        if (ids.length !== byId.size || ids.some(id => !byId.has(id)) || new Set(ids).size !== ids.length) {
+          throw new Error('orderedIds must include every item exactly once');
+        }
+        found.items = ids.map((id, position) => ({ ...byId.get(id), position }));
+        found.updatedAt = new Date().toISOString();
+        return found;
+      });
+      if (!list) return res.status(404).json({ error: 'List not found' });
+      res.json(list);
+    } catch (err) {
+      const status = err.message.includes('orderedIds') ? 400 : 500;
+      if (status === 500) console.error('Reorder list items failed:', err);
+      res.status(status).json({ error: err.message });
+    }
+  });
+
+  app.delete('/api/lists/:id/checked', async (req, res) => {
+    try {
+      const list = await withListWrite(lists => {
+        const found = lists.find(candidate => candidate.id === req.params.id);
+        if (!found) return null;
+        found.items = (found.items || []).filter(item => !item.checked).map((item, position) => ({ ...item, position }));
+        found.updatedAt = new Date().toISOString();
+        return found;
+      });
+      if (!list) return res.status(404).json({ error: 'List not found' });
+      res.json(list);
+    } catch (err) {
+      console.error('Clear checked list items failed:', err);
       res.status(500).json({ error: err.message });
     }
   });

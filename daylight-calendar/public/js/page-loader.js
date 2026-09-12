@@ -274,6 +274,24 @@ class PageLoader {
           }
           break;
 
+        case 'lists':
+          if (typeof initializeListsPage === 'function') {
+            console.log("Initializing lists functionality...");
+            setTimeout(() => {
+              try {
+                initializeListsPage();
+                this.attachListsEventListeners();
+              } catch (error) {
+                console.error("Error initializing lists:", error);
+              }
+              resolve();
+            }, 100);
+          } else {
+            console.warn("initializeListsPage function not found");
+            resolve();
+          }
+          break;
+
         case 'games':
           console.log("Initializing games functionality...");
           setTimeout(() => {
@@ -448,6 +466,14 @@ class PageLoader {
         }
       });
     });
+  }
+
+  /**
+   * Lists owns its event delegation in script.js. Keep this hook alongside the
+   * other page-specific registrations so cached page loads initialize it too.
+   */
+  attachListsEventListeners() {
+    if (typeof initializeListsPage === 'function') initializeListsPage();
   }
 
   /**
@@ -751,7 +777,7 @@ class PageLoader {
    * @returns {Promise<void>}
    */
   async preloadAllPages() {
-    const pages = ['calendar', 'chores', 'meals', 'games', 'settings'];
+    const pages = ['calendar', 'chores', 'meals', 'lists', 'games', 'settings'];
 
     for (const page of pages) {
       try {

@@ -1,4 +1,13 @@
 # Changelog
+## [1.1.9.15] - 2026-09-12
+
+Daylight now has durable household Lists rather than an inert Grocery List modal. Grocery,
+to-do, and custom lists persist in the add-on's `/data` volume, report their last successful
+sync, and refresh while the Lists tab is visible so a phone and wall display stay aligned. List
+writes are serialized before reaching `lists.json`, which prevents simultaneous item adds from
+silently replacing each other. Recipe ingredients can now be added to a chosen grocery list;
+ingredients already on that list are called out and left unchanged instead of being duplicated.
+
 ## [1.1.9.14] - 2026-09-12
 
 The Meal Planner previously presented a convincing but entirely hardcoded sample week: none of
