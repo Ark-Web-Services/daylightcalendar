@@ -29,7 +29,7 @@
               <label for="mealDescription">Description</label>
               <div class="meal-input-group">
                 <input type="text" id="mealDescription" name="mealDescription" placeholder="What's for dinner?" required>
-                <button type="button" id="select-recipe-btn" class="btn btn-sm btn-secondary" disabled title="Recipe book isn't set up yet — type a description instead"><i class="material-icons">menu_book</i> Select Recipe</button>
+                <button type="button" id="select-recipe-btn" class="btn btn-sm btn-secondary"><i class="material-icons" aria-hidden="true">menu_book</i> Select Recipe</button>
               </div>
             </div>
           </div>
@@ -40,7 +40,11 @@
                 <!-- Meal types will be populated by JavaScript -->
               </select>
             </div>
-            <input type="hidden" id="mealDate" name="mealDate">
+            <div class="form-group">
+              <label for="mealDate">Date</label>
+              <input type="date" id="mealDate" name="mealDate" required>
+            </div>
+            <input type="hidden" id="mealId" name="mealId">
             <input type="hidden" id="recipeId" name="recipeId">
           </div>
           <div class="form-row">
@@ -50,9 +54,11 @@
             </div>
           </div>
           <div class="form-actions">
+            <button type="button" id="delete-meal-button" class="btn btn-secondary" hidden><i class="material-icons" aria-hidden="true">delete</i> Remove Meal</button>
             <button type="button" class="btn btn-secondary modal-cancel">Cancel</button>
             <button type="submit" class="btn btn-primary"><i class="material-icons">add_circle</i> Add Meal</button>
           </div>
+          <p id="meal-form-error" class="form-error" role="alert"></p>
         </form>
       </div>
     </div>
@@ -83,14 +89,16 @@
             </div>
             <div class="recipe-detail-content" style="display: none;">
               <div class="recipe-header">
-                <div class="recipe-image-container">
-                  <img id="recipe-image" src="" alt="Recipe Image">
+                <div class="recipe-image-container" hidden>
+                  <img id="recipe-image" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="Recipe Image">
                 </div>
                 <div class="recipe-info">
                   <h3 id="recipe-name"></h3>
                   <p id="recipe-description"></p>
                   <div class="recipe-actions">
                     <button id="add-to-meal-plan" class="btn btn-sm btn-primary"><i class="material-icons">event_note</i> Add to Meal Plan</button>
+                    <button id="edit-recipe-button" class="btn btn-sm btn-secondary"><i class="material-icons" aria-hidden="true">edit</i> Edit</button>
+                    <button id="delete-recipe-button" class="btn btn-sm btn-secondary"><i class="material-icons" aria-hidden="true">delete</i> Delete</button>
                   </div>
                 </div>
               </div>
@@ -111,11 +119,58 @@
                 <div class="cooking-info">
                   <span id="recipe-cooking-time"><i class="material-icons">schedule</i> Prep Time: 30 min</span>
                 </div>
-                <button id="start-cooking-mode" class="btn btn-primary"><i class="material-icons">restaurant</i> Start Cooking</button>
+                <button id="start-cooking-mode" class="btn btn-primary" disabled title="Cooking mode is not available yet"><i class="material-icons">restaurant</i> Start Cooking</button>
               </div>
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recipe Form Modal -->
+  <div id="recipe-form-modal" class="modal">
+    <div class="modal-content recipe-form-modal-content">
+      <div class="modal-header">
+        <h3>New Recipe</h3>
+        <button class="modal-close" type="button" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="recipe-form">
+          <input type="hidden" id="recipeFormId">
+          <div class="form-group">
+            <label for="recipeFormName">Recipe Name</label>
+            <input type="text" id="recipeFormName" required maxlength="120" autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label for="recipeFormDescription">Description</label>
+            <textarea id="recipeFormDescription" rows="2" maxlength="500"></textarea>
+          </div>
+          <div class="form-group">
+            <label for="recipeFormIngredients">Ingredients</label>
+            <textarea id="recipeFormIngredients" rows="5" placeholder="2 cups | Flour&#10;1 tsp | Salt"></textarea>
+            <small>One per line. Put the quantity before a | when you have one.</small>
+          </div>
+          <div class="form-group">
+            <label for="recipeFormInstructions">Instructions</label>
+            <textarea id="recipeFormInstructions" rows="6"></textarea>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="recipeFormPrepTime">Prep Time</label>
+              <input type="text" id="recipeFormPrepTime" placeholder="30 min">
+            </div>
+            <div class="form-group">
+              <label for="recipeFormImageUrl">Image URL</label>
+              <input type="url" id="recipeFormImageUrl" placeholder="https://…">
+            </div>
+          </div>
+          <div class="form-actions">
+            <button type="button" class="btn btn-secondary modal-cancel">Cancel</button>
+            <button type="submit" class="btn btn-primary"><i class="material-icons" aria-hidden="true">save</i> Save Recipe</button>
+          </div>
+          <p id="recipe-form-error" class="form-error" role="alert"></p>
+        </form>
       </div>
     </div>
   </div>

@@ -19,6 +19,11 @@ const supportedThemes = ['light', 'dark', 'pastel', 'forest', 'ocean', 'sunset']
 let selectedTheme = 'light';
 let automaticThemeTimer = null;
 const initializedFrameContent = new WeakMap();
+let displayedMealWeek = moment().startOf('week');
+let persistedMealTypes = ['Breakfast', 'Lunch', 'Dinner'];
+let recipeBookRecipes = [];
+let selectedRecipeId = null;
+let recipePickerActive = false;
 
 // Display settings (default values)
 let displaySettings = {
@@ -275,6 +280,10 @@ function initializeMealsPage() {
   console.log('[INFO] Initializing meals page...');
 
   setTimeout(() => {
+    const mealsContent = document.getElementById('meals-content');
+    if (!mealsContent || mealsContent.dataset.mealsInitialized === 'true') return;
+    mealsContent.dataset.mealsInitialized = 'true';
+
     // Setup meal page buttons
     const prevWeekBtn = document.getElementById('prev-week');
     const nextWeekBtn = document.getElementById('next-week');
@@ -291,23 +300,20 @@ function initializeMealsPage() {
 
     if (prevWeekBtn) {
       prevWeekBtn.onclick = () => {
-        console.log('[INFO] Previous week clicked');
-        // Navigate to previous week
+        displayedMealWeek = displayedMealWeek.clone().subtract(1, 'week');
+        fetchAndDisplayMeals();
       };
     }
 
     if (nextWeekBtn) {
       nextWeekBtn.onclick = () => {
-        console.log('[INFO] Next week clicked');
-        // Navigate to next week
+        displayedMealWeek = displayedMealWeek.clone().add(1, 'week');
+        fetchAndDisplayMeals();
       };
     }
 
     if (recipeBookBtn && recipeBookModal) {
-      recipeBookBtn.onclick = () => {
-        console.log('[INFO] Recipe book button clicked');
-        recipeBookModal.classList.add('show');
-      };
+      recipeBookBtn.onclick = openRecipeBook;
     }
 
     if (groceryListBtn && groceryListModal) {
@@ -319,8 +325,7 @@ function initializeMealsPage() {
 
     if (addMealBtn && addMealModal) {
       addMealBtn.onclick = () => {
-        console.log('[INFO] Add meal button clicked');
-        addMealModal.classList.add('show');
+        openMealForm();
       };
     }
 
@@ -336,15 +341,68 @@ function initializeMealsPage() {
     const addGroceryForm = document.getElementById('add-grocery-item-form');
 
     if (addMealForm) {
-      addMealForm.onsubmit = (e) => {
+      addMealForm.onsubmit = async (e) => {
         e.preventDefault();
-        console.log('[INFO] Add meal form submitted');
         const formData = new FormData(addMealForm);
-        console.log('[INFO] Meal data:', Object.fromEntries(formData));
-        addMealModal.classList.remove('show');
-        addMealForm.reset();
+        const mealId = formData.get('mealId');
+        const payload = {
+          date: formData.get('mealDate'),
+          mealType: formData.get('mealType'),
+          description: formData.get('mealDescription'),
+          cook: formData.get('mealCook'),
+          recipeId: formData.get('recipeId') || null
+        };
+        const submitButton = addMealForm.querySelector('[type="submit"]');
+        if (submitButton) submitButton.disabled = true;
+        try {
+          const response = await fetch(mealId ? `api/meals/${encodeURIComponent(mealId)}` : 'api/meals', {
+            method: mealId ? 'PUT' : 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.error || 'Unable to save this meal');
+          }
+          addMealModal.classList.remove('show');
+          addMealForm.reset();
+          await fetchAndDisplayMeals();
+        } catch (error) {
+          const formError = document.getElementById('meal-form-error');
+          if (formError) formError.textContent = error.message;
+        } finally {
+          if (submitButton) submitButton.disabled = false;
+        }
       };
     }
+
+    const selectRecipeBtn = document.getElementById('select-recipe-btn');
+    if (selectRecipeBtn) {
+      selectRecipeBtn.onclick = () => {
+        recipePickerActive = true;
+        if (recipeBookModal) recipeBookModal.classList.add('show');
+        loadRecipes();
+      };
+    }
+
+    const addRecipeButton = document.getElementById('add-recipe-button');
+    if (addRecipeButton) addRecipeButton.onclick = () => openRecipeForm();
+
+    const recipeForm = document.getElementById('recipe-form');
+    if (recipeForm) recipeForm.onsubmit = submitRecipeForm;
+
+    const addToMealPlanButton = document.getElementById('add-to-meal-plan');
+    if (addToMealPlanButton) addToMealPlanButton.onclick = () => {
+      const recipe = recipeBookRecipes.find(item => item.id === selectedRecipeId);
+      if (recipe) {
+        recipeBookModal?.classList.remove('show');
+        openMealForm({ recipe });
+      }
+    };
+
+    recipeBookModal?.querySelector('.modal-close')?.addEventListener('click', () => {
+      recipePickerActive = false;
+    });
 
     if (addGroceryForm) {
       addGroceryForm.onsubmit = (e) => {
@@ -1894,115 +1952,298 @@ async function fetchAndDisplayChores() {
 }
 
 async function fetchAndDisplayMeals() {
-  console.log('[INFO] fetchAndDisplayMeals called - fetching and displaying meals');
-
   const mealWeekView = document.getElementById('meal-week-view');
-  if (mealWeekView) {
-    let users = [];
-    try {
-      const response = await fetch('api/users');
-      if (!response.ok) throw new Error('Failed to load users');
-      const userData = await response.json();
-      users = Array.isArray(userData) ? userData : [];
-    } catch (error) {
-      console.warn('[WARN] Could not load users for meal assignments:', error);
-    }
+  if (!mealWeekView) return;
+  const start = displayedMealWeek.clone().format('YYYY-MM-DD');
+  const end = displayedMealWeek.clone().add(6, 'days').format('YYYY-MM-DD');
+  mealWeekView.innerHTML = '<div class="loading-indicator"><i class="material-icons spin" aria-hidden="true">refresh</i> Loading meal plan...</div>';
 
-    // Create week view for meals
-    const days = [];
-    for (let i = 0; i < 7; i++) {
-      days.push(moment().startOf('week').add(i, 'days'));
-    }
-
-    const mealTypes = ['Breakfast', 'Lunch', 'Dinner'];
-
-    const assignedCook = index => users.length > 0
-      ? users[index % users.length]
-      : { name: 'Unassigned', color: getNeutralCalendarColor() };
-
-    // Sample meal content uses real household names when people exist.
-    const sampleMeals = [
-      { day: 0, type: 'Breakfast', description: 'Pancakes', cook: assignedCook(0) },
-      { day: 0, type: 'Dinner', description: 'Spaghetti & Meatballs', cook: assignedCook(1) },
-      { day: 1, type: 'Lunch', description: 'Caesar Salad', cook: assignedCook(2) },
-      { day: 2, type: 'Dinner', description: 'Grilled Chicken', cook: assignedCook(3) }
-    ];
+  try {
+    const [mealResponse, usersResponse] = await Promise.all([
+      fetch(`api/meals?start=${start}&end=${end}`),
+      fetch('api/users').catch(() => null)
+    ]);
+    if (!mealResponse.ok) throw new Error('Unable to load the meal plan');
+    const mealData = await mealResponse.json();
+    const meals = Array.isArray(mealData.meals) ? mealData.meals : [];
+    persistedMealTypes = Array.isArray(mealData.mealTypes) && mealData.mealTypes.length
+      ? mealData.mealTypes
+      : ['Breakfast', 'Lunch', 'Dinner'];
+    populateMealTypeSelect(document.getElementById('mealType')?.value || persistedMealTypes[0]);
+    const users = usersResponse?.ok ? await usersResponse.json() : [];
+    const days = Array.from({ length: 7 }, (_, index) => displayedMealWeek.clone().add(index, 'days'));
+    const mealsBySlot = new Map(meals.map(meal => [`${meal.date}|${meal.mealType}`, meal]));
+    const usersByName = new Map((Array.isArray(users) ? users : []).map(user => [user.name, user]));
 
     let weekHTML = `
       <div class="meal-week-header">
-        <p class="meal-week-eyebrow">This week</p>
-        <h2>Week of ${moment().startOf('week').format('MMMM D, YYYY')}</h2>
+        <h2>Week of ${escapeHtml(displayedMealWeek.format('MMMM D, YYYY'))}</h2>
+        ${meals.length === 0 ? '<p class="meal-empty-state">No meals planned this week yet. Tap any meal period to add one.</p>' : ''}
       </div>
-      <div class="meal-day-grid">
-    `;
+      <div class="meal-day-grid">`;
 
-    days.forEach((day, dayIndex) => {
+    days.forEach(day => {
+      const date = day.format('YYYY-MM-DD');
       weekHTML += `
         <article class="meal-day-card${day.isSame(moment(), 'day') ? ' is-today' : ''}">
           <header class="meal-day-heading">
-            <span class="meal-day-name">${day.format('dddd')}</span>
-            <span class="meal-day-date">${day.format('MMM D')}</span>
+            <span class="meal-day-name">${escapeHtml(day.format('dddd'))}</span>
+            <span class="meal-day-date">${escapeHtml(day.format('MMM D'))}</span>
           </header>
           <div class="meal-day-periods">
-            ${mealTypes.map(mealType => {
-        const meal = sampleMeals.find(item => item.day === dayIndex && item.type === mealType);
-        if (meal) {
-          const cookName = escapeHtml(meal.cook.name || 'Unassigned');
-          const cookColor = getValidCalendarColor(meal.cook.color, getNeutralCalendarColor());
-          return `
-              <div class="meal-period">
-                <span class="meal-period-label">${mealType}</span>
-                <div class="meal-slot has-meal" data-day="${dayIndex}" data-meal-type="${mealType}">
-                  <span class="meal-description">${meal.description}</span>
-                  <span class="meal-cook"><span class="meal-cook-dot" style="background-color: ${cookColor}"></span>${cookName}</span>
-                </div>
-              </div>
-          `;
-        }
-        return `
-              <div class="meal-period">
-                <span class="meal-period-label">${mealType}</span>
-                <button type="button" class="meal-slot meal-empty" data-day="${dayIndex}" data-meal-type="${mealType}" aria-label="Add ${mealType.toLowerCase()} for ${day.format('dddd')}">
-                  <i class="material-icons" aria-hidden="true">add</i>
-                  <span>Add meal</span>
-                </button>
-              </div>
-        `;
-      }).join('')}
+            ${persistedMealTypes.map(mealType => {
+              const meal = mealsBySlot.get(`${date}|${mealType}`);
+              if (meal) {
+                const cook = usersByName.get(meal.cook);
+                const cookColor = getValidCalendarColor(cook?.color, getNeutralCalendarColor());
+                const cookMarkup = meal.cook
+                  ? `<span class="meal-cook"><span class="meal-cook-dot" style="background-color: ${cookColor}"></span>${escapeHtml(meal.cook)}</span>`
+                  : '';
+                return `<div class="meal-period"><span class="meal-period-label">${escapeHtml(mealType)}</span>
+                  <button type="button" class="meal-slot has-meal" data-meal-id="${escapeHtml(meal.id)}" aria-label="Edit ${escapeHtml(meal.description || mealType)}">
+                    <span class="meal-description">${escapeHtml(meal.description || 'Meal planned')}</span>${cookMarkup}
+                  </button></div>`;
+              }
+              return `<div class="meal-period"><span class="meal-period-label">${escapeHtml(mealType)}</span>
+                <button type="button" class="meal-slot meal-empty" data-date="${date}" data-meal-type="${escapeHtml(mealType)}" aria-label="Add ${escapeHtml(mealType.toLowerCase())} for ${escapeHtml(day.format('dddd'))}">
+                  <i class="material-icons" aria-hidden="true">add</i><span>Add meal</span>
+                </button></div>`;
+            }).join('')}
           </div>
-        </article>
-      `;
+        </article>`;
     });
-
-    weekHTML += '</div>';
-    mealWeekView.innerHTML = weekHTML;
-
-    // Add click handlers for empty meal slots
-    mealWeekView.onclick = (e) => {
-      const mealSlot = e.target.closest('.meal-slot');
-      if (mealSlot && mealSlot.classList.contains('meal-empty')) {
-        const day = mealSlot.dataset.day;
-        const mealType = mealSlot.dataset.mealType;
-        console.log('[INFO] Clicked empty meal slot:', day, mealType);
-
-        // Open add meal modal with pre-filled data
-        const addMealModal = document.getElementById('add-meal-modal');
-        const mealTypeSelect = document.getElementById('mealType');
-        const mealDateInput = document.getElementById('mealDate');
-
-        if (addMealModal && mealTypeSelect && mealDateInput) {
-          // Populate meal types
-          mealTypeSelect.innerHTML = mealTypes.map(type =>
-            `<option value="${type}" ${type === mealType ? 'selected' : ''}>${type}</option>`
-          ).join('');
-
-          mealDateInput.value = moment().startOf('week').add(parseInt(day), 'days').format('YYYY-MM-DD');
-          addMealModal.classList.add('show');
-        }
+    mealWeekView.innerHTML = `${weekHTML}</div>`;
+    mealWeekView.onclick = event => {
+      const mealSlot = event.target.closest('.meal-slot');
+      if (!mealSlot) return;
+      if (mealSlot.classList.contains('meal-empty')) {
+        openMealForm({ date: mealSlot.dataset.date, mealType: mealSlot.dataset.mealType });
+      } else if (mealSlot.classList.contains('has-meal')) {
+        const meal = meals.find(item => item.id === mealSlot.dataset.mealId);
+        if (meal) openMealForm({ meal });
       }
     };
+  } catch (error) {
+    console.error('[ERROR] Failed to load meals:', error);
+    mealWeekView.innerHTML = `<div class="error-message">${escapeHtml(error.message)} <button type="button" class="btn btn-secondary" id="retry-meals">Try again</button></div>`;
+    document.getElementById('retry-meals')?.addEventListener('click', fetchAndDisplayMeals, { once: true });
+  }
+}
 
-    console.log('[INFO] Meal week view populated with sample data');
+function populateMealTypeSelect(selectedType) {
+  const mealTypeSelect = document.getElementById('mealType');
+  if (!mealTypeSelect) return;
+  mealTypeSelect.innerHTML = persistedMealTypes.map(type =>
+    `<option value="${escapeHtml(type)}"${type === selectedType ? ' selected' : ''}>${escapeHtml(type)}</option>`
+  ).join('');
+}
+
+function openRecipeBook() {
+  recipePickerActive = false;
+  const modal = document.getElementById('recipe-book-modal');
+  if (!modal) return;
+  modal.classList.add('show');
+  loadRecipes();
+}
+
+function openMealForm({ date, mealType, meal, recipe } = {}) {
+  const modal = document.getElementById('add-meal-modal');
+  const form = document.getElementById('add-meal-form');
+  if (!modal || !form) return;
+  const recipeToUse = recipe || (meal?.recipeId ? recipeBookRecipes.find(item => item.id === meal.recipeId) : null);
+  form.reset();
+  populateMealTypeSelect(meal?.mealType || mealType || persistedMealTypes[0]);
+  document.getElementById('mealId').value = meal?.id || '';
+  document.getElementById('mealDate').value = meal?.date || date || displayedMealWeek.format('YYYY-MM-DD');
+  document.getElementById('mealDescription').value = meal?.description || recipeToUse?.name || '';
+  document.getElementById('mealCook').value = meal?.cook || '';
+  document.getElementById('recipeId').value = meal?.recipeId || recipeToUse?.id || '';
+  const title = modal.querySelector('.modal-header h3');
+  const submitButton = form.querySelector('[type="submit"]');
+  const deleteButton = document.getElementById('delete-meal-button');
+  const formError = document.getElementById('meal-form-error');
+  if (title) title.textContent = meal ? 'Edit Meal' : 'Add New Meal';
+  if (submitButton) submitButton.innerHTML = meal
+    ? '<i class="material-icons" aria-hidden="true">save</i> Save Meal'
+    : '<i class="material-icons" aria-hidden="true">add_circle</i> Add Meal';
+  if (formError) formError.textContent = '';
+  if (deleteButton) {
+    deleteButton.hidden = !meal;
+    deleteButton.onclick = async () => {
+      if (!meal || !window.confirm(`Remove ${meal.description || 'this meal'}?`)) return;
+      deleteButton.disabled = true;
+      try {
+        const response = await fetch(`api/meals/${encodeURIComponent(meal.id)}`, { method: 'DELETE' });
+        if (!response.ok) throw new Error('Unable to remove this meal');
+        modal.classList.remove('show');
+        await fetchAndDisplayMeals();
+      } catch (error) {
+        if (formError) formError.textContent = error.message;
+      } finally {
+        deleteButton.disabled = false;
+      }
+    };
+  }
+  modal.classList.add('show');
+}
+
+async function loadRecipes() {
+  const recipeList = document.querySelector('#recipe-book-modal .recipe-list');
+  if (!recipeList) return;
+  recipeList.innerHTML = '<div class="recipe-list-placeholder"><i class="material-icons spin" aria-hidden="true">refresh</i> Loading recipes...</div>';
+  try {
+    const response = await fetch('api/recipes');
+    if (!response.ok) throw new Error('Unable to load recipes');
+    recipeBookRecipes = await response.json();
+    if (!Array.isArray(recipeBookRecipes) || recipeBookRecipes.length === 0) {
+      recipeBookRecipes = [];
+      recipeList.innerHTML = '<div class="recipe-list-placeholder">No recipes yet — add your first.</div>';
+      showRecipePlaceholder('Add a recipe to start your Recipe Book');
+      return;
+    }
+    recipeList.innerHTML = recipeBookRecipes.map(recipe => `
+      <button type="button" class="recipe-list-item${recipe.id === selectedRecipeId ? ' is-selected' : ''}" data-recipe-id="${escapeHtml(recipe.id)}">
+        <span class="recipe-list-item-name">${escapeHtml(recipe.name)}</span>
+        ${recipe.description ? `<span class="recipe-list-item-description">${escapeHtml(recipe.description)}</span>` : ''}
+      </button>`).join('');
+    recipeList.onclick = event => {
+      const item = event.target.closest('.recipe-list-item');
+      if (!item) return;
+      const recipe = recipeBookRecipes.find(candidate => candidate.id === item.dataset.recipeId);
+      if (!recipe) return;
+      if (recipePickerActive) {
+        const description = document.getElementById('mealDescription');
+        const recipeId = document.getElementById('recipeId');
+        if (description) description.value = recipe.name;
+        if (recipeId) recipeId.value = recipe.id;
+        recipePickerActive = false;
+        document.getElementById('recipe-book-modal')?.classList.remove('show');
+        return;
+      }
+      showRecipeDetail(recipe);
+    };
+    const selected = recipeBookRecipes.find(recipe => recipe.id === selectedRecipeId);
+    if (selected) showRecipeDetail(selected);
+    else showRecipePlaceholder('Select a recipe to view details');
+  } catch (error) {
+    console.error('[ERROR] Failed to load recipes:', error);
+    recipeList.innerHTML = `<div class="recipe-list-placeholder recipe-load-error">${escapeHtml(error.message)} <button type="button" class="btn btn-secondary" id="retry-recipes">Try again</button></div>`;
+    document.getElementById('retry-recipes')?.addEventListener('click', loadRecipes, { once: true });
+    showRecipePlaceholder('Recipes are unavailable right now');
+  }
+}
+
+function showRecipePlaceholder(message) {
+  const placeholder = document.querySelector('#recipe-book-modal .recipe-detail-placeholder');
+  const content = document.querySelector('#recipe-book-modal .recipe-detail-content');
+  if (placeholder) {
+    const messageElement = placeholder.querySelector('p');
+    if (messageElement) messageElement.textContent = message;
+    placeholder.style.display = '';
+  }
+  if (content) content.style.display = 'none';
+}
+
+function showRecipeDetail(recipe) {
+  selectedRecipeId = recipe.id;
+  const placeholder = document.querySelector('#recipe-book-modal .recipe-detail-placeholder');
+  const content = document.querySelector('#recipe-book-modal .recipe-detail-content');
+  if (placeholder) placeholder.style.display = 'none';
+  if (!content) return;
+  content.style.display = '';
+  document.getElementById('recipe-name').textContent = recipe.name || '';
+  document.getElementById('recipe-description').textContent = recipe.description || '';
+  document.getElementById('recipe-ingredients-list').innerHTML = (recipe.ingredients || []).length
+    ? recipe.ingredients.map(ingredient => `<li>${escapeHtml(ingredient.quantity ? `${ingredient.quantity} ` : '')}${escapeHtml(ingredient.name)}</li>`).join('')
+    : '<li>No ingredients added yet.</li>';
+  document.getElementById('recipe-instructions-text').innerHTML = recipe.instructions
+    ? escapeHtml(recipe.instructions).replace(/\n/g, '<br>')
+    : 'No instructions added yet.';
+  document.getElementById('recipe-cooking-time').innerHTML = `<i class="material-icons" aria-hidden="true">schedule</i> Prep Time: ${escapeHtml(recipe.prepTime || 'Not specified')}`;
+  const imageContainer = document.querySelector('#recipe-book-modal .recipe-image-container');
+  const image = document.getElementById('recipe-image');
+  if (imageContainer && image) {
+    imageContainer.hidden = !recipe.imageUrl;
+    if (recipe.imageUrl) {
+      image.src = recipe.imageUrl;
+      image.alt = recipe.name ? `${recipe.name} recipe` : 'Recipe image';
+    } else {
+      image.removeAttribute('src');
+    }
+  }
+  document.getElementById('edit-recipe-button').onclick = () => openRecipeForm(recipe);
+  document.getElementById('delete-recipe-button').onclick = () => deleteRecipe(recipe);
+  document.querySelectorAll('#recipe-book-modal .recipe-list-item').forEach(item => {
+    item.classList.toggle('is-selected', item.dataset.recipeId === recipe.id);
+  });
+}
+
+function openRecipeForm(recipe) {
+  const modal = document.getElementById('recipe-form-modal');
+  const form = document.getElementById('recipe-form');
+  if (!modal || !form) return;
+  form.reset();
+  document.getElementById('recipeFormId').value = recipe?.id || '';
+  document.getElementById('recipeFormName').value = recipe?.name || '';
+  document.getElementById('recipeFormDescription').value = recipe?.description || '';
+  document.getElementById('recipeFormIngredients').value = (recipe?.ingredients || [])
+    .map(item => `${item.quantity || ''}${item.quantity ? ' | ' : ''}${item.name || ''}`).join('\n');
+  document.getElementById('recipeFormInstructions').value = recipe?.instructions || '';
+  document.getElementById('recipeFormPrepTime').value = recipe?.prepTime || '';
+  document.getElementById('recipeFormImageUrl').value = recipe?.imageUrl || '';
+  document.getElementById('recipe-form-error').textContent = '';
+  modal.querySelector('.modal-header h3').textContent = recipe ? 'Edit Recipe' : 'New Recipe';
+  modal.classList.add('show');
+}
+
+async function submitRecipeForm(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const recipeId = document.getElementById('recipeFormId').value;
+  const ingredients = document.getElementById('recipeFormIngredients').value.split('\n')
+    .map(line => line.trim()).filter(Boolean).map(line => {
+      const [quantity, ...nameParts] = line.split('|');
+      return nameParts.length ? { quantity: quantity.trim(), name: nameParts.join('|').trim() } : { name: quantity, quantity: '' };
+    });
+  const payload = {
+    name: document.getElementById('recipeFormName').value,
+    description: document.getElementById('recipeFormDescription').value,
+    ingredients,
+    instructions: document.getElementById('recipeFormInstructions').value,
+    prepTime: document.getElementById('recipeFormPrepTime').value,
+    imageUrl: document.getElementById('recipeFormImageUrl').value
+  };
+  const errorElement = document.getElementById('recipe-form-error');
+  const submitButton = form.querySelector('[type="submit"]');
+  if (submitButton) submitButton.disabled = true;
+  try {
+    const response = await fetch(recipeId ? `api/recipes/${encodeURIComponent(recipeId)}` : 'api/recipes', {
+      method: recipeId ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const savedRecipe = await response.json();
+    if (!response.ok) throw new Error(savedRecipe.error || 'Unable to save this recipe');
+    selectedRecipeId = savedRecipe.id;
+    document.getElementById('recipe-form-modal').classList.remove('show');
+    await loadRecipes();
+  } catch (error) {
+    errorElement.textContent = error.message;
+  } finally {
+    if (submitButton) submitButton.disabled = false;
+  }
+}
+
+async function deleteRecipe(recipe) {
+  if (!window.confirm(`Delete ${recipe.name}?`)) return;
+  try {
+    const response = await fetch(`api/recipes/${encodeURIComponent(recipe.id)}`, { method: 'DELETE' });
+    if (!response.ok) throw new Error('Unable to delete this recipe');
+    selectedRecipeId = null;
+    await loadRecipes();
+  } catch (error) {
+    const detail = document.querySelector('#recipe-book-modal .recipe-detail');
+    if (detail) detail.insertAdjacentHTML('afterbegin', `<div class="recipe-load-error">${escapeHtml(error.message)}</div>`);
   }
 }
 

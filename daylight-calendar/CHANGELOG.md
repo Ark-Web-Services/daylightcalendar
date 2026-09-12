@@ -1,4 +1,15 @@
 # Changelog
+## [1.1.9.14] - 2026-09-12
+
+The Meal Planner previously presented a convincing but entirely hardcoded sample week: none of
+the meals shown came from the household, and submitting the Add Meal form only wrote the entered
+data to the browser console before discarding it. Meals and recipes now persist in the add-on's
+durable `/data` storage, so planning a meal, changing weeks, editing a plan, and reopening the
+Recipe Book all use the data the household actually entered. The Recipe Book's previously inert
+controls now create, edit, select, and delete recipes, and a selected recipe can be attached to
+a meal plan entry. Grocery-list integration and cooking mode remain intentionally unavailable
+until their underlying workflows exist.
+
 ## [1.1.9.13] - 2026-09-12
 
 Calendar routing in 1.1.9.12 was only half-shipped: the calendar-management screen rendered

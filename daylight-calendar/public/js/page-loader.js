@@ -378,7 +378,8 @@ class PageLoader {
         const pageSpecificModal = mealsContentArea.querySelector('#recipe-book-modal');
         const modal = pageSpecificModal || document.getElementById('recipe-book-modal');
 
-        if (modal) {
+        if (typeof openRecipeBook === 'function') openRecipeBook();
+        else if (modal) {
           modal.classList.add('show');
           if (typeof loadRecipes === 'function') loadRecipes();
         } else {
@@ -404,7 +405,8 @@ class PageLoader {
         const pageSpecificModal = mealsContentArea.querySelector('#add-meal-modal');
         const modal = pageSpecificModal || document.getElementById('add-meal-modal');
 
-        if (modal) modal.classList.add('show');
+        if (typeof openMealForm === 'function') openMealForm();
+        else if (modal) modal.classList.add('show');
         else console.warn("Add meal modal not found");
       });
     } else {

@@ -515,6 +515,125 @@ async function initializeApp() {
     }
   }
 
+  // Meal planning is local add-on state, so it must live in DATA_DIR rather than
+  // the application image. Keep malformed files from preventing the calendar
+  // from starting; an empty plan is always a safe fallback.
+  const DEFAULT_MEAL_TYPES = ['Breakfast', 'Lunch', 'Dinner'];
+
+  function readRecipes() {
+    const recipesFile = path.join(DATA_DIR, 'recipes.json');
+    if (fs.existsSync(recipesFile)) {
+      try {
+        const recipes = JSON.parse(fs.readFileSync(recipesFile, 'utf8'));
+        return Array.isArray(recipes) ? recipes : [];
+      } catch (err) {
+        console.error('Error reading recipes:', err);
+      }
+    }
+    return [];
+  }
+
+  function saveRecipes(recipes) {
+    const recipesFile = path.join(DATA_DIR, 'recipes.json');
+    try {
+      if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+      fs.writeFileSync(recipesFile, JSON.stringify(recipes, null, 2));
+      return recipes;
+    } catch (err) {
+      console.error('Error saving recipes:', err);
+      throw err;
+    }
+  }
+
+  function readMealPlan() {
+    const mealPlanFile = path.join(DATA_DIR, 'meal_plan.json');
+    if (fs.existsSync(mealPlanFile)) {
+      try {
+        const mealPlan = JSON.parse(fs.readFileSync(mealPlanFile, 'utf8'));
+        const mealTypes = Array.isArray(mealPlan.mealTypes)
+          ? mealPlan.mealTypes.filter(type => typeof type === 'string' && type.trim())
+          : [];
+        return {
+          meals: Array.isArray(mealPlan.meals) ? mealPlan.meals : [],
+          mealTypes: mealTypes.length ? [...new Set(mealTypes)] : [...DEFAULT_MEAL_TYPES]
+        };
+      } catch (err) {
+        console.error('Error reading meal plan:', err);
+      }
+    }
+    return { meals: [], mealTypes: [...DEFAULT_MEAL_TYPES] };
+  }
+
+  function saveMealPlan(mealPlan) {
+    const mealPlanFile = path.join(DATA_DIR, 'meal_plan.json');
+    try {
+      if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+      const normalized = {
+        meals: Array.isArray(mealPlan.meals) ? mealPlan.meals : [],
+        mealTypes: Array.isArray(mealPlan.mealTypes) && mealPlan.mealTypes.length
+          ? [...new Set(mealPlan.mealTypes.filter(type => typeof type === 'string' && type.trim()))]
+          : [...DEFAULT_MEAL_TYPES]
+      };
+      fs.writeFileSync(mealPlanFile, JSON.stringify(normalized, null, 2));
+      return normalized;
+    } catch (err) {
+      console.error('Error saving meal plan:', err);
+      throw err;
+    }
+  }
+
+  function isIsoDate(value) {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const date = new Date(`${value}T00:00:00Z`);
+    return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+  }
+
+  function normalizeRecipe(payload, existing = {}) {
+    const ingredients = Array.isArray(payload.ingredients)
+      ? payload.ingredients
+        .filter(item => item && typeof item.name === 'string' && item.name.trim())
+        .map(item => ({
+          name: item.name.trim(),
+          quantity: typeof item.quantity === 'string' || typeof item.quantity === 'number'
+            ? String(item.quantity).trim()
+            : ''
+        }))
+      : (Array.isArray(existing.ingredients) ? existing.ingredients : []);
+    return {
+      ...existing,
+      name: typeof payload.name === 'string' ? payload.name.trim() : (existing.name || ''),
+      description: typeof payload.description === 'string' ? payload.description.trim() : (existing.description || ''),
+      ingredients,
+      instructions: typeof payload.instructions === 'string' ? payload.instructions.trim() : (existing.instructions || ''),
+      prepTime: typeof payload.prepTime === 'string' || typeof payload.prepTime === 'number'
+        ? String(payload.prepTime).trim()
+        : (existing.prepTime || ''),
+      imageUrl: typeof payload.imageUrl === 'string' ? payload.imageUrl.trim() : (existing.imageUrl || '')
+    };
+  }
+
+  function normalizeMeal(payload, mealPlan, existing = {}) {
+    const date = typeof payload.date === 'string' ? payload.date : existing.date;
+    const mealType = typeof payload.mealType === 'string' ? payload.mealType.trim() : existing.mealType;
+    if (!isIsoDate(date)) return { error: 'date must be a valid YYYY-MM-DD value' };
+    if (!mealType || !mealPlan.mealTypes.includes(mealType)) {
+      return { error: 'mealType must be one of the configured meal types' };
+    }
+    const recipeId = payload.recipeId === null || payload.recipeId === ''
+      ? null
+      : (typeof payload.recipeId === 'string' ? payload.recipeId : (existing.recipeId || null));
+    return {
+      meal: {
+        ...existing,
+        date,
+        mealType,
+        description: typeof payload.description === 'string' ? payload.description.trim() : (existing.description || ''),
+        cook: typeof payload.cook === 'string' ? payload.cook.trim() : (existing.cook || ''),
+        recipeId
+      }
+    };
+  }
+
   function clearLabelsForCalendars(calendarIds) {
     const normalizedIds = normalizeCalendarIds(calendarIds);
     if (normalizedIds.length === 0) return;
@@ -1260,6 +1379,115 @@ async function initializeApp() {
       res.json({ calendarId, enabled, ...savedSettings });
     } catch (err) {
       console.error('Update calendar settings failed:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // API: Recipe book CRUD
+  app.get('/api/recipes', (req, res) => {
+    res.json(readRecipes());
+  });
+
+  app.post('/api/recipes', (req, res) => {
+    try {
+      const recipe = normalizeRecipe(req.body || {});
+      if (!recipe.name) return res.status(400).json({ error: 'Recipe name is required' });
+      recipe.id = `recipe_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+      const recipes = readRecipes();
+      recipes.push(recipe);
+      saveRecipes(recipes);
+      res.status(201).json(recipe);
+    } catch (err) {
+      console.error('Create recipe failed:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.put('/api/recipes/:id', (req, res) => {
+    try {
+      const recipes = readRecipes();
+      const index = recipes.findIndex(recipe => recipe.id === req.params.id);
+      if (index === -1) return res.status(404).json({ error: 'Recipe not found' });
+      const recipe = normalizeRecipe(req.body || {}, recipes[index]);
+      if (!recipe.name) return res.status(400).json({ error: 'Recipe name is required' });
+      recipes[index] = recipe;
+      saveRecipes(recipes);
+      res.json(recipe);
+    } catch (err) {
+      console.error('Update recipe failed:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete('/api/recipes/:id', (req, res) => {
+    try {
+      const recipes = readRecipes();
+      const index = recipes.findIndex(recipe => recipe.id === req.params.id);
+      if (index === -1) return res.status(404).json({ error: 'Recipe not found' });
+      const [deleted] = recipes.splice(index, 1);
+      saveRecipes(recipes);
+      res.json(deleted);
+    } catch (err) {
+      console.error('Delete recipe failed:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // API: Meal plan. Meal types are persisted alongside meals so the Categories
+  // modal can manage them later without another storage migration.
+  app.get('/api/meals', (req, res) => {
+    const { start, end } = req.query;
+    if ((start && !isIsoDate(start)) || (end && !isIsoDate(end))) {
+      return res.status(400).json({ error: 'start and end must be YYYY-MM-DD values' });
+    }
+    if (start && end && start > end) return res.status(400).json({ error: 'start must not be after end' });
+    const mealPlan = readMealPlan();
+    const meals = mealPlan.meals.filter(meal =>
+      typeof meal.date === 'string' && (!start || meal.date >= start) && (!end || meal.date <= end));
+    res.json({ meals, mealTypes: mealPlan.mealTypes });
+  });
+
+  app.post('/api/meals', (req, res) => {
+    try {
+      const mealPlan = readMealPlan();
+      const result = normalizeMeal(req.body || {}, mealPlan);
+      if (result.error) return res.status(400).json({ error: result.error });
+      const meal = { id: `meal_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`, ...result.meal };
+      mealPlan.meals.push(meal);
+      saveMealPlan(mealPlan);
+      res.status(201).json(meal);
+    } catch (err) {
+      console.error('Create meal failed:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.put('/api/meals/:id', (req, res) => {
+    try {
+      const mealPlan = readMealPlan();
+      const index = mealPlan.meals.findIndex(meal => meal.id === req.params.id);
+      if (index === -1) return res.status(404).json({ error: 'Meal not found' });
+      const result = normalizeMeal(req.body || {}, mealPlan, mealPlan.meals[index]);
+      if (result.error) return res.status(400).json({ error: result.error });
+      mealPlan.meals[index] = result.meal;
+      saveMealPlan(mealPlan);
+      res.json(result.meal);
+    } catch (err) {
+      console.error('Update meal failed:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete('/api/meals/:id', (req, res) => {
+    try {
+      const mealPlan = readMealPlan();
+      const index = mealPlan.meals.findIndex(meal => meal.id === req.params.id);
+      if (index === -1) return res.status(404).json({ error: 'Meal not found' });
+      const [deleted] = mealPlan.meals.splice(index, 1);
+      saveMealPlan(mealPlan);
+      res.json(deleted);
+    } catch (err) {
+      console.error('Delete meal failed:', err);
       res.status(500).json({ error: err.message });
     }
   });
