@@ -3,8 +3,8 @@
 Written 2026-09-11, updated 2026-09-12. Purpose: let a fresh session continue without
 re-deriving what took hours to find.
 
-Repo `main` is at **1.1.9.17** and level with origin. **The add-on is still running 1.1.9.12**
-— every release below 1.1.9.13..17 is pushed but NOT deployed. See §7.
+Repo `main` is at **1.1.9.22** and level with origin. The add-on runs **1.1.9.17** — the UI/UX
+work (1.1.9.18-.22) is pushed but NOT deployed. See §7.
 
 ---
 
@@ -71,6 +71,15 @@ it failed.
 5. **Wall-mounted touchscreen.** 44px minimum tap targets, nothing hover-dependent.
 6. **CalDAV is read-only.** `scripts/caldav-service.js` has no create/update/delete. No UI may
    imply a synced event can be edited here.
+7. **Never inject CSS at runtime.** `public/js/calendar-styles.js` used to append a `<style>` block
+   on load. It outranked `styles.css`, so the calendar could not be fixed by editing CSS, and its
+   `.fc { display: block !important }` defeated FullCalendar's flex column — `.fc-view-harness`
+   collapsed to 0px and the grid rendered **blank** with its cells and events present in the DOM.
+   It also hardcoded `#fff` on the calendar surface, which paints white on all five non-light
+   themes. The file is now a documented no-op. Style in `styles.css`, with `--md-*` tokens.
+8. **The wall panel must never scroll.** Calendar, Chores, Meals and Lists must fit at any
+   viewport; only Settings may scroll. Content clipped by an ancestor's `overflow:hidden` is just
+   as invisible as content below a fold — both are failures. See the harness in §3.
 
 ---
 
@@ -114,6 +123,17 @@ cd daylight-calendar && npm install
 STANDALONE_DEV=true PORT=8100 node index.js   # http://localhost:8100
 ```
 
+**Layout/contrast harness — run this before shipping any UI change.**
+`daylight-calendar/scripts/check-layout.mjs` renders Calendar/Chores/Meals/Lists at 1920x1080,
+1280x800, 1024x768 and 1080x1920 portrait and exits non-zero on: anything that scrolls, anything
+clipped by an ancestor, `#chore-board` below 55% of its page, or event text below 4.5:1 contrast.
+It also writes screenshots — **look at them**; a layout can pass every check and still look wrong
+(that is how a per-character-wrapped label and a clipped primary button were both caught).
+
+Playwright is deliberately **not** a project dependency (it must not reach the add-on image):
+install it in a scratch dir and point the harness at any cached Chromium via
+`PLAYWRIGHT_CHROMIUM`. See the header comment in the script.
+
 `mock-data/` (committed) holds fixtures: 3 profiles, 8 events — two deliberately **unassigned**
 so the show-by-default path is exercised — and a 7-day forecast.
 
@@ -151,6 +171,13 @@ of it is deployed.** See §7.
   per-profile per-day progress, Up for Grabs with atomic claiming, chore subtasks, and a
   collapsible "Household momentum" strip on the calendar page.
 
+- **UI/UX pass — glanceable and adaptive (1.1.9.18-1.1.9.22).** The panel was showing an
+  overloaded screen with a scrollbar; the week grid got 629px of 1080 and was cut off at 3pm.
+  Five stacked bands are now two, the whole week is visible, and event contrast went from a
+  measured **1.06:1 at 13.6px** (effectively invisible across a room) to **9.35:1 at 16px**.
+  The Chores board went from 22% to 83-94% of its own page. Verified by the harness in §3:
+  16/16 layout checks and 10/10 contrast checks at four viewports.
+
 ### Still open, from the teardown's ranked recommendations
 
 - [ ] Household change notifications — alert when someone adds/edits an event (rec #4)
@@ -163,11 +190,16 @@ of it is deployed.** See §7.
 
 ## 5. Known unverified / open
 
-- **Nothing from 1.1.9.13-1.1.9.17 has ever been seen rendering in a browser.** Every claim is
-  from curl against the standalone dev server. Codex's sandbox had no browser access, and the
-  extension was unavailable. The backends are well tested; the UI is not. Expect layout and
-  theme problems on first look, especially on the new Lists page, the Stars & Rewards section on
-  Chores, and the Household momentum strip on the calendar page.
+- **Calendar and Chores have now been seen rendering** (headless Chromium, four viewports) and
+  pass the harness. **Meals, Lists and Settings have only been checked for overflow, never looked
+  at** — their screenshots exist in a scratch dir but were not reviewed in detail. Expect rough
+  edges there first.
+- Nothing has been seen on the **real panel**. Its resolution is still unknown; the layout is
+  fluid and verified at 1920x1080, 1280x800, 1024x768 and 1080x1920, but that is not the same as
+  confirmed on the device.
+- The calendar's default week view is `dayGridWeek` (Skylight-style chip columns). A sparse week
+  looks quite empty. If the household wants time-of-day detail, `timeGridDay` is the Day view;
+  consider whether Day should be the default instead.
 - Also never seen rendering, from the previous session: the calendar management section, the
   sync-log box appearance, theme-button responsiveness after re-entering Settings, and the event
   detail dialog.
