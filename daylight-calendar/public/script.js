@@ -11,6 +11,9 @@ let weatherTemperatureUnit = '°';
 let weatherPrecipitationUnit = '';
 let activeWeatherPopover = null;
 let calendar;
+let calendarSizeObserver = null;
+let calendarSizeAnimationFrame = null;
+let calendarLastObservedSize = { width: 0, height: 0 };
 let allCalendarUsers = [];
 let settingsProfileCache = [];
 let activeCalendarUsers = new Set();
@@ -31,8 +34,10 @@ let listEditInProgress = false;
 let listPeople = [];
 let choreProfiles = [];
 let choreRewards = [];
+let pendingStarAwards = [];
 let pendingRewardRedemption = null;
 let showCompletedChores = true;
+let cleanupChoreManageMenu = null;
 
 // Display settings (default values)
 let displaySettings = {
@@ -149,8 +154,6 @@ function initializeCalendarPage() {
     if (hasCalendars) {
       setupCalendar();
     }
-    initializeHomeMotivationLoop();
-
     console.log('[INFO] Calendar page initialized');
   }, 100);
 }
@@ -165,28 +168,65 @@ function initializeChoresPage() {
     const choresContent = document.getElementById('chores-content');
     if (!choresContent || choresContent.dataset.choresInitialized === 'true') return;
     choresContent.dataset.choresInitialized = 'true';
+    cleanupChoreManageMenu?.();
 
     // Setup chore page buttons
-    const jumpToTodayBtn = document.getElementById('jump-to-today');
     const toggleCompletedBtn = document.getElementById('toggle-completed');
+    const manageButton = document.getElementById('chore-manage-button');
+    const manageMenu = document.getElementById('chore-manage-menu');
     const addChoreBtn = document.getElementById('add-chore-button');
     const addChoreModal = document.getElementById('add-chore-modal');
     const addChoreForm = document.getElementById('add-chore-form');
 
     console.log('[DEBUG] Chores elements found:', {
-      jumpToTodayBtn: !!jumpToTodayBtn,
       toggleCompletedBtn: !!toggleCompletedBtn,
+      manageButton: !!manageButton,
       addChoreBtn: !!addChoreBtn,
       addChoreModal: !!addChoreModal,
       addChoreForm: !!addChoreForm
     });
 
-    if (jumpToTodayBtn) {
-      jumpToTodayBtn.addEventListener('click', () => {
-        console.log('[INFO] Jump to today clicked');
-        // Scroll to today's section or highlight today
+    if (manageButton && manageMenu) {
+      const closeManageMenu = (restoreFocus = false) => {
+        if (manageMenu.hidden) return;
+        manageMenu.hidden = true;
+        manageButton.setAttribute('aria-expanded', 'false');
+        if (restoreFocus) manageButton.focus();
+      };
+      const openManageMenu = () => {
+        manageMenu.hidden = false;
+        manageButton.setAttribute('aria-expanded', 'true');
+        manageMenu.querySelector('button')?.focus();
+      };
+
+      manageButton.addEventListener('click', () => {
+        if (manageMenu.hidden) openManageMenu();
+        else closeManageMenu();
       });
-      console.log('[DEBUG] Jump to today button listener added');
+      manageButton.addEventListener('keydown', event => {
+        if (!['ArrowDown', 'ArrowUp'].includes(event.key)) return;
+        event.preventDefault();
+        openManageMenu();
+      });
+      manageMenu.addEventListener('click', event => {
+        if (event.target.closest('button')) closeManageMenu();
+      });
+      const closeOnOutsideTap = event => {
+        if (!manageMenu.hidden && !event.target.closest('.chore-manage')) closeManageMenu();
+      };
+      const closeOnEscape = event => {
+        if (event.key === 'Escape' && !manageMenu.hidden) {
+          event.preventDefault();
+          closeManageMenu(true);
+        }
+      };
+      document.addEventListener('pointerdown', closeOnOutsideTap);
+      document.addEventListener('keydown', closeOnEscape);
+      cleanupChoreManageMenu = () => {
+        document.removeEventListener('pointerdown', closeOnOutsideTap);
+        document.removeEventListener('keydown', closeOnEscape);
+        cleanupChoreManageMenu = null;
+      };
     }
 
     if (toggleCompletedBtn) {
@@ -1020,7 +1060,7 @@ function initializeSidebar() {
             if (!hasCalendars) return;
 
             if (calendar) {
-              calendar.updateSize();
+              scheduleCalendarSizeUpdate();
               calendar.refetchEvents();
             } else {
               setupCalendar();
@@ -1388,7 +1428,7 @@ function setupCalendar() {
   // Only initialize if not already initialized
   if (calendar) {
     console.log('[DEBUG] Calendar already initialized, updating size');
-    calendar.updateSize();
+    scheduleCalendarSizeUpdate();
     return;
   }
 
@@ -1406,21 +1446,17 @@ function setupCalendar() {
   try {
     calendar = new FullCalendar.Calendar(calendarEl, {
       initialView: getStoredCalendarView(),
-      headerToolbar: {
-        left: 'prev,next today',
-        center: 'title',
-        right: 'timeGridDay,timeGridWeek,dayGridMonth'
-      },
+      headerToolbar: false,
       buttonText: {
         day: 'Day',
         week: 'Week',
         month: 'Month'
       },
       slotMinTime: '06:00:00',
-      slotMaxTime: '24:00:00',
+      slotMaxTime: '22:00:00',
       allDaySlot: true,
-      height: 'auto',
-      aspectRatio: 1.35,
+      height: '100%',
+      expandRows: true,
       loading: function (isLoading) {
         const el = document.getElementById('calendar');
         if (el) el.classList.toggle('calendar-loading', !!isLoading);
@@ -1468,7 +1504,6 @@ function setupCalendar() {
             });
 
             successCallback(filtered);
-            updateNextEventPanel(filtered);
           })
           .catch(err => {
             console.error('[ERROR] Failed to fetch calendar events:', err);
@@ -1479,26 +1514,16 @@ function setupCalendar() {
         showEventDetails(info.event);
         info.jsEvent.preventDefault();
       },
-      dayCellDidMount: function (info) {
-        if (info.view.type === 'dayGridMonth') {
-          renderDailyWeatherButton(info.el, info.date, false);
-        }
-      },
-      dayHeaderDidMount: function (info) {
-        if (info.view.type !== 'dayGridMonth') {
-          renderDailyWeatherButton(info.el, info.date, true);
-        }
-      },
       datesSet: function (info) {
         closeDailyWeatherPopover();
-        if (info.view.type === 'timeGridWeek' || info.view.type === 'dayGridMonth') {
+        if (['timeGridDay', 'dayGridWeek', 'dayGridMonth'].includes(info.view.type)) {
           try {
             localStorage.setItem('daylight-calendar-view', info.view.type);
           } catch (error) {
             console.warn('[WARN] Could not persist calendar view:', error);
           }
         }
-        requestAnimationFrame(refreshDailyWeatherIcons);
+        updateCalendarTopbar();
       },
       loading: function (isLoading) {
         console.log('[DEBUG] Calendar loading:', isLoading);
@@ -1517,24 +1542,19 @@ function setupCalendar() {
     });
 
     calendar.render();
+    initializeCalendarTopbar();
+    updateCalendarTopbar();
+    observeCalendarSize(calendarEl);
+    scheduleCalendarSizeUpdate();
 
     startCalendarAutoRefresh();
     console.log('[DEBUG] FullCalendar rendered successfully');
 
-    // Force a resize after render to ensure proper sizing
+    // Turbo can finish a frame's render one task after the calendar is built.
+    // Queue a second visibility-aware pass rather than caching a zero-height view.
     setTimeout(() => {
-      if (calendar) {
-        calendar.updateSize();
-        console.log('[DEBUG] Calendar size updated after render');
-      }
+      scheduleCalendarSizeUpdate();
     }, 100);
-
-    // Watch for window resizes and fix smuishing issues automatically
-    window.addEventListener('resize', () => {
-      if (calendar) {
-        calendar.updateSize();
-      }
-    });
 
   } catch (error) {
     console.error('[ERROR] Failed to initialize FullCalendar:', error);
@@ -1552,14 +1572,86 @@ function setupCalendar() {
   }
 }
 
+function scheduleCalendarSizeUpdate() {
+  if (calendarSizeAnimationFrame !== null) return;
+
+  calendarSizeAnimationFrame = requestAnimationFrame(() => {
+    calendarSizeAnimationFrame = null;
+
+    const calendarEl = document.getElementById('calendar');
+    const calendarFrame = calendarEl?.closest('#calendar-content');
+    const isVisible = calendarEl
+      && calendarEl.isConnected
+      && calendarEl.clientWidth > 0
+      && calendarEl.clientHeight > 0
+      && (!calendarFrame || calendarFrame.classList.contains('active-content'));
+
+    if (!calendar || !isVisible) return;
+
+    calendar.updateSize();
+  });
+}
+
+function observeCalendarSize(calendarEl) {
+  if (!calendarEl || typeof ResizeObserver === 'undefined') return;
+
+  if (calendarSizeObserver) calendarSizeObserver.disconnect();
+  calendarLastObservedSize = { width: 0, height: 0 };
+
+  calendarSizeObserver = new ResizeObserver(entries => {
+    const entry = entries[0];
+    if (!entry || !calendar) return;
+
+    const width = Math.round(entry.contentRect.width);
+    const height = Math.round(entry.contentRect.height);
+    if (width === calendarLastObservedSize.width && height === calendarLastObservedSize.height) return;
+
+    calendarLastObservedSize = { width, height };
+    scheduleCalendarSizeUpdate();
+  });
+
+  calendarSizeObserver.observe(calendarEl);
+}
+
+function disconnectCalendarSizeObserver() {
+  if (calendarSizeObserver) calendarSizeObserver.disconnect();
+  calendarSizeObserver = null;
+  calendarLastObservedSize = { width: 0, height: 0 };
+}
+
 function getStoredCalendarView() {
   try {
     const storedView = localStorage.getItem('daylight-calendar-view');
-    if (['timeGridDay', 'timeGridWeek', 'dayGridMonth'].includes(storedView)) return storedView;
+    if (['timeGridDay', 'dayGridWeek', 'dayGridMonth'].includes(storedView)) return storedView;
   } catch (error) {
     console.warn('[WARN] Could not read saved calendar view:', error);
   }
-  return 'timeGridWeek';
+  return 'dayGridWeek';
+}
+
+function initializeCalendarTopbar() {
+  const topbar = document.querySelector('.calendar-topbar');
+  if (!topbar || topbar.dataset.initialized === 'true') return;
+  topbar.dataset.initialized = 'true';
+
+  topbar.addEventListener('click', event => {
+    const action = event.target.closest('[data-calendar-action]')?.dataset.calendarAction;
+    const view = event.target.closest('[data-calendar-view]')?.dataset.calendarView;
+    if (!calendar) return;
+    if (action === 'prev') calendar.prev();
+    if (action === 'next') calendar.next();
+    if (action === 'today') calendar.today();
+    if (view) calendar.changeView(view);
+  });
+}
+
+function updateCalendarTopbar() {
+  if (!calendar) return;
+  const title = document.getElementById('calendar-view-title');
+  if (title) title.textContent = calendar.view.title;
+  document.querySelectorAll('[data-calendar-view]').forEach(button => {
+    button.setAttribute('aria-pressed', String(button.dataset.calendarView === calendar.view.type));
+  });
 }
 
 function getNeutralCalendarColor() {
@@ -1598,18 +1690,18 @@ function relativeLuminance(color) {
 
 function getReadableCalendarTextColor(backgroundColor) {
   const styles = getComputedStyle(document.documentElement);
-  const surface = styles.getPropertyValue('--md-surface').trim();
-  const onSurface = styles.getPropertyValue('--md-on-surface').trim();
+  const dark = styles.getPropertyValue('--md-contrast-dark').trim();
+  const light = styles.getPropertyValue('--md-contrast-light').trim();
   const backgroundLum = relativeLuminance(backgroundColor);
-  const surfaceLum = relativeLuminance(surface);
-  const onSurfaceLum = relativeLuminance(onSurface);
-  if ([backgroundLum, surfaceLum, onSurfaceLum].some(value => value === null)) {
+  const darkLum = relativeLuminance(dark);
+  const lightLum = relativeLuminance(light);
+  if ([backgroundLum, darkLum, lightLum].some(value => value === null)) {
     return 'var(--md-on-surface)';
   }
   const contrast = (a, b) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
-  return contrast(backgroundLum, surfaceLum) > contrast(backgroundLum, onSurfaceLum)
-    ? 'var(--md-surface)'
-    : 'var(--md-on-surface)';
+  return contrast(backgroundLum, darkLum) > contrast(backgroundLum, lightLum)
+    ? dark
+    : light;
 }
 
 function openCalendarConnectionSettings() {
@@ -1657,6 +1749,7 @@ async function refreshCalendarAvailability() {
       if (calendar) {
         calendar.destroy();
         calendar = null;
+        disconnectCalendarSizeObserver();
       }
 
       if (toolbar) toolbar.hidden = true;
@@ -2048,10 +2141,12 @@ async function loadUserToggles() {
   if (!userTogglesContainer) return;
 
   try {
-    const res = await fetch('api/users');
-    if (!res.ok) throw new Error('Failed to load users');
+    const [usersResponse, starsResponse] = await Promise.all([fetch('api/users'), fetch('api/stars')]);
+    if (!usersResponse.ok) throw new Error('Failed to load users');
 
-    allCalendarUsers = await res.json();
+    allCalendarUsers = await usersResponse.json();
+    const stars = starsResponse.ok ? await starsResponse.json() : { profiles: [] };
+    const starBalances = new Map((stars.profiles || []).map(profile => [profile.id, Number(profile.balance) || 0]));
 
     // Automatically enable all users initially if none are set
     if (activeCalendarUsers.size === 0 && allCalendarUsers.length > 0) {
@@ -2060,18 +2155,6 @@ async function loadUserToggles() {
     calendarUserFiltersReady = true;
 
     userTogglesContainer.innerHTML = '';
-
-    const calendarUsers = userTogglesContainer.closest('.calendar-users');
-    const toggleLabel = calendarUsers ? calendarUsers.querySelector('.users-toggle-label') : null;
-    if (toggleLabel) toggleLabel.textContent = 'Profiles:';
-
-    let unassignedNote = calendarUsers ? calendarUsers.querySelector('.unassigned-filter-note') : null;
-    if (calendarUsers && !unassignedNote) {
-      unassignedNote = document.createElement('span');
-      unassignedNote.className = 'unassigned-filter-note';
-      unassignedNote.innerHTML = '<i class="material-icons" aria-hidden="true">visibility</i> Labels and unassigned events stay visible';
-      calendarUsers.appendChild(unassignedNote);
-    }
 
     if (allCalendarUsers.length === 0) {
       userTogglesContainer.innerHTML = '<span class="no-users-msg">No people filters</span>';
@@ -2086,10 +2169,12 @@ async function loadUserToggles() {
       btn.className = 'user-toggle ' + (isActive ? 'active' : '');
       btn.innerHTML =
           `<span class="user-toggle-initials">${escapeHtml(getProfileInitials(user.name))}</span>` +
-          `<span class="user-toggle-name">${escapeHtml(user.name || 'Unnamed')}</span>`;
+          `<span class="user-toggle-name">${escapeHtml(user.name || 'Unnamed')}</span>` +
+          (starBalances.get(user.id) > 0 ? `<span class="user-toggle-stars" aria-label="${starBalances.get(user.id)} stars">★${escapeHtml(String(starBalances.get(user.id)))}</span>` : '');
       btn.setAttribute('aria-pressed', String(isActive));
       btn.setAttribute('aria-label', `${isActive ? 'Hide' : 'Show'} events for ${user.name || 'unnamed profile'}`);
       btn.style.setProperty('--profile-color', getValidCalendarColor(user.color));
+      btn.style.setProperty('--profile-text-color', getReadableCalendarTextColor(getValidCalendarColor(user.color)));
 
       btn.addEventListener('click', () => {
         if (activeCalendarUsers.has(user.id)) {
@@ -2151,7 +2236,7 @@ async function fetchAndDisplayChores() {
           </div>
           <div class="lane-content">
             ${laneChores.map(chore => `
-              <div class="chore-card" data-chore-id="${escapeHtml(chore.uid || chore.summary)}" data-status="${escapeHtml(chore.status)}">
+              <article class="chore-card" data-chore-id="${escapeHtml(chore.uid || chore.summary)}" data-status="${escapeHtml(chore.status)}" tabindex="0" aria-label="View details for ${escapeHtml(chore.summary)}">
                 <div class="chore-header">
                   <div class="chore-title">${escapeHtml(chore.summary)}</div>
                   <button type="button" class="chore-toggle-btn" data-chore-toggle data-chore-id="${escapeHtml(chore.uid || chore.summary)}" data-status="${escapeHtml(chore.status)}" data-entity-id="${escapeHtml(entityId || '')}" aria-label="${chore.status === 'completed' ? 'Mark incomplete' : 'Mark complete'}: ${escapeHtml(chore.summary)}">
@@ -2162,11 +2247,11 @@ async function fetchAndDisplayChores() {
                   ${renderChoreProfiles(chore.assignedProfileIds || [])}
                   <span class="chore-stars"><i class="material-icons" aria-hidden="true">stars</i> ${Number(chore.starValue) || 1}</span>
                   ${(chore.dueDate || chore.due) ? `<span class="chore-due">Due: ${escapeHtml(formatChoreDueDate(chore.dueDate || chore.due))}</span>` : ''}
+                  ${renderChoreProgress(chore)}
                 </div>
-                ${renderChoreSubtasks(chore)}
                 ${chore.upForGrabs === true && !(chore.assignedProfileIds || []).length ? `<button type="button" class="btn btn-primary claim-chore-btn" data-claim-chore="${escapeHtml(chore.uid)}">Claim</button>` : ''}
                 ${chore.upForGrabs !== true && (chore.assignedProfileIds || []).length ? `<button type="button" class="btn btn-secondary release-chore-btn" data-release-chore="${escapeHtml(chore.uid)}">Release to household</button>` : ''}
-              </div>
+              </article>
             `).join('')}
           </div>
         </div>
@@ -2184,43 +2269,32 @@ async function fetchAndDisplayChores() {
         try { await choreRequest(`api/chores/${encodeURIComponent(releaseButton.dataset.releaseChore)}/release`, { method: 'POST' }); await fetchAndDisplayChores(); } catch (error) { releaseButton.disabled = false; }
         return;
       }
-      const subtaskButton = event.target.closest('[data-subtask-toggle]');
-      if (subtaskButton) {
-        subtaskButton.disabled = true;
+      const button = event.target.closest('[data-chore-toggle]');
+      if (button) {
+        const newStatus = button.dataset.status === 'completed' ? 'needs_action' : 'completed';
+        button.disabled = true;
         try {
-          const result = await choreRequest(`api/chores/${encodeURIComponent(subtaskButton.dataset.choreId)}/subtasks/${encodeURIComponent(subtaskButton.dataset.subtaskToggle)}/toggle`, { method: 'POST' });
+          const response = await fetch(`api/chores/${encodeURIComponent(button.dataset.choreId)}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: newStatus, entityId: button.dataset.entityId })
+          });
+          if (!response.ok) throw new Error('Unable to update this chore');
           await fetchAndDisplayChores();
-          if (result.allDone) showSubtasksReady(subtaskButton.dataset.choreId, entityId);
-        } catch (error) { subtaskButton.disabled = false; }
+        } catch (error) {
+          console.error('Error updating chore:', error);
+          button.disabled = false;
+        }
         return;
       }
-      const addSubtask = event.target.closest('[data-add-subtask]');
-      if (addSubtask) return addChoreSubtask(addSubtask.dataset.addSubtask);
-      const moveButton = event.target.closest('[data-subtask-move]');
-      if (moveButton) return moveChoreSubtask(moveButton.dataset.choreId, moveButton.dataset.subtaskMove, moveButton.dataset.direction);
-      const deleteButton = event.target.closest('[data-subtask-delete]');
-      if (deleteButton) { try { await choreRequest(`api/chores/${encodeURIComponent(deleteButton.dataset.choreId)}/subtasks/${encodeURIComponent(deleteButton.dataset.subtaskDelete)}`, { method: 'DELETE' }); await fetchAndDisplayChores(); } catch (error) {} return; }
-      const button = event.target.closest('[data-chore-toggle]');
-      if (!button) return;
-      const newStatus = button.dataset.status === 'completed' ? 'needs_action' : 'completed';
-      button.disabled = true;
-      try {
-        const response = await fetch(`api/chores/${encodeURIComponent(button.dataset.choreId)}`, {
-          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: newStatus, entityId: button.dataset.entityId })
-        });
-        if (!response.ok) throw new Error('Unable to update this chore');
-        await fetchAndDisplayChores();
-      } catch (error) {
-        console.error('Error updating chore:', error);
-        button.disabled = false;
-      }
+
+      const card = event.target.closest('.chore-card');
+      if (card) openChoreDetail(chores.find(chore => (chore.uid || chore.summary) === card.dataset.choreId), entityId);
     };
-    choreBoard.onsubmit = event => {
-      const form = event.target.closest('.subtask-add-form');
-      if (!form) return;
+    choreBoard.onkeydown = event => {
+      const card = event.target.closest('.chore-card');
+      if (!card || event.target !== card || !['Enter', ' '].includes(event.key)) return;
       event.preventDefault();
-      addChoreSubtask(form.dataset.choreId);
+      openChoreDetail(chores.find(chore => (chore.uid || chore.summary) === card.dataset.choreId), entityId);
     };
     loadStarsAndRewards();
     loadRoutines();
@@ -2242,15 +2316,11 @@ function renderChoreProfiles(profileIds) {
   return `<span class="chore-assignees">${profiles.map(profile => `<span class="chore-assignee" title="${escapeHtml(profile.name)}" style="--profile-color:${escapeHtml(getValidCalendarColor(profile.color))}">${escapeHtml(getProfileInitials(profile.name))}</span>`).join('')}</span>`;
 }
 
-function renderChoreSubtasks(chore) {
+function renderChoreProgress(chore) {
   const subtasks = [...(chore.subtasks || [])].sort((a, b) => a.position - b.position);
   const done = subtasks.filter(subtask => subtask.checked).length;
-  const rows = subtasks.map((subtask, index) => `<li class="chore-subtask${subtask.checked ? ' is-checked' : ''}">
-    <button type="button" class="btn-icon" data-subtask-toggle="${escapeHtml(subtask.id)}" data-chore-id="${escapeHtml(chore.uid)}" aria-label="${subtask.checked ? 'Mark incomplete' : 'Mark complete'}: ${escapeHtml(subtask.text)}"><i class="material-icons" aria-hidden="true">${subtask.checked ? 'check_circle' : 'radio_button_unchecked'}</i></button>
-    <span>${escapeHtml(subtask.text)}</span>
-    <span class="subtask-actions"><button type="button" class="btn-icon" data-subtask-move="${escapeHtml(subtask.id)}" data-chore-id="${escapeHtml(chore.uid)}" data-direction="up" ${index === 0 ? 'disabled' : ''} aria-label="Move ${escapeHtml(subtask.text)} up"><i class="material-icons">arrow_upward</i></button><button type="button" class="btn-icon" data-subtask-move="${escapeHtml(subtask.id)}" data-chore-id="${escapeHtml(chore.uid)}" data-direction="down" ${index === subtasks.length - 1 ? 'disabled' : ''} aria-label="Move ${escapeHtml(subtask.text)} down"><i class="material-icons">arrow_downward</i></button><button type="button" class="btn-icon" data-subtask-delete="${escapeHtml(subtask.id)}" data-chore-id="${escapeHtml(chore.uid)}" aria-label="Delete ${escapeHtml(subtask.text)}"><i class="material-icons">delete</i></button></span>
-  </li>`).join('');
-  return `<section class="chore-subtasks"><div class="subtask-summary">${subtasks.length ? `${done}/${subtasks.length} steps` : 'No steps yet'}</div>${subtasks.length ? `<ul>${rows}</ul>` : ''}<form class="subtask-add-form" data-chore-id="${escapeHtml(chore.uid)}"><label class="sr-only" for="subtask-${escapeHtml(chore.uid)}">Add a step</label><input id="subtask-${escapeHtml(chore.uid)}" name="text" maxlength="160" placeholder="Add a step"><button type="submit" class="btn btn-secondary">Add step</button></form></section>`;
+  if (!subtasks.length) return '';
+  return `<span class="chore-progress" aria-label="${done} of ${subtasks.length} steps complete"><i class="material-icons" aria-hidden="true">format_list_bulleted</i> ${done}/${subtasks.length}</span>`;
 }
 
 function choreRequest(url, options = {}) {
@@ -2261,28 +2331,71 @@ function choreRequest(url, options = {}) {
   });
 }
 
-async function addChoreSubtask(uid) {
-  const input = document.querySelector(`.subtask-add-form[data-chore-id="${CSS.escape(uid)}"] input`);
-  if (!input?.value.trim()) return input?.focus();
-  try { await choreRequest(`api/chores/${encodeURIComponent(uid)}/subtasks`, { method: 'POST', body: JSON.stringify({ text: input.value }) }); await fetchAndDisplayChores(); } catch (error) { input.setCustomValidity(error.message); input.reportValidity(); input.setCustomValidity(''); }
-}
+function openChoreDetail(chore, entityId) {
+  const modal = document.getElementById('chore-detail-modal');
+  const title = document.getElementById('chore-detail-title');
+  const content = document.getElementById('chore-detail-content');
+  if (!chore || !modal || !title || !content) return;
 
-async function moveChoreSubtask(uid, subtaskId, direction) {
-  const card = document.querySelector(`.chore-card[data-chore-id="${CSS.escape(uid)}"]`);
-  const ids = [...card.querySelectorAll('[data-subtask-toggle]')].map(button => button.dataset.subtaskToggle);
-  const index = ids.indexOf(subtaskId); const target = direction === 'up' ? index - 1 : index + 1;
-  if (target < 0 || target >= ids.length) return;
-  [ids[index], ids[target]] = [ids[target], ids[index]];
-  try { await choreRequest(`api/chores/${encodeURIComponent(uid)}/subtasks/reorder`, { method: 'POST', body: JSON.stringify({ orderedIds: ids }) }); await fetchAndDisplayChores(); } catch (error) { console.error(error); }
-}
+  const uid = chore.uid || chore.summary;
+  const subtasks = [...(chore.subtasks || [])].sort((a, b) => a.position - b.position);
+  const done = subtasks.filter(subtask => subtask.checked).length;
+  title.textContent = chore.summary || 'Chore details';
+  content.innerHTML = `
+    <div class="chore-detail-summary">
+      <div class="chore-meta">${renderChoreProfiles(chore.assignedProfileIds || [])}<span class="chore-stars"><i class="material-icons" aria-hidden="true">stars</i> ${Number(chore.starValue) || 1}</span>${(chore.dueDate || chore.due) ? `<span class="chore-due">Due: ${escapeHtml(formatChoreDueDate(chore.dueDate || chore.due))}</span>` : ''}</div>
+      <p class="subtask-summary">${subtasks.length ? `${done}/${subtasks.length} steps complete` : 'No steps yet'}</p>
+    </div>
+    <section class="chore-detail-subtasks" aria-label="Subtasks for ${escapeHtml(chore.summary)}">
+      ${subtasks.length ? `<ul>${subtasks.map((subtask, index) => `<li class="chore-detail-subtask${subtask.checked ? ' is-checked' : ''}">
+        <button type="button" class="btn-icon" data-detail-subtask-toggle="${escapeHtml(subtask.id)}" aria-label="${subtask.checked ? 'Mark incomplete' : 'Mark complete'}: ${escapeHtml(subtask.text)}"><i class="material-icons" aria-hidden="true">${subtask.checked ? 'check_circle' : 'radio_button_unchecked'}</i></button>
+        <label class="sr-only" for="detail-subtask-${escapeHtml(subtask.id)}">Edit step</label><input id="detail-subtask-${escapeHtml(subtask.id)}" value="${escapeHtml(subtask.text)}" maxlength="160">
+        <div class="subtask-actions"><button type="button" class="btn-icon" data-detail-subtask-save="${escapeHtml(subtask.id)}" aria-label="Save ${escapeHtml(subtask.text)}"><i class="material-icons" aria-hidden="true">save</i></button><button type="button" class="btn-icon" data-detail-subtask-move="${escapeHtml(subtask.id)}" data-direction="up" ${index === 0 ? 'disabled' : ''} aria-label="Move ${escapeHtml(subtask.text)} up"><i class="material-icons" aria-hidden="true">arrow_upward</i></button><button type="button" class="btn-icon" data-detail-subtask-move="${escapeHtml(subtask.id)}" data-direction="down" ${index === subtasks.length - 1 ? 'disabled' : ''} aria-label="Move ${escapeHtml(subtask.text)} down"><i class="material-icons" aria-hidden="true">arrow_downward</i></button><button type="button" class="btn-icon" data-detail-subtask-delete="${escapeHtml(subtask.id)}" aria-label="Delete ${escapeHtml(subtask.text)}"><i class="material-icons" aria-hidden="true">delete</i></button></div>
+      </li>`).join('')}</ul>` : ''}
+      <form class="subtask-add-form" data-detail-add-subtask><label class="sr-only" for="detail-subtask-new">Add a step</label><input id="detail-subtask-new" name="text" maxlength="160" placeholder="Add a step"><button type="submit" class="btn btn-secondary">Add step</button></form>
+    </section>`;
 
-function showSubtasksReady(uid, entityId) {
-  const card = document.querySelector(`.chore-card[data-chore-id="${CSS.escape(uid)}"]`);
-  if (!card || card.querySelector('.subtasks-ready')) return;
-  const message = document.createElement('div'); message.className = 'subtasks-ready';
-  message.innerHTML = '<span>All subtasks done — mark the chore complete?</span><button type="button" class="btn btn-primary">Mark complete</button>';
-  message.querySelector('button').addEventListener('click', async () => { await choreRequest(`api/chores/${encodeURIComponent(uid)}`, { method: 'PATCH', body: JSON.stringify({ status: 'completed', entityId }) }); await fetchAndDisplayChores(); });
-  card.appendChild(message);
+  const refresh = async () => {
+    await fetchAndDisplayChores();
+    const response = await fetch('api/chores');
+    if (!response.ok) throw new Error('Unable to refresh this chore');
+    const data = await response.json();
+    const updated = (data.items || []).find(item => (item.uid || item.summary) === uid);
+    if (updated) openChoreDetail(updated, data.entityId || entityId);
+    else modal.classList.remove('show');
+  };
+  content.onclick = async event => {
+    const toggle = event.target.closest('[data-detail-subtask-toggle]');
+    const save = event.target.closest('[data-detail-subtask-save]');
+    const move = event.target.closest('[data-detail-subtask-move]');
+    const remove = event.target.closest('[data-detail-subtask-delete]');
+    try {
+      if (toggle) await choreRequest(`api/chores/${encodeURIComponent(uid)}/subtasks/${encodeURIComponent(toggle.dataset.detailSubtaskToggle)}/toggle`, { method: 'POST' });
+      else if (save) {
+        const input = document.getElementById(`detail-subtask-${save.dataset.detailSubtaskSave}`);
+        if (!input?.value.trim()) return input?.focus();
+        await choreRequest(`api/chores/${encodeURIComponent(uid)}/subtasks/${encodeURIComponent(save.dataset.detailSubtaskSave)}`, { method: 'PUT', body: JSON.stringify({ text: input.value }) });
+      } else if (move) {
+        const ids = subtasks.map(subtask => subtask.id);
+        const index = ids.indexOf(move.dataset.detailSubtaskMove);
+        const target = move.dataset.direction === 'up' ? index - 1 : index + 1;
+        if (target < 0 || target >= ids.length) return;
+        [ids[index], ids[target]] = [ids[target], ids[index]];
+        await choreRequest(`api/chores/${encodeURIComponent(uid)}/subtasks/reorder`, { method: 'POST', body: JSON.stringify({ orderedIds: ids }) });
+      } else if (remove) await choreRequest(`api/chores/${encodeURIComponent(uid)}/subtasks/${encodeURIComponent(remove.dataset.detailSubtaskDelete)}`, { method: 'DELETE' });
+      else return;
+      await refresh();
+    } catch (error) { console.error('Unable to update subtask:', error); }
+  };
+  content.onsubmit = async event => {
+    const form = event.target.closest('[data-detail-add-subtask]');
+    if (!form) return;
+    event.preventDefault();
+    const input = form.elements.text;
+    if (!input.value.trim()) return input.focus();
+    try { await choreRequest(`api/chores/${encodeURIComponent(uid)}/subtasks`, { method: 'POST', body: JSON.stringify({ text: input.value }) }); await refresh(); } catch (error) { input.setCustomValidity(error.message); input.reportValidity(); input.setCustomValidity(''); }
+  };
+  modal.classList.add('show');
 }
 
 function openClaimChore(uid, chore) {
@@ -2305,14 +2418,15 @@ async function loadStarsAndRewards() {
     const stars = await starsResponse.json();
     choreProfiles = stars.profiles || choreProfiles;
     choreRewards = (await rewardsResponse.json()).filter(reward => reward.active !== false).sort((a, b) => a.starCost - b.starCost);
+    pendingStarAwards = stars.pendingAwards || [];
     renderChoreAssigneeOptions();
-    renderStarsAndRewards(stars.profiles || [], stars.pendingAwards || []);
+    renderStarsAndRewards(stars.profiles || []);
   } catch (error) {
     content.innerHTML = `<div class="error-message">${escapeHtml(error.message)}</div>`;
   }
 }
 
-function renderStarsAndRewards(profiles, pendingAwards = []) {
+function renderStarsAndRewards(profiles) {
   const content = document.getElementById('stars-rewards-content');
   if (!content) return;
   if (!profiles.length) {
@@ -2321,25 +2435,13 @@ function renderStarsAndRewards(profiles, pendingAwards = []) {
   }
   const profilesMarkup = profiles.map(profile => {
     const balance = Number(profile.balance) || 0;
-    const nextReward = choreRewards.find(reward => reward.starCost > balance);
-    const progress = nextReward ? Math.min(100, Math.round((balance / nextReward.starCost) * 100)) : 100;
-    const rewardMarkup = choreRewards.length ? choreRewards.map(reward => {
-      const affordable = balance >= reward.starCost;
-      return `<button type="button" class="reward-choice${affordable ? ' is-affordable' : ''}" data-reward-id="${escapeHtml(reward.id)}" data-profile-id="${escapeHtml(profile.id)}"${affordable ? '' : ' disabled'} aria-label="${affordable ? 'Redeem' : 'Keep earning for'} ${escapeHtml(reward.name)}">
-        <i class="material-icons" aria-hidden="true">${escapeHtml(reward.icon || 'card_giftcard')}</i><span>${escapeHtml(reward.name)}</span><strong>${reward.starCost} stars</strong>
-      </button>`;
-    }).join('') : '<span class="stars-empty">An adult can add the first reward.</span>';
-    return `<article class="profile-stars" style="--profile-color:${escapeHtml(getValidCalendarColor(profile.color))}">
-      <div class="profile-stars-summary"><span class="profile-stars-initials">${escapeHtml(getProfileInitials(profile.name))}</span><div><h3>${escapeHtml(profile.name || 'Unnamed')}</h3><p><strong>${balance}</strong> stars</p></div></div>
-      ${nextReward ? `<div class="reward-progress"><div class="reward-progress-copy"><span>Next: ${escapeHtml(nextReward.name)}</span><span>${balance} / ${nextReward.starCost}</span></div><div class="reward-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="${nextReward.starCost}" aria-valuenow="${balance}"><span style="--reward-progress:${progress}%"></span></div></div>` : '<p class="reward-progress-complete">Every active reward is within reach.</p>'}
-      <div class="profile-rewards">${rewardMarkup}</div>
+    const redeemableReward = choreRewards.filter(reward => balance >= reward.starCost).at(-1);
+    const profileColor = getValidCalendarColor(profile.color);
+    return `<article class="profile-stars" style="--profile-color:${escapeHtml(profileColor)};--profile-text-color:${escapeHtml(getReadableCalendarTextColor(profileColor))}">
+      <div class="profile-stars-summary"><span class="profile-stars-initials">${escapeHtml(getProfileInitials(profile.name))}</span><span class="profile-stars-name">${escapeHtml(profile.name || 'Unnamed')}</span><span class="profile-stars-balance">★${balance}</span>${redeemableReward ? `<button type="button" class="profile-stars-redeem" data-reward-id="${escapeHtml(redeemableReward.id)}" data-profile-id="${escapeHtml(profile.id)}" aria-label="Redeem ${escapeHtml(redeemableReward.name)} for ${escapeHtml(profile.name || 'this profile')}"><i class="material-icons" aria-hidden="true">card_giftcard</i></button>` : ''}</div>
     </article>`;
   }).join('');
-  const pendingMarkup = pendingAwards.length ? `<section class="pending-awards" aria-label="Awards awaiting adult confirmation"><h3>Awaiting adult confirmation</h3>${pendingAwards.map(award => {
-    const profile = choreProfiles.find(candidate => candidate.id === award.profileId);
-    return `<div class="pending-award"><span>${escapeHtml(profile?.name || 'Unknown profile')} earned ${escapeHtml(award.delta)} stars</span><div><button type="button" class="btn btn-secondary" data-award-action="reject" data-award-id="${escapeHtml(award.id)}">Reject</button><button type="button" class="btn btn-primary" data-award-action="confirm" data-award-id="${escapeHtml(award.id)}">Confirm</button></div></div>`;
-  }).join('')}</section>` : '';
-  content.innerHTML = profilesMarkup + pendingMarkup;
+  content.innerHTML = profilesMarkup + (choreRewards.length ? '' : '<p class="stars-rewards-empty">No rewards yet.</p>');
 }
 
 function setupStarsAndRewardsHandlers() {
@@ -2360,17 +2462,7 @@ function setupStarsAndRewardsHandlers() {
   document.getElementById('new-reward-button').onclick = () => openRewardForm();
 
   if (rewardContent) rewardContent.onclick = async event => {
-    const awardAction = event.target.closest('[data-award-action]');
-    if (awardAction) {
-      awardAction.disabled = true;
-      try {
-        const response = await fetch(`api/stars/${encodeURIComponent(awardAction.dataset.awardId)}/${awardAction.dataset.awardAction}`, { method: 'POST' });
-        if (!response.ok) throw new Error('Unable to update pending award');
-        await loadStarsAndRewards();
-      } catch (error) { console.error(error); awardAction.disabled = false; }
-      return;
-    }
-    const rewardButton = event.target.closest('.reward-choice:not([disabled])');
+    const rewardButton = event.target.closest('.profile-stars-redeem');
     if (!rewardButton) return;
     const reward = choreRewards.find(candidate => candidate.id === rewardButton.dataset.rewardId);
     const profile = choreProfiles.find(candidate => candidate.id === rewardButton.dataset.profileId);
@@ -2378,8 +2470,20 @@ function setupStarsAndRewardsHandlers() {
   };
 
   if (managerList) managerList.onclick = event => {
+    const awardAction = event.target.closest('[data-award-action]');
     const editButton = event.target.closest('[data-edit-reward]');
     const deleteButton = event.target.closest('[data-delete-reward]');
+    if (awardAction) {
+      awardAction.disabled = true;
+      fetch(`api/stars/${encodeURIComponent(awardAction.dataset.awardId)}/${awardAction.dataset.awardAction}`, { method: 'POST' })
+        .then(response => {
+          if (!response.ok) throw new Error('Unable to update pending award');
+          return loadStarsAndRewards();
+        })
+        .then(() => renderRewardManager())
+        .catch(error => { console.error(error); awardAction.disabled = false; });
+      return;
+    }
     if (editButton) openRewardForm(choreRewards.find(reward => reward.id === editButton.dataset.editReward));
     if (deleteButton) deleteReward(deleteButton.dataset.deleteReward);
   };
@@ -2448,10 +2552,15 @@ function setupStarsAndRewardsHandlers() {
 function renderRewardManager() {
   const list = document.getElementById('reward-manager-list');
   if (!list) return;
-  list.innerHTML = choreRewards.length ? choreRewards.map(reward => `<div class="reward-manager-item">
+  const rewardsMarkup = choreRewards.length ? choreRewards.map(reward => `<div class="reward-manager-item">
     <i class="material-icons" aria-hidden="true">${escapeHtml(reward.icon || 'card_giftcard')}</i><div><strong>${escapeHtml(reward.name)}</strong><span>${reward.starCost} stars${reward.description ? ` · ${escapeHtml(reward.description)}` : ''}</span></div>
     <div><button type="button" class="btn btn-secondary" data-edit-reward="${escapeHtml(reward.id)}">Edit</button><button type="button" class="btn btn-danger" data-delete-reward="${escapeHtml(reward.id)}">Delete</button></div>
   </div>`).join('') : '<p class="stars-empty">No rewards yet.</p>';
+  const pendingMarkup = pendingStarAwards.length ? `<section class="pending-awards" aria-label="Awards awaiting adult confirmation"><h3>Awaiting adult confirmation</h3>${pendingStarAwards.map(award => {
+    const profile = choreProfiles.find(candidate => candidate.id === award.profileId);
+    return `<div class="pending-award"><span>${escapeHtml(profile?.name || 'Unknown profile')} earned ${escapeHtml(award.delta)} stars</span><div><button type="button" class="btn btn-secondary" data-award-action="reject" data-award-id="${escapeHtml(award.id)}">Reject</button><button type="button" class="btn btn-primary" data-award-action="confirm" data-award-id="${escapeHtml(award.id)}">Confirm</button></div></div>`;
+  }).join('')}</section>` : '';
+  list.innerHTML = rewardsMarkup + pendingMarkup;
 }
 
 function openRewardForm(reward = null) {
@@ -2483,7 +2592,6 @@ function setupRoutineHandlers() {
   const frame = document.getElementById('chores-content');
   if (!frame || frame.dataset.routinesInitialized === 'true') return;
   frame.dataset.routinesInitialized = 'true';
-  document.getElementById('new-routine-button').onclick = () => openRoutineForm();
   document.getElementById('manage-routines-button').onclick = () => openRoutineForm();
   document.getElementById('routine-form').onsubmit = submitRoutineForm;
   document.getElementById('routines-content').onclick = async event => {
@@ -2497,7 +2605,7 @@ function setupRoutineHandlers() {
     }
     if (!toggle) return;
     toggle.disabled = true;
-    try { await choreRequest(`api/routines/${encodeURIComponent(toggle.dataset.routineId)}/steps/${encodeURIComponent(toggle.dataset.routineToggle)}/toggle`, { method: 'POST', body: JSON.stringify({ profileId: toggle.dataset.profileId }) }); await loadRoutines(); refreshHomeMotivationLoop(); } catch (error) { toggle.disabled = false; }
+    try { await choreRequest(`api/routines/${encodeURIComponent(toggle.dataset.routineId)}/steps/${encodeURIComponent(toggle.dataset.routineToggle)}/toggle`, { method: 'POST', body: JSON.stringify({ profileId: toggle.dataset.profileId }) }); await loadRoutines(); } catch (error) { toggle.disabled = false; }
   };
 }
 
@@ -2515,17 +2623,14 @@ async function loadRoutines() {
 function renderRoutines(routines) {
   const content = document.getElementById('routines-content');
   if (!content) return;
-  if (!routines.length) { content.innerHTML = '<p class="stars-empty">No routines are due today. Add one for a sequence you repeat.</p>'; return; }
-  content.innerHTML = routines.map(routine => {
+  const progress = routines.reduce((total, routine) => {
+    const stepCount = (routine.steps || []).length;
     const profiles = routine.profiles || [];
-    const profileSections = profiles.map(progress => {
-      const profile = choreProfiles.find(candidate => candidate.id === progress.profileId) || { name: 'Unknown profile', color: '' };
-      const completeCount = routine.steps.filter(step => progress.completedStepIds.includes(step.id)).length;
-      return `<section class="routine-profile" style="--profile-color:${escapeHtml(getValidCalendarColor(profile.color))}"><div class="routine-profile-heading"><span>${escapeHtml(getProfileInitials(profile.name))}</span><strong>${escapeHtml(profile.name)}</strong><small>${completeCount}/${routine.steps.length}</small></div><div class="routine-step-list">${routine.steps.slice().sort((a, b) => a.position - b.position).map(step => `<button type="button" class="routine-step${progress.completedStepIds.includes(step.id) ? ' is-done' : ''}" data-routine-toggle="${escapeHtml(step.id)}" data-routine-id="${escapeHtml(routine.id)}" data-profile-id="${escapeHtml(progress.profileId)}" aria-pressed="${progress.completedStepIds.includes(step.id)}"><i class="material-icons" aria-hidden="true">${progress.completedStepIds.includes(step.id) ? 'check_circle' : 'radio_button_unchecked'}</i><span>${escapeHtml(step.text)}</span></button>`).join('')}</div>${progress.completed ? '<p class="routine-done">Done — stars earned for today.</p>' : ''}</section>`;
-    }).join('');
-    return `<article class="routine-card"><header><div><i class="material-icons" aria-hidden="true">${escapeHtml(routine.icon || 'routine')}</i><h3>${escapeHtml(routine.name)}</h3><span>${escapeHtml(routine.schedule.timeOfDay)} · ${routine.starValue} stars</span></div><div class="routine-card-actions"><button type="button" class="btn-icon" data-edit-routine="${escapeHtml(routine.id)}" aria-label="Edit ${escapeHtml(routine.name)}"><i class="material-icons">edit</i></button><button type="button" class="btn-icon" data-delete-routine="${escapeHtml(routine.id)}" aria-label="Delete ${escapeHtml(routine.name)}"><i class="material-icons">delete</i></button></div></header>${profileSections}</article>`;
-  }).join('');
-  routines.forEach(routine => content.querySelector(`[data-edit-routine="${CSS.escape(routine.id)}"]`)._routine = routine);
+    total.total += stepCount * profiles.length;
+    total.done += profiles.reduce((count, profile) => count + (profile.completedStepIds || []).length, 0);
+    return total;
+  }, { done: 0, total: 0 });
+  content.innerHTML = `<div class="routines-glance"><i class="material-icons" aria-hidden="true">routine</i><span>Today’s routines</span><strong>${progress.total ? `${progress.done}/${progress.total}` : 'None due'}</strong></div>`;
 }
 
 function openRoutineForm(routine = null) {
@@ -2548,32 +2653,7 @@ async function submitRoutineForm(event) {
   event.preventDefault();
   const id = document.getElementById('routine-id').value;
   const payload = { name: document.getElementById('routine-name').value, icon: document.getElementById('routine-icon').value, assignedProfileIds: [...document.querySelectorAll('#routine-profile-options input:checked')].map(input => input.value), schedule: { days: [...document.querySelectorAll('#routine-days input:checked')].map(input => Number(input.value)), timeOfDay: document.getElementById('routine-time-band').value }, steps: document.getElementById('routine-steps').value.split('\n').map((text, position) => ({ text, position })).filter(step => step.text.trim()), starValue: Number(document.getElementById('routine-star-value').value), active: true };
-  try { await choreRequest(id ? `api/routines/${encodeURIComponent(id)}` : 'api/routines', { method: id ? 'PUT' : 'POST', body: JSON.stringify(payload) }); document.getElementById('routine-form-modal').classList.remove('show'); await loadRoutines(); refreshHomeMotivationLoop(); } catch (error) { document.getElementById('routine-form-error').textContent = error.message; }
-}
-
-function initializeHomeMotivationLoop() {
-  const panel = document.getElementById('home-motivation-loop');
-  if (!panel || panel.dataset.initialized === 'true') return;
-  panel.dataset.initialized = 'true';
-  const collapsed = localStorage.getItem('daylight-home-motivation-collapsed') === 'true';
-  panel.classList.toggle('is-collapsed', collapsed);
-  panel.querySelector('[data-home-loop-toggle]').setAttribute('aria-expanded', String(!collapsed));
-  panel.querySelector('[data-home-loop-toggle]').addEventListener('click', () => { const next = !panel.classList.contains('is-collapsed'); panel.classList.toggle('is-collapsed', next); panel.querySelector('[data-home-loop-toggle]').setAttribute('aria-expanded', String(!next)); localStorage.setItem('daylight-home-motivation-collapsed', String(next)); });
-  refreshHomeMotivationLoop();
-}
-
-async function refreshHomeMotivationLoop() {
-  const content = document.getElementById('home-motivation-content');
-  if (!content) return;
-  try {
-    const [starsResponse, rewardsResponse, routinesResponse, choresResponse] = await Promise.all([fetch('api/stars'), fetch('api/rewards'), fetch('api/routines/today'), fetch('api/chores')]);
-    if (![starsResponse, rewardsResponse, routinesResponse, choresResponse].every(response => response.ok)) throw new Error('Household progress is unavailable');
-    const stars = await starsResponse.json(); const rewards = (await rewardsResponse.json()).filter(reward => reward.active !== false).sort((a, b) => a.starCost - b.starCost); const routines = (await routinesResponse.json()).routines || []; const chores = (await choresResponse.json()).items || [];
-    const grabs = chores.filter(chore => chore.status === 'needs_action' && chore.upForGrabs === true && !(chore.assignedProfileIds || []).length).length;
-    const profiles = stars.profiles || [];
-    if (!rewards.length && !routines.length && !(stars.entries || []).length && grabs === 0) { content.innerHTML = '<p class="home-loop-empty">Nothing set up yet — add a routine, reward, or up-for-grabs chore to start.</p>'; return; }
-    content.innerHTML = `${profiles.map(profile => { const balance = Number(profile.balance) || 0; const next = rewards.find(reward => reward.starCost > balance); const profileRoutines = routines.filter(routine => routine.assignedProfileIds.includes(profile.id)); const steps = profileRoutines.reduce((sum, routine) => sum + routine.steps.length, 0); const complete = profileRoutines.reduce((sum, routine) => sum + ((routine.profiles.find(progress => progress.profileId === profile.id)?.completedStepIds || []).length), 0); return `<div class="home-loop-profile" style="--profile-color:${escapeHtml(getValidCalendarColor(profile.color))}"><span class="home-loop-avatar">${escapeHtml(getProfileInitials(profile.name))}</span><span><strong>${escapeHtml(profile.name || 'Unnamed')}</strong><small>${balance} stars${next ? ` · ${escapeHtml(next.name)} ${balance}/${next.starCost}` : ''}</small></span><span class="home-loop-routine">${steps ? `${complete}/${steps} routine steps` : 'No routine today'}</span></div>`; }).join('')}<div class="home-loop-grabs"><i class="material-icons" aria-hidden="true">volunteer_activism</i><span>${grabs ? `${grabs} chore${grabs === 1 ? '' : 's'} up for grabs` : 'No chores up for grabs'}</span></div>`;
-  } catch (error) { content.innerHTML = `<p class="home-loop-empty">${escapeHtml(error.message)}</p>`; }
+  try { await choreRequest(id ? `api/routines/${encodeURIComponent(id)}` : 'api/routines', { method: id ? 'PUT' : 'POST', body: JSON.stringify(payload) }); document.getElementById('routine-form-modal').classList.remove('show'); await loadRoutines(); } catch (error) { document.getElementById('routine-form-error').textContent = error.message; }
 }
 
 function openStarAdjustment() {
@@ -4045,36 +4125,6 @@ async function handleCalDAVSync() {
   }
 }
 
-// Populates the "Next Event" footer. #next-event-info previously had no JS writing
-// to it at all, so it always read "No upcoming events" no matter what was scheduled.
-function updateNextEventPanel(events) {
-  const el = document.getElementById('next-event-info');
-  if (!el) return;
-
-  const now = new Date();
-  const upcoming = (events || [])
-    .map(e => ({ ev: e, when: new Date(e.start) }))
-    .filter(x => !isNaN(x.when) && x.when >= now)
-    .sort((a, b) => a.when - b.when)[0];
-
-  if (!upcoming) {
-    el.textContent = 'No upcoming events';
-    return;
-  }
-
-  const { ev, when } = upcoming;
-  const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const dayDiff = Math.round((new Date(when.getFullYear(), when.getMonth(), when.getDate()) - midnight) / 86400000);
-  const dayLabel = dayDiff === 0 ? 'Today'
-    : dayDiff === 1 ? 'Tomorrow'
-    : when.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
-
-  const timeLabel = ev.allDay
-    ? 'all day'
-    : when.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-
-  el.textContent = `${ev.title} — ${dayLabel}, ${timeLabel}`;
-}
 
 // ── Automatic refresh ────────────────────────────────────────────────────
 // This runs on a wall-mounted display nobody touches for days. Nothing refetched

@@ -1,22 +1,26 @@
 <turbo-frame id="calendar-content">
 <!-- Calendar Content -->
-<header>
-  <div class="date-time">
-    <h1 id="current-time">--:--</h1>
-    <h2 id="current-date">Loading...</h2>
+<header class="calendar-topbar">
+  <div class="calendar-nav" aria-label="Calendar navigation">
+    <button type="button" class="calendar-topbar-button" data-calendar-action="prev" aria-label="Previous period"><i class="material-icons" aria-hidden="true">chevron_left</i></button>
+    <button type="button" class="calendar-topbar-button" data-calendar-action="next" aria-label="Next period"><i class="material-icons" aria-hidden="true">chevron_right</i></button>
+    <button type="button" class="calendar-today-button" data-calendar-action="today">Today</button>
   </div>
-  <div class="weather" id="weather-container">
-    <div class="temp">--°</div>
-    <div class="condition"><i class="material-icons">cloud</i></div>
+  <h1 id="calendar-view-title" class="calendar-view-title" aria-live="polite">Loading…</h1>
+  <div class="calendar-topbar-end">
+    <div class="calendar-view-switcher" aria-label="Calendar view">
+      <button type="button" data-calendar-view="timeGridDay" aria-pressed="false">Day</button>
+      <button type="button" data-calendar-view="dayGridWeek" aria-pressed="true">Week</button>
+      <button type="button" data-calendar-view="dayGridMonth" aria-pressed="false">Month</button>
+    </div>
+    <div class="calendar-status" aria-label="Current time and weather">
+      <time id="current-time">--:--</time>
+      <div class="weather" id="weather-container"><span class="temp">--°</span></div>
+    </div>
   </div>
 </header>
-<section id="home-motivation-loop" class="home-motivation-loop" aria-labelledby="home-motivation-title">
-  <div class="home-motivation-header"><div><h2 id="home-motivation-title">Household momentum</h2><p>Stars, routines, and a chance to help.</p></div><button type="button" class="btn btn-secondary" data-home-loop-toggle aria-expanded="true" aria-controls="home-motivation-content"><i class="material-icons" aria-hidden="true">expand_less</i><span class="home-loop-toggle-copy">Hide</span></button></div>
-  <div id="home-motivation-content" class="home-motivation-content" aria-live="polite"></div>
-</section>
 <div class="calendar-toolbar">
   <div class="calendar-users">
-    <div class="users-toggle-label">Profiles:</div>
     <div id="user-toggles" class="user-toggle-icons">
       <!-- User icons will be populated by JavaScript -->
     </div>
@@ -25,12 +29,6 @@
 <main>
   <div id="calendar"></div>
 </main>
-<footer>
-  <div class="next-event" id="next-event">
-    <h3>Next Event</h3>
-    <p id="next-event-info">No upcoming events</p>
-  </div>
-</footer>
 
 <!-- Event details. Tapping an event previously only wrote to the console. -->
 <div id="event-detail-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="event-detail-title">

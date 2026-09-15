@@ -1,5 +1,87 @@
 # Changelog
 
+## [1.1.9.22] - 2026-09-15
+
+The Chores board had reclaimed the page, but the furniture around it had not caught up. Seven
+header controls squeezed the title into two lines and clipped the primary New Chore action off
+the right edge of the screen, while the household stars strip spent more room on repeated empty
+states than on the people it was meant to show.
+
+### Fixed
+- **New Chore stays reachable.** The header now keeps Hide Completed, Manage, and the primary
+  action visible without a fixed-height clipping point; its controls wrap when space is tight.
+
+### Changed
+- **Chore management now lives in one touch-friendly menu.** Rewards, star adjustments, star
+  settings, and routines continue to open their existing modals from the Manage menu.
+- **Household stars now use full-name profile chips.** The strip no longer carries a decorative
+  heading or repeats “No rewards yet” for every family member, and its routine summary can wrap
+  instead of running past the edge.
+
+## [1.1.9.21] - 2026-09-15
+
+The Chores board had been squeezed into 22% of its own page by the stars and rewards panels.
+Those management features made the actual household work the smallest, most crowded part of a
+wall display meant to be read at a glance.
+
+### Changed
+- **Chores now leads with the board.** Stars, next-reward progress, and today’s routine total share
+  one compact strip, leaving the bounded board the clear majority of the page.
+- **Reward management, star adjustments, star settings, and routine setup now live behind header
+  buttons and their existing modals.** A profile’s compact reward button still opens the existing
+  redemption confirmation before any stars are spent.
+
+## [1.1.9.20] - 2026-09-15
+
+The Chores board could give each lane a scrollbar while the lane itself still extended beneath the
+fixed page. That left the final cards and their controls cut off, especially after the dashboard
+panels above the board had claimed their space. Each card also repeated a full routine editor,
+which made a family board harder to scan from across the room.
+
+### Fixed
+- **Chore lanes now receive the bounded remainder of the page.** The frame, content area, board,
+  lanes, and lane contents all permit their flex children to shrink; only the lane content scrolls,
+  so no card is clipped by an ancestor.
+
+### Changed
+- **Chore cards now show compact step progress.** Tapping a card opens the existing modal-style
+  detail surface for adding, editing, ordering, and checking off individual steps, while the board
+  keeps assignment initials, stars, due dates, and the completion toggle at a glance.
+
+## [1.1.9.19] - 2026-09-15
+
+Version 1.1.9.18 shipped the intended two-bar calendar structure, but FullCalendar could still
+render while its frame was hidden and cache a zero-height container. The events and day cells
+were present in the DOM, yet the entire visible grid collapsed. The Chores board also made its
+new inline subtask controls unreachable when a card grew beyond its lane.
+
+### Fixed
+- **Calendar sizing now waits for a visible, non-zero container.** A queued post-activation
+  `updateSize()` remeasures FullCalendar after Calendar becomes active, while a guarded
+  `ResizeObserver` keeps the grid sized through viewport, orientation, and sidebar changes
+  without resize feedback loops.
+- **Chore lanes now scroll internally instead of clipping cards.** The board remains
+  page-fixed, with token-coloured scroll indicators on each bounded lane so every chore card and
+  its add-step control can be reached.
+
+## [1.1.9.18] - 2026-09-15
+
+The calendar had accumulated five competing bands around a time grid that FullCalendar sized to
+its content rather than its container. On a 1080p wall display that made the week cut off at 3pm
+and required scrolling to see the evening, defeating the purpose of a glanceable family calendar.
+
+### Changed
+- **The calendar is now a two-bar, full-height display.** Navigation, the one date title, view
+  switcher, and small time/weather readout share a thin top bar; profile chips form the only row
+  below it, leaving the grid to use everything else.
+- **Week defaults to compact day columns and every event is a solid, contrast-checked chip.**
+  Profile star balances now live on their profile chips, so household momentum remains visible
+  without a separate panel.
+
+### Fixed
+- **FullCalendar now fills its available container rather than growing to its 18-hour content.**
+  The page and its glanceable companion pages can adapt to the panel without a page scrollbar.
+
 ## [1.1.9.17] - 2026-09-12
 
 The household loop previously stopped at recording stars and rewards on the Chores page. That

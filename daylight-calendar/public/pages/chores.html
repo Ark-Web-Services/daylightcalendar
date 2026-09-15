@@ -2,9 +2,16 @@
 <header class="content-header">
   <h1>Chore Board</h1>
   <div class="header-actions">
-    <button id="jump-to-today" class="btn btn-secondary"><i class="material-icons">today</i> Today</button>
     <button id="toggle-completed" class="btn btn-secondary"><i class="material-icons">visibility_off</i> Hide Completed</button>
-    <button id="manage-routines-button" class="btn btn-secondary"><i class="material-icons">routine</i> Routines</button>
+    <div class="chore-manage">
+      <button type="button" id="chore-manage-button" class="btn btn-secondary" aria-haspopup="true" aria-expanded="false" aria-controls="chore-manage-menu"><i class="material-icons" aria-hidden="true">more_horiz</i> Manage</button>
+      <div id="chore-manage-menu" class="chore-manage-menu" hidden>
+        <button type="button" id="manage-rewards-button" class="btn btn-secondary"><i class="material-icons" aria-hidden="true">card_giftcard</i> Rewards</button>
+        <button type="button" id="adjust-stars-button" class="btn btn-secondary"><i class="material-icons" aria-hidden="true">stars</i> Adjust Stars</button>
+        <button type="button" id="chore-settings-button" class="btn btn-secondary"><i class="material-icons" aria-hidden="true">tune</i> Star Settings</button>
+        <button type="button" id="manage-routines-button" class="btn btn-secondary"><i class="material-icons" aria-hidden="true">routine</i> Routines</button>
+      </div>
+    </div>
     <button id="add-chore-button" class="btn btn-primary"><i class="material-icons">add</i> New Chore</button>
   </div>
 </header>
@@ -49,23 +56,8 @@
     </div>
   </div>
 
-  <section class="stars-rewards" aria-labelledby="stars-rewards-title">
-    <div class="stars-rewards-header">
-      <div>
-        <h2 id="stars-rewards-title">Stars &amp; Rewards</h2>
-        <p>Finish a chore, collect stars, choose a reward.</p>
-      </div>
-      <div class="stars-rewards-actions">
-        <button type="button" id="manage-rewards-button" class="btn btn-secondary"><i class="material-icons">card_giftcard</i> Manage Rewards</button>
-        <button type="button" id="adjust-stars-button" class="btn btn-secondary"><i class="material-icons">stars</i> Adjust Stars</button>
-        <button type="button" id="chore-settings-button" class="btn btn-secondary"><i class="material-icons">tune</i> Star Settings</button>
-      </div>
-    </div>
+  <section class="stars-rewards" aria-label="Household stars and today’s routines">
     <div id="stars-rewards-content" class="stars-rewards-content" aria-live="polite"></div>
-  </section>
-
-  <section class="routines-panel" aria-labelledby="routines-title">
-    <div class="routines-header"><div><h2 id="routines-title">Today’s Routines</h2><p>Tap each step as you go. Finish every step to earn stars.</p></div><button type="button" id="new-routine-button" class="btn btn-secondary"><i class="material-icons">add</i> New Routine</button></div>
     <div id="routines-content" class="routines-content" aria-live="polite"></div>
   </section>
 
@@ -119,6 +111,13 @@
   </div>
 
   <div id="claim-chore-modal" class="modal"><div class="modal-content"><div class="modal-header"><h3>Claim Chore</h3><button class="modal-close" type="button" aria-label="Close">&times;</button></div><div class="modal-body"><p id="claim-chore-message">Who is claiming this?</p><div id="claim-profile-options" class="claim-profile-options"></div><p id="claim-chore-error" class="form-error" role="alert"></p></div></div></div>
+
+  <div id="chore-detail-modal" class="modal" aria-labelledby="chore-detail-title">
+    <div class="modal-content">
+      <div class="modal-header"><h3 id="chore-detail-title">Chore details</h3><button class="modal-close" type="button" aria-label="Close">&times;</button></div>
+      <div id="chore-detail-content" class="modal-body" aria-live="polite"></div>
+    </div>
+  </div>
 
   <div id="routine-form-modal" class="modal"><div class="modal-content"><div class="modal-header"><h3 id="routine-form-title">New Routine</h3><button class="modal-close" type="button" aria-label="Close">&times;</button></div><div class="modal-body"><form id="routine-form"><input type="hidden" id="routine-id" name="id"><div class="form-row"><div class="form-group"><label for="routine-name">Routine name</label><input id="routine-name" name="name" required maxlength="80"></div><div class="form-group"><label for="routine-icon">Material icon</label><input id="routine-icon" name="icon" value="routine" maxlength="40"></div></div><div class="form-group"><label>Assigned to</label><div id="routine-profile-options" class="chore-profile-options"></div></div><div class="form-row"><div class="form-group"><label>Days</label><div id="routine-days" class="routine-days"><label><input type="checkbox" value="0"> Sun</label><label><input type="checkbox" value="1"> Mon</label><label><input type="checkbox" value="2"> Tue</label><label><input type="checkbox" value="3"> Wed</label><label><input type="checkbox" value="4"> Thu</label><label><input type="checkbox" value="5"> Fri</label><label><input type="checkbox" value="6"> Sat</label></div></div><div class="form-group"><label for="routine-time-band">Time</label><select id="routine-time-band" name="timeOfDay"><option value="morning">Morning</option><option value="afternoon">Afternoon</option><option value="evening">Evening</option></select></div><div class="form-group"><label for="routine-star-value">Stars</label><input id="routine-star-value" name="starValue" type="number" min="1" value="1" required></div></div><div class="form-group"><label for="routine-steps">Steps, one per line</label><textarea id="routine-steps" name="steps" required maxlength="1000"></textarea></div><p id="routine-form-error" class="form-error" role="alert"></p><div class="form-actions"><button type="button" class="btn btn-secondary modal-cancel">Cancel</button><button type="submit" class="btn btn-primary">Save Routine</button></div></form></div></div></div>
 </div>
