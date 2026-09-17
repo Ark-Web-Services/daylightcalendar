@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.1.9.23] - 2026-09-17
+
+The dimmer had been protecting the panel for only 30 seconds at a time, then waking itself back
+up to full brightness. At the same time, a wall panel could stay on an old JavaScript page after
+an add-on restart, leaving a perfectly healthy touchscreen with nothing current to talk to.
+
+### Fixed
+- **Screen protection now stays protective.** After the configured idle period, the full-screen
+  dimmer remains in place until the next touch or other interaction, without a countdown, message,
+  or precisely targeted wake button.
+- **Wall panels now recover after add-on updates.** The page checks the existing configuration
+  endpoint for the running add-on version every minute, reloads when that version changes, and
+  retries with a bounded backoff through an interrupted restart before reloading once the service
+  returns. Reloads defer while a modal or active edit is open.
+
 ## [1.1.9.22] - 2026-09-15
 
 The Chores board had reclaimed the page, but the furniture around it had not caught up. Seven

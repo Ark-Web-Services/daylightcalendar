@@ -70,6 +70,15 @@ async function initializeApp() {
   // Ensure development_mode is in config (default to false if not defined)
   config.development_mode = config.development_mode === true;
 
+  let addonVersion = null;
+  try {
+    const addonManifest = fs.readFileSync(path.join(__dirname, 'config.yaml'), 'utf8');
+    const versionMatch = addonManifest.match(/^version:\s*["']?([^"'\r\n]+)["']?\s*$/m);
+    addonVersion = versionMatch ? versionMatch[1].trim() : null;
+  } catch (error) {
+    console.warn('[WARN] Could not read add-on version from config.yaml:', error.message);
+  }
+
   // Standalone dev mode: runs without HA, uses mock data
   const isStandaloneDev = process.env.STANDALONE_DEV === 'true';
   if (isStandaloneDev) {
@@ -2241,7 +2250,8 @@ async function initializeApp() {
     // Always include development_mode in the config
     const configResponse = {
       ...config,
-      development_mode: config.development_mode
+      development_mode: config.development_mode,
+      addon_version: addonVersion
     };
     res.json(configResponse);
   });

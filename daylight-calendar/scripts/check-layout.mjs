@@ -7,8 +7,15 @@
 // 4.5:1 contrast ratio.
 //
 //   cd daylight-calendar && (STANDALONE_DEV=true PORT=8100 node index.js &) ; sleep 6
-//   npm --prefix /tmp/dl-harness install playwright     # not a project dependency
-//   PLAYWRIGHT_CHROMIUM=<path> node scripts/check-layout.mjs http://localhost:8100/ ./shots
+//
+//   # Playwright is deliberately NOT a project dependency (it must not reach the
+//   # add-on image). Node resolves ESM imports from the SCRIPT's directory, not the
+//   # cwd, so copy this file next to an installed playwright and run it there:
+//   mkdir -p /tmp/dl-harness && cd /tmp/dl-harness
+//   npm init -y && npm install playwright
+//   cp <repo>/daylight-calendar/scripts/check-layout.mjs .
+//   PLAYWRIGHT_CHROMIUM=<path-to-chromium> node check-layout.mjs http://localhost:8100/ ./shots
+//
 //   lsof -ti:8100 | xargs kill -9
 //
 // Exits non-zero on any failure. Look at the screenshots too: a layout can pass

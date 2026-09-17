@@ -4,8 +4,6 @@ console.log('[INFO] Initializing Daylight Calendar client...');
 
 // Global variables
 let inactivityTimer;
-let dimmerCountdownTimer;
-let dimmerCountdown = 30;
 let weatherForecastData = [];
 let weatherTemperatureUnit = '°';
 let weatherPrecipitationUnit = '';
@@ -38,6 +36,16 @@ let pendingStarAwards = [];
 let pendingRewardRedemption = null;
 let showCompletedChores = true;
 let cleanupChoreManageMenu = null;
+let addonLivenessTimer = null;
+let loadedAddonVersion = null;
+let addonLivenessFailures = 0;
+let addonRestartDetected = false;
+let addonReloadPendingReason = null;
+
+const ADDON_LIVENESS_POLL_MS = 60 * 1000;
+const ADDON_LIVENESS_MAX_BACKOFF_MS = 5 * 60 * 1000;
+const ADDON_LIVENESS_FAILURE_THRESHOLD = 2;
+const ADDON_LIVENESS_RELOAD_DEFER_MS = 15 * 1000;
 
 // Display settings (default values)
 let displaySettings = {
@@ -64,6 +72,8 @@ document.addEventListener('DOMContentLoaded', function () {
       initializeSidebar();
       initializeGlobalUI();
 
+      startAddonLivenessMonitor(config.addon_version);
+
       // Setup turbo frame event listeners
       setupTurboFrameListeners();
 
@@ -82,9 +92,82 @@ document.addEventListener('DOMContentLoaded', function () {
       };
       initializeSidebar();
       initializeGlobalUI();
+      startAddonLivenessMonitor(null);
       setupTurboFrameListeners();
     });
 });
+
+function startAddonLivenessMonitor(addonVersion) {
+  loadedAddonVersion = addonVersion || null;
+  scheduleAddonLivenessCheck(ADDON_LIVENESS_POLL_MS);
+}
+
+function scheduleAddonLivenessCheck(delay) {
+  if (addonLivenessTimer) clearTimeout(addonLivenessTimer);
+  addonLivenessTimer = window.setTimeout(checkAddonLiveness, delay);
+}
+
+function canReloadForAddonUpdate() {
+  if (document.querySelector('.modal.show') || listEditInProgress) return false;
+
+  const activeElement = document.activeElement;
+  return !activeElement?.matches('input, textarea, select, [contenteditable="true"]');
+}
+
+function reloadForAddonUpdate(reason) {
+  addonReloadPendingReason ||= reason;
+
+  if (!canReloadForAddonUpdate()) {
+    console.info(`[INFO] Delaying add-on reload while the panel is in use: ${addonReloadPendingReason}`);
+    scheduleAddonLivenessCheck(ADDON_LIVENESS_RELOAD_DEFER_MS);
+    return;
+  }
+
+  console.info(`[INFO] Reloading Daylight after ${addonReloadPendingReason}`);
+  window.location.reload();
+}
+
+async function checkAddonLiveness() {
+  try {
+    const response = await fetch('api/config', { cache: 'no-store' });
+    if (!response.ok) throw new Error(`Config check failed: ${response.status}`);
+
+    const config = await response.json();
+    const reportedVersion = config.addon_version || null;
+    const restarted = addonRestartDetected;
+    addonLivenessFailures = 0;
+    addonRestartDetected = false;
+
+    if (loadedAddonVersion && reportedVersion && reportedVersion !== loadedAddonVersion) {
+      reloadForAddonUpdate(`add-on version changed from ${loadedAddonVersion} to ${reportedVersion}`);
+      return;
+    }
+
+    if (restarted) {
+      reloadForAddonUpdate('the add-on became available again after restarting');
+      return;
+    }
+
+    if (addonReloadPendingReason) {
+      reloadForAddonUpdate(addonReloadPendingReason);
+      return;
+    }
+
+    scheduleAddonLivenessCheck(ADDON_LIVENESS_POLL_MS);
+  } catch (error) {
+    addonLivenessFailures += 1;
+    if (addonLivenessFailures >= ADDON_LIVENESS_FAILURE_THRESHOLD) {
+      addonRestartDetected = true;
+    }
+
+    const backoff = Math.min(
+      ADDON_LIVENESS_POLL_MS * (2 ** Math.min(addonLivenessFailures, 3)),
+      ADDON_LIVENESS_MAX_BACKOFF_MS
+    );
+    console.warn(`[WARN] Add-on liveness check failed (${addonLivenessFailures}); retrying in ${Math.round(backoff / 1000)} seconds`, error);
+    scheduleAddonLivenessCheck(backoff);
+  }
+}
 
 // Setup Turbo frame event listeners
 function setupTurboFrameListeners() {
@@ -1073,15 +1156,7 @@ function initializeSidebar() {
 }
 
 function initializeGlobalUI() {
-  // Initialize display settings
-  const screenDimmer = document.getElementById('screen-dimmer');
   const clockDisplay = document.getElementById('clock-display');
-  const dimmerDismiss = document.getElementById('dimmer-dismiss');
-
-  // Setup dimmer dismiss button
-  if (dimmerDismiss) {
-    dimmerDismiss.addEventListener('click', wakeScreen);
-  }
 
   // Setup event listeners for screen burn protection
   document.addEventListener('mousemove', resetInactivityTimer);
@@ -1809,35 +1884,13 @@ function dimScreen() {
   if (!displaySettings.screenBurnProtection) return;
 
   const screenDimmer = document.getElementById('screen-dimmer');
-  screenDimmer.classList.add('active');
+  screenDimmer?.classList.add('active');
   console.log('[INFO] Screen dimmed to prevent burn-in');
-
-  // Start countdown
-  dimmerCountdown = 30;
-  updateDimmerCountdown();
-  dimmerCountdownTimer = setInterval(updateDimmerCountdown, 1000);
-}
-
-function updateDimmerCountdown() {
-  if (dimmerCountdown <= 0) {
-    clearInterval(dimmerCountdownTimer);
-    wakeScreen();
-    return;
-  }
-
-  const dimmerCountdownEl = document.getElementById('dimmer-countdown');
-  if (dimmerCountdownEl) {
-    dimmerCountdownEl.textContent = dimmerCountdown;
-  }
-  dimmerCountdown--;
 }
 
 function wakeScreen() {
   const screenDimmer = document.getElementById('screen-dimmer');
-  screenDimmer.classList.remove('active');
-  if (dimmerCountdownTimer) {
-    clearInterval(dimmerCountdownTimer);
-  }
+  screenDimmer?.classList.remove('active');
   resetInactivityTimer();
 }
 

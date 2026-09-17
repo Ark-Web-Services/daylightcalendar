@@ -13,11 +13,7 @@
 <body>
   <div id="app" class="theme-light">
     <!-- Screen burn prevention overlay -->
-    <div class="screen-dimmer" id="screen-dimmer">
-      <div class="screen-dimmer-message">Screen dimmed to prevent burn-in</div>
-      <div class="screen-dimmer-timer">Auto-resume in <span id="dimmer-countdown">30</span> seconds</div>
-      <button class="screen-dimmer-dismiss" id="dimmer-dismiss">Tap to Wake Up</button>
-    </div>
+    <div class="screen-dimmer" id="screen-dimmer" aria-hidden="true"></div>
 
     <!-- Always visible clock display (when enabled) -->
     <div class="clock-display" id="clock-display">10:25 PM</div>
