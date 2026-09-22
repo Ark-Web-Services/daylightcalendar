@@ -1527,9 +1527,17 @@ function setupCalendar() {
         week: 'Week',
         month: 'Month'
       },
+      // Hourly gridlines, not the 30-minute default: 18 rows fit any panel height,
+      // where 36 rows forced FullCalendar's internal scroller on a short screen.
+      // slotDuration only governs the gridlines and labels - an event still renders
+      // at its exact start offset and exact duration height.
       slotMinTime: '06:00:00',
-      slotMaxTime: '22:00:00',
+      slotMaxTime: '24:00:00',
+      slotDuration: '01:00:00',
+      slotLabelInterval: '01:00:00',
       allDaySlot: true,
+      nowIndicator: true,
+      slotEventOverlap: false,
       height: '100%',
       expandRows: true,
       loading: function (isLoading) {
@@ -1591,7 +1599,7 @@ function setupCalendar() {
       },
       datesSet: function (info) {
         closeDailyWeatherPopover();
-        if (['timeGridDay', 'dayGridWeek', 'dayGridMonth'].includes(info.view.type)) {
+        if (['timeGridDay', 'timeGridWeek', 'dayGridMonth'].includes(info.view.type)) {
           try {
             localStorage.setItem('daylight-calendar-view', info.view.type);
           } catch (error) {
@@ -1697,11 +1705,11 @@ function disconnectCalendarSizeObserver() {
 function getStoredCalendarView() {
   try {
     const storedView = localStorage.getItem('daylight-calendar-view');
-    if (['timeGridDay', 'dayGridWeek', 'dayGridMonth'].includes(storedView)) return storedView;
+    if (['timeGridDay', 'timeGridWeek', 'dayGridMonth'].includes(storedView)) return storedView;
   } catch (error) {
     console.warn('[WARN] Could not read saved calendar view:', error);
   }
-  return 'dayGridWeek';
+  return 'timeGridWeek';
 }
 
 function initializeCalendarTopbar() {

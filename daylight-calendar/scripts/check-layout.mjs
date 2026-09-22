@@ -191,6 +191,12 @@ const contrast = await page.evaluate(() => {
       return { text: (el.innerText || '').trim().slice(0, 28), fg: cs.color, bg: opaque(el), size: cs.fontSize };
     });
 });
+if (contrast.length === 0) {
+  // A silent pass on an empty sample is worse than a failure - it looks like
+  // proof when it is the absence of it. Fixture weeks drift out of range.
+  console.log('contrast WARN: no event chips were present to measure (is the visible week empty?)');
+  failures++;
+}
 for (const c of contrast) {
   const fg = (c.fg.match(/\d+(\.\d+)?/g) || []).slice(0, 3).map(Number);
   const bg = (c.bg.match(/\d+(\.\d+)?/g) || []).slice(0, 3).map(Number);

@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.1.9.24] - 2026-09-22
+
+The week view stopped showing when things actually happen. Fitting the calendar to the panel in
+1.1.9.18 also switched the week from a time grid to `dayGridWeek`, which has no hour axis at all —
+every event collapsed into a chip stacked at the top of its day, so a 6:30pm parent-teacher meeting
+and an all-day trip looked identical and nothing conveyed duration. The week is a time grid again:
+events sit at their real start time and span their real length, multi-day events continue correctly
+across columns, and all-day items keep their own row.
+
+It still fits without scrolling, which is what the switch had been avoiding. Gridlines are hourly
+rather than the 30-minute default, so the 06:00-24:00 window is 18 rows instead of 36 and fits any
+panel height; `slotDuration` governs only the gridlines, so events keep exact placement — verified
+at 46.4px per hour, with an 18:30-20:00 event landing 580px down and 69px tall. Also adds a current
+-time indicator and side-by-side rather than overlapping events.
+
+
 ## [1.1.9.23] - 2026-09-17
 
 The dimmer had been protecting the panel for only 30 seconds at a time, then waking itself back
