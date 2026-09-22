@@ -77,7 +77,17 @@ it failed.
    collapsed to 0px and the grid rendered **blank** with its cells and events present in the DOM.
    It also hardcoded `#fff` on the calendar surface, which paints white on all five non-light
    themes. The file is now a documented no-op. Style in `styles.css`, with `--md-*` tokens.
-8. **The wall panel must never scroll.** Calendar, Chores, Meals and Lists must fit at any
+8. **The week view is `timeGridWeek`, and it must stay a time grid.** Events belong at their real
+   time of day, spanning their real duration — that is the information a week view exists to
+   carry. 1.1.9.18 switched it to `dayGridWeek` to stop the calendar overflowing, which removed
+   the hour axis entirely and collapsed every event into a chip at the top of its column; the
+   user reported it immediately. **Do not "fix" a layout overflow by dropping back to
+   `dayGridWeek`.** The two goals are reconciled by slot *granularity*, not view type: hourly
+   `slotDuration` makes the 06:00-24:00 window 18 rows instead of 36 so it fits any panel height,
+   and `slotDuration` governs only gridlines and labels — event geometry stays exact (measured
+   46.4px/hour; an 18:30-20:00 event lands +580px down and 69px tall).
+   Known limit: an event starting before `slotMinTime` (06:00) is **not rendered** in week view.
+9. **The wall panel must never scroll.** Calendar, Chores, Meals and Lists must fit at any
    viewport; only Settings may scroll. Content clipped by an ancestor's `overflow:hidden` is just
    as invisible as content below a fold — both are failures. See the harness in §3.
 
