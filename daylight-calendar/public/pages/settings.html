@@ -112,6 +112,48 @@
     </div>
 
     <div class="settings-section">
+      <h2>Screen time</h2>
+      <div class="settings-card" id="screen-time-settings-card">
+        <div class="screen-time-settings-heading">
+          <div>
+            <h3>Game limits</h3>
+            <p class="setting-description">Set each person’s daily playtime and what must be finished first.</p>
+          </div>
+          <span id="screen-time-pin-state" class="screen-time-pin-state">Loading…</span>
+        </div>
+        <form id="screen-time-settings-form">
+          <div class="screen-time-toggle-grid">
+            <label class="screen-time-toggle" for="screen-time-enabled">
+              <input type="checkbox" id="screen-time-enabled">
+              <span><strong>Enable screen time</strong><small>Track and enforce daily game limits.</small></span>
+            </label>
+            <label class="screen-time-toggle" for="screen-time-require-chores">
+              <input type="checkbox" id="screen-time-require-chores">
+              <span><strong>Require chores first</strong><small>Due, assigned chores must be complete.</small></span>
+            </label>
+            <label class="screen-time-toggle" for="screen-time-include-routines">
+              <input type="checkbox" id="screen-time-include-routines">
+              <span><strong>Include routines</strong><small>Today’s assigned routines join the chore gate.</small></span>
+            </label>
+          </div>
+          <div class="form-group screen-time-default-field">
+            <label for="screen-time-default-minutes">Default daily minutes</label>
+            <input type="number" id="screen-time-default-minutes" min="0" max="1440" step="1" required>
+          </div>
+          <div>
+            <h4 class="screen-time-profile-heading">Per-person daily minutes</h4>
+            <div id="screen-time-profile-settings" class="screen-time-profile-settings" aria-live="polite">Loading people…</div>
+          </div>
+          <div id="screen-time-settings-status" class="screen-time-settings-status" aria-live="polite"></div>
+          <div class="form-actions screen-time-settings-actions">
+            <button type="button" id="screen-time-set-pin" class="btn btn-secondary"><i class="material-icons" aria-hidden="true">pin</i> Set PIN</button>
+            <button type="submit" class="btn btn-primary"><i class="material-icons" aria-hidden="true">save</i> Save screen time</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="settings-section">
       <h2>Calendar Accounts</h2>
       <div class="settings-card calendar-management-card">
         <div class="calendar-management-heading">
@@ -203,6 +245,27 @@
         <button id="add-user-btn" class="btn btn-primary" style="margin-top: 15px;">
           <i class="material-icons">person_add</i> Add Profile
         </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="settings-pin-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-pin-title">
+    <div class="modal-content pin-modal-content">
+      <div class="modal-header">
+        <h3 id="settings-pin-title">Parent PIN</h3>
+        <button class="modal-close" type="button" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body pin-modal-body">
+        <p id="settings-pin-message">Enter the parent PIN.</p>
+        <div id="settings-pin-display" class="pin-display" aria-label="PIN is empty">○ ○ ○ ○</div>
+        <div id="settings-pin-error" class="inline-form-error" role="alert"></div>
+        <div id="settings-pin-keypad" class="pin-keypad" aria-label="PIN keypad">
+          <button type="button" data-pin-key="1">1</button><button type="button" data-pin-key="2">2</button><button type="button" data-pin-key="3">3</button>
+          <button type="button" data-pin-key="4">4</button><button type="button" data-pin-key="5">5</button><button type="button" data-pin-key="6">6</button>
+          <button type="button" data-pin-key="7">7</button><button type="button" data-pin-key="8">8</button><button type="button" data-pin-key="9">9</button>
+          <button type="button" data-pin-action="clear" aria-label="Clear PIN">Clear</button><button type="button" data-pin-key="0">0</button><button type="button" data-pin-action="backspace" aria-label="Delete last digit"><i class="material-icons" aria-hidden="true">backspace</i></button>
+        </div>
+        <button type="button" id="settings-pin-submit" class="btn btn-primary pin-submit" disabled>Continue</button>
       </div>
     </div>
   </div>

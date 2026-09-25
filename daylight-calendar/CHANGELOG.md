@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.1.9.25] - 2026-09-25
+
+The Games page looked as though it enforced playtime, but its 30-minute balance and every
+per-game limit were static labels: the 15:00 overlay never moved, selecting a profile changed
+nothing, and a launched game could run without any limit at all. Adding a game also stopped at a
+console message, so the library reset to three hardcoded tiles whose artwork depended on dead or
+third-party image hosts.
+
+Games now use a durable, append-only session ledger with per-profile daily allowances, parent
+grants, server-enforced expiry, and heartbeat recovery that charges only through the last known
+play when the panel loses power or the page crashes. Assigned chores that are due now—and,
+optionally, today’s routines—must be complete before play begins; the block names the exact work
+remaining and a PIN-protected parent can allow one session. The same 4–8 digit parent PIN protects
+added time, settings changes, and game removal, with a temporary lock after repeated wrong tries.
+
+The wall display now asks who is playing, shows each person’s remaining time, counts down against
+the server while a game is open, stops the iframe and its audio at zero, and keeps the page fixed
+to the viewport while only a large library scrolls inside its own bounded area. The game library
+persists under the add-on data volume and uses local Material icons instead of hotlinked images;
+Screen time settings now include household defaults, individual limits, chore and routine gates,
+and a touchscreen numeric PIN pad.
+
 ## [1.1.9.24] - 2026-09-22
 
 The week view stopped showing when things actually happen. Fitting the calendar to the panel in

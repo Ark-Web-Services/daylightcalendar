@@ -41,7 +41,7 @@ const VIEWPORTS = [
   { name: '1080x1920', width: 1080, height: 1920 },
 ];
 // Pages that must NEVER scroll. Settings is deliberately excluded.
-const PAGES = ['calendar', 'chores', 'meals', 'lists'];
+const PAGES = ['calendar', 'chores', 'meals', 'lists', 'games'];
 
 fs.mkdirSync(OUT, { recursive: true });
 const browser = await chromium.launch(EXEC ? { executablePath: EXEC } : {});
@@ -164,6 +164,14 @@ for (const vp of VIEWPORTS) {
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
 await page.goto(BASE, { waitUntil: 'domcontentloaded' });
 await page.waitForTimeout(7000);
+// Fixture events have fixed dates, so the current week drifts out of range. Step
+// back (up to 8 weeks) to the nearest week that actually has events to measure.
+for (let i = 0; i < 8; i++) {
+  const has = await page.evaluate(() => document.querySelectorAll('.fc-event-title, .fc-event-main').length);
+  if (has) break;
+  await page.evaluate(() => document.querySelector('[data-calendar-action="prev"]')?.click());
+  await page.waitForTimeout(2000);
+}
 const contrast = await page.evaluate(() => {
   const parse = c => (c.match(/\d+(\.\d+)?/g) || []).slice(0, 3).map(Number);
   // Measure the elements that actually paint text. Wrapper elements such as

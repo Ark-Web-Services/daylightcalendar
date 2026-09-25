@@ -36,6 +36,24 @@ let pendingStarAwards = [];
 let pendingRewardRedemption = null;
 let showCompletedChores = true;
 let cleanupChoreManageMenu = null;
+let screenTimeSnapshot = null;
+let gameLibrary = [];
+let selectedGameProfileId = null;
+let pendingGameOverridePin = null;
+let activeGameSession = null;
+let activeGame = null;
+let gameTimerInterval = null;
+let gameHeartbeatInterval = null;
+let gameServerRemainingSeconds = null;
+let gameServerSyncTime = 0;
+let shownGameWarnings = new Set();
+let gamePinAction = null;
+let gamePinValue = '';
+let selectedGrantMinutes = 15;
+let screenTimeSettingsSnapshot = null;
+let settingsPinFlow = null;
+let settingsPinValue = '';
+let appDialogResolver = null;
 let addonLivenessTimer = null;
 let loadedAddonVersion = null;
 let addonLivenessFailures = 0;
@@ -562,64 +580,32 @@ function initializeMealsPage() {
 
 function initializeGamesPage() {
   console.log('[INFO] Initializing games page...');
+  const frame = document.getElementById('games-content');
+  if (!frame || frame.dataset.gamesInitialized === 'true') return;
+  frame.dataset.gamesInitialized = 'true';
 
-  setTimeout(() => {
-    // Setup game page buttons
-    const addGameBtn = document.getElementById('add-game-button');
-    const addGameModal = document.getElementById('add-game-modal');
-    const addGameForm = document.getElementById('add-game-form');
-    const gameFocusModal = document.getElementById('game-focus-modal');
-    const gameIframe = document.getElementById('game-iframe');
-
-    if (addGameBtn && addGameModal) {
-      addGameBtn.addEventListener('click', () => {
-        console.log('[INFO] Add game button clicked');
-        addGameModal.classList.add('show');
-      });
-    }
-
-    if (addGameForm) {
-      addGameForm.addEventListener('submit', (e) => {
-        e.preventDefault();
-        console.log('[INFO] Add game form submitted');
-        const formData = new FormData(addGameForm);
-        console.log('[INFO] Game data:', Object.fromEntries(formData));
-        addGameModal.classList.remove('show');
-        addGameForm.reset();
-      });
-    }
-
-    // Setup game item clicks
-    const gameItems = document.querySelectorAll('.game-item');
-    gameItems.forEach(item => {
-      item.addEventListener('click', () => {
-        const gameUrl = item.dataset.gameUrl;
-        const gameTitle = item.querySelector('.game-title').textContent;
-
-        console.log('[INFO] Game clicked:', gameTitle, gameUrl);
-
-        if (gameFocusModal && gameIframe) {
-          document.getElementById('game-modal-title').textContent = gameTitle;
-          gameIframe.src = gameUrl;
-          gameFocusModal.classList.add('show');
-        }
-      });
-    });
-
-    // Setup profile selection
-    const profileList = document.getElementById('profile-list');
-    if (profileList) {
-      profileList.onclick = (e) => {
-        const profileItem = e.target.closest('.profile-item');
-        if (profileItem) {
-          document.querySelectorAll('.profile-item').forEach(p => p.classList.remove('selected'));
-          profileItem.classList.add('selected');
-          console.log('[INFO] Profile selected:', profileItem.dataset.profile);
-        }
-      };
-      loadGameProfiles(profileList);
-    }
-  }, 100);
+  document.getElementById('profile-list')?.addEventListener('click', event => {
+    const profile = event.target.closest('[data-game-profile]');
+    if (profile) selectGameProfile(profile.dataset.gameProfile, 'manual');
+  });
+  document.getElementById('games-grid')?.addEventListener('click', event => {
+    const remove = event.target.closest('[data-remove-game]');
+    if (remove) return openGamePinModal('remove', { gameId: remove.dataset.removeGame });
+    const launch = event.target.closest('[data-launch-game]');
+    if (launch && !launch.disabled) startGameSession(launch.dataset.launchGame);
+  });
+  document.getElementById('add-game-button')?.addEventListener('click', () => {
+    document.getElementById('add-game-error').textContent = '';
+    document.getElementById('add-game-modal')?.classList.add('show');
+  });
+  document.getElementById('add-game-form')?.addEventListener('submit', handleAddGame);
+  document.getElementById('open-chores-from-games')?.addEventListener('click', () => {
+    document.querySelector('.tab-item[data-tab-target="chores-content"]')?.click();
+  });
+  document.getElementById('parent-game-override')?.addEventListener('click', () => openGamePinModal('override'));
+  document.getElementById('add-game-time')?.addEventListener('click', () => openGamePinModal('grant'));
+  setupGamePinPad();
+  loadGamesPageData();
 }
 
 function listRequest(url, options = {}) {
@@ -757,7 +743,7 @@ function bindListsWorkspace(list) {
     } catch (error) { setListsSyncStatus(`Add failed: ${error.message}. Your text is still here.`, true); }
   });
   document.getElementById('delete-list-button')?.addEventListener('click', async () => {
-    if (!window.confirm(`Delete ${list.name}?`)) return;
+    if (!(await requestAppConfirmation('Delete list?', `Delete ${list.name}?`, 'Delete'))) return;
     try {
       await listRequest(`api/lists/${encodeURIComponent(list.id)}`, { method: 'DELETE' });
       selectedListId = null;
@@ -863,63 +849,537 @@ async function loadGroceryList() {
   } catch (error) { items.innerHTML = `<li class="lists-error">${escapeHtml(error.message)}</li>`; }
 }
 
-async function loadGameProfiles(profileList = document.getElementById('profile-list')) {
-  if (!profileList) return;
-  profileList.innerHTML = '<div class="profile-list-state"><i class="material-icons spin" aria-hidden="true">refresh</i> Loading people…</div>';
+async function screenTimeRequest(url, options = {}) {
+  const response = await fetch(url, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(data.error || 'Screen time could not be updated');
+    error.status = response.status;
+    error.data = data;
+    throw error;
+  }
+  return data;
+}
 
+async function loadGamesPageData({ resumeActive = true } = {}) {
+  const status = document.getElementById('games-page-status');
   try {
-    const response = await fetch('api/users');
-    if (!response.ok) throw new Error('Failed to load users');
-    const users = await response.json();
-    profileList.innerHTML = '';
-
-    if (!Array.isArray(users) || users.length === 0) {
-      profileList.innerHTML = `
-        <div class="profile-list-empty">
-          <i class="material-icons" aria-hidden="true">person_off</i>
-          <div>
-            <strong>No people yet</strong>
-            <span>Add a household member in Settings to choose a game profile.</span>
-          </div>
-          <button type="button" class="btn btn-secondary" id="open-user-settings">Open Settings</button>
-        </div>
-      `;
-      document.getElementById('open-user-settings')?.addEventListener('click', openUserManagementSettings);
-      return;
+    const [screenTime, games] = await Promise.all([
+      screenTimeRequest('api/screen-time'),
+      screenTimeRequest('api/games')
+    ]);
+    screenTimeSnapshot = screenTime;
+    gameLibrary = Array.isArray(games) ? games : [];
+    if (selectedGameProfileId && !screenTime.profiles.some(profile => profile.id === selectedGameProfileId)) {
+      selectedGameProfileId = null;
     }
+    renderGamesPage();
+    if (resumeActive && screenTime.activeSession && !activeGameSession) {
+      const game = gameLibrary.find(candidate => candidate.id === screenTime.activeSession.gameId);
+      const profile = screenTime.profiles.find(candidate => candidate.id === screenTime.activeSession.profileId);
+      if (game && profile) {
+        selectedGameProfileId = profile.id;
+        openRunningGame(screenTime.activeSession, game, profile);
+      }
+    }
+  } catch (error) {
+    console.error('[ERROR] Failed to load games:', error);
+    if (status) status.textContent = error.message;
+    const grid = document.getElementById('games-grid');
+    if (grid) grid.innerHTML = `<div class="games-error"><i class="material-icons" aria-hidden="true">error_outline</i><span>${escapeHtml(error.message)}</span><button type="button" class="btn btn-secondary" id="retry-games">Try again</button></div>`;
+    document.getElementById('retry-games')?.addEventListener('click', () => loadGamesPageData());
+  }
+}
 
-    users.forEach(user => {
-      const profile = document.createElement('button');
-      profile.type = 'button';
-      profile.className = 'profile-item';
-      profile.dataset.profile = user.id;
-      profile.style.setProperty('--profile-color', getValidCalendarColor(user.color));
+function formatRemainingMinutes(profile) {
+  if (!screenTimeSnapshot?.settings.enabled) return 'No limit';
+  if (profile.remainingMinutes <= 0) return 'No time left';
+  if (profile.remainingMinutes < 1) return 'Less than 1 min left';
+  return `${Math.ceil(profile.remainingMinutes)} min left`;
+}
 
-      const avatar = document.createElement('span');
-      avatar.className = 'profile-avatar';
-      avatar.textContent = getProfileInitials(user.name);
+function renderGamesPage() {
+  const profiles = screenTimeSnapshot?.profiles || [];
+  const selected = profiles.find(profile => profile.id === selectedGameProfileId) || null;
+  const profileList = document.getElementById('profile-list');
+  const status = document.getElementById('games-page-status');
+  const mode = document.getElementById('screen-time-mode');
+  const gate = document.getElementById('game-gate-panel');
+  const blockingList = document.getElementById('game-blocking-list');
+  const hint = document.getElementById('game-selection-hint');
+  const grid = document.getElementById('games-grid');
+  if (!profileList || !grid) return;
 
-      const name = document.createElement('span');
-      name.className = 'profile-name';
-      name.textContent = user.name || 'Unnamed user';
+  mode.textContent = screenTimeSnapshot.settings.enabled ? 'Daily limits on' : 'Limits paused';
+  if (!profiles.length) {
+    profileList.innerHTML = `<div class="profile-list-empty"><i class="material-icons" aria-hidden="true">person_off</i><div><strong>No people yet</strong><span>Add a household member in Settings first.</span></div><button type="button" class="btn btn-secondary" id="open-user-settings">Open Settings</button></div>`;
+    document.getElementById('open-user-settings')?.addEventListener('click', openUserManagementSettings);
+  } else {
+    profileList.innerHTML = profiles.map(profile => `
+      <button type="button" class="profile-item${profile.id === selectedGameProfileId ? ' selected' : ''}" data-game-profile="${escapeHtml(profile.id)}" aria-pressed="${profile.id === selectedGameProfileId}" style="--profile-color:${escapeHtml(getValidCalendarColor(profile.color))}">
+        <span class="profile-avatar">${escapeHtml(getProfileInitials(profile.name))}</span>
+        <span class="profile-info"><span class="profile-name">${escapeHtml(profile.name || 'Unnamed')}</span><span class="profile-playtime">${escapeHtml(formatRemainingMinutes(profile))}</span></span>
+      </button>`).join('');
+  }
 
-      profile.append(avatar, name);
-      profileList.appendChild(profile);
+  const isBlocked = Boolean(selected?.blocking?.length && !pendingGameOverridePin);
+  gate.hidden = !isBlocked;
+  if (isBlocked) {
+    blockingList.innerHTML = selected.blocking.map(item => `<li><i class="material-icons" aria-hidden="true">${item.type === 'routine' ? 'routine' : 'check_box_outline_blank'}</i><span>${escapeHtml(item.title)}</span></li>`).join('');
+  }
+  hint.hidden = Boolean(selected) || isBlocked;
+  if (status) {
+    status.textContent = !selected ? 'Choose who is playing to begin.'
+      : isBlocked ? `${selected.name} has ${selected.blocking.length} item${selected.blocking.length === 1 ? '' : 's'} to finish.`
+        : pendingGameOverridePin ? `Parent override ready for ${selected.name}. Choose one game.`
+          : `${selected.name} has ${formatRemainingMinutes(selected).toLowerCase()}.`;
+  }
+
+  if (!gameLibrary.length) {
+    grid.innerHTML = '<div class="games-empty"><i class="material-icons" aria-hidden="true">sports_esports</i><span>No games have been added yet.</span></div>';
+    return;
+  }
+  const disabled = !selected || isBlocked || Boolean(screenTimeSnapshot.activeSession) ||
+    (screenTimeSnapshot.settings.enabled && selected.remainingMinutes <= 0);
+  grid.innerHTML = gameLibrary.map(game => `
+    <article class="game-item${disabled ? ' is-disabled' : ''}">
+      <button type="button" class="game-remove" data-remove-game="${escapeHtml(game.id)}" aria-label="Remove ${escapeHtml(game.title)}"><i class="material-icons" aria-hidden="true">delete</i></button>
+      <button type="button" class="game-launch" data-launch-game="${escapeHtml(game.id)}" ${disabled ? 'disabled' : ''}>
+        <span class="game-icon"><i class="material-icons" aria-hidden="true">${escapeHtml(game.icon || 'sports_esports')}</i></span>
+        <span class="game-title">${escapeHtml(game.title)}</span>
+        <span class="game-availability">${!selected ? 'Choose a player' : isBlocked ? 'Chores first' : screenTimeSnapshot.activeSession ? 'Screen in use' : (screenTimeSnapshot.settings.enabled && selected.remainingMinutes <= 0) ? 'No time left' : 'Play'}</span>
+      </button>
+    </article>`).join('');
+}
+
+function selectGameProfile(profileId, source = 'manual') {
+  if (!screenTimeSnapshot?.profiles?.some(profile => profile.id === profileId)) return false;
+  selectedGameProfileId = profileId;
+  pendingGameOverridePin = null;
+  console.log(`[INFO] Game profile selected by ${source}:`, profileId);
+  renderGamesPage();
+  return true;
+}
+window.selectGameProfile = selectGameProfile;
+
+async function handleAddGame(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const errorBox = document.getElementById('add-game-error');
+  const submit = form.querySelector('[type="submit"]');
+  submit.disabled = true;
+  errorBox.textContent = '';
+  try {
+    await screenTimeRequest('api/games', {
+      method: 'POST',
+      body: JSON.stringify({
+        title: document.getElementById('gameTitle').value,
+        url: document.getElementById('gameURL').value,
+        icon: document.getElementById('gameIcon').value
+      })
+    });
+    form.reset();
+    document.getElementById('gameIcon').value = 'sports_esports';
+    closeModal(document.getElementById('add-game-modal'));
+    await loadGamesPageData({ resumeActive: false });
+  } catch (error) {
+    errorBox.textContent = error.message;
+  } finally {
+    submit.disabled = false;
+  }
+}
+
+async function startGameSession(gameId, pin = pendingGameOverridePin) {
+  const game = gameLibrary.find(candidate => candidate.id === gameId);
+  const profile = screenTimeSnapshot?.profiles.find(candidate => candidate.id === selectedGameProfileId);
+  if (!game || !profile) return;
+  const status = document.getElementById('games-page-status');
+  try {
+    const session = await screenTimeRequest('api/screen-time/sessions', {
+      method: 'POST',
+      body: JSON.stringify({ profileId: profile.id, gameId: game.id, ...(pin ? { pin } : {}) })
+    });
+    pendingGameOverridePin = null;
+    screenTimeSnapshot.activeSession = session;
+    openRunningGame(session, game, profile);
+    renderGamesPage();
+  } catch (error) {
+    if (error.data?.blocking) {
+      screenTimeSnapshot.profiles.find(candidate => candidate.id === profile.id).blocking = error.data.blocking;
+    }
+    pendingGameOverridePin = null;
+    if (status) status.textContent = error.message;
+    renderGamesPage();
+    if (pin && error.status === 403) openGamePinModal('override', { error: error.message });
+  }
+}
+
+function openRunningGame(session, game, profile) {
+  activeGameSession = session;
+  activeGame = game;
+  selectedGameProfileId = profile.id;
+  gameServerRemainingSeconds = session.remainingSeconds;
+  gameServerSyncTime = Date.now();
+  shownGameWarnings = new Set();
+  const modal = document.getElementById('game-focus-modal');
+  const iframe = document.getElementById('game-iframe');
+  const timeUp = document.getElementById('game-time-up');
+  document.getElementById('game-modal-title').textContent = game.title;
+  document.getElementById('game-timer-user').textContent = profile.name;
+  timeUp.hidden = true;
+  iframe.hidden = false;
+  iframe.src = game.url;
+  modal.classList.add('show');
+  clearGameTimers();
+  renderGameCountdown();
+  gameTimerInterval = window.setInterval(renderGameCountdown, 1000);
+  gameHeartbeatInterval = window.setInterval(sendGameHeartbeat, 30000);
+}
+
+function renderGameCountdown() {
+  const display = document.getElementById('game-timer-display');
+  if (!display || !activeGameSession) return;
+  if (gameServerRemainingSeconds === null) {
+    display.textContent = 'No limit';
+    return;
+  }
+  const elapsed = Math.floor((Date.now() - gameServerSyncTime) / 1000);
+  const remaining = Math.max(0, gameServerRemainingSeconds - elapsed);
+  const minutes = Math.floor(remaining / 60);
+  const seconds = remaining % 60;
+  display.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  showGameWarningIfNeeded(remaining);
+  if (remaining <= 0) showGameTimeUp();
+}
+
+function showGameWarningIfNeeded(remainingSeconds) {
+  const warnings = screenTimeSnapshot?.settings.warnAtMinutes || [];
+  const threshold = warnings.find(minutes => remainingSeconds <= minutes * 60 && remainingSeconds > (minutes - 1) * 60);
+  if (!threshold || shownGameWarnings.has(threshold)) return;
+  shownGameWarnings.add(threshold);
+  const banner = document.getElementById('game-warning-banner');
+  banner.textContent = `${threshold} minute${threshold === 1 ? '' : 's'} left`;
+  banner.hidden = false;
+  window.setTimeout(() => { if (banner) banner.hidden = true; }, 5000);
+}
+
+async function sendGameHeartbeat() {
+  if (!activeGameSession) return;
+  try {
+    const result = await screenTimeRequest(`api/screen-time/sessions/${encodeURIComponent(activeGameSession.id)}/heartbeat`, { method: 'POST', body: '{}' });
+    gameServerRemainingSeconds = result.remainingSeconds;
+    gameServerSyncTime = Date.now();
+    renderGameCountdown();
+  } catch (error) {
+    if (error.status === 409) showGameTimeUp();
+  }
+}
+
+function showGameTimeUp() {
+  if (!activeGameSession) return;
+  clearGameTimers();
+  const profile = screenTimeSnapshot?.profiles.find(candidate => candidate.id === activeGameSession.profileId);
+  const iframe = document.getElementById('game-iframe');
+  iframe.src = 'about:blank';
+  iframe.hidden = true;
+  document.getElementById('game-time-up-title').textContent = `Time’s up, ${profile?.name || 'player'}!`;
+  document.getElementById('game-time-up').hidden = false;
+  document.getElementById('game-timer-display').textContent = '00:00';
+}
+
+function clearGameTimers() {
+  if (gameTimerInterval) window.clearInterval(gameTimerInterval);
+  if (gameHeartbeatInterval) window.clearInterval(gameHeartbeatInterval);
+  gameTimerInterval = null;
+  gameHeartbeatInterval = null;
+}
+
+async function stopActiveGameSession(reason = 'closed') {
+  const session = activeGameSession;
+  if (!session) return;
+  activeGameSession = null;
+  clearGameTimers();
+  const iframe = document.getElementById('game-iframe');
+  if (iframe) iframe.src = 'about:blank';
+  try {
+    await screenTimeRequest(`api/screen-time/sessions/${encodeURIComponent(session.id)}/stop`, {
+      method: 'POST', body: JSON.stringify({ reason })
     });
   } catch (error) {
-    console.error('[ERROR] Failed to load game profiles:', error);
-    profileList.innerHTML = `
-      <div class="profile-list-empty">
-        <i class="material-icons" aria-hidden="true">error_outline</i>
-        <div>
-          <strong>People could not be loaded</strong>
-          <span>Check the Home Assistant connection and try again.</span>
-        </div>
-        <button type="button" class="btn btn-secondary" id="retry-game-profiles">Retry</button>
-      </div>
-    `;
-    document.getElementById('retry-game-profiles')?.addEventListener('click', () => loadGameProfiles(profileList));
+    console.warn('[WARN] Could not stop game session:', error);
   }
+  activeGame = null;
+  await loadGamesPageData({ resumeActive: false });
+}
+
+function setupGamePinPad() {
+  const keypad = document.getElementById('game-pin-keypad');
+  if (!keypad || keypad.dataset.bound === 'true') return;
+  keypad.dataset.bound = 'true';
+  keypad.addEventListener('click', event => {
+    const key = event.target.closest('[data-pin-key]')?.dataset.pinKey;
+    const action = event.target.closest('[data-pin-action]')?.dataset.pinAction;
+    if (key && gamePinValue.length < 8) gamePinValue += key;
+    if (action === 'clear') gamePinValue = '';
+    if (action === 'backspace') gamePinValue = gamePinValue.slice(0, -1);
+    updateGamePinDisplay();
+  });
+  document.getElementById('game-pin-submit')?.addEventListener('click', submitGamePin);
+  document.getElementById('game-grant-options')?.addEventListener('click', event => {
+    const button = event.target.closest('[data-grant-minutes]');
+    if (!button) return;
+    selectedGrantMinutes = Number(button.dataset.grantMinutes);
+    document.querySelectorAll('[data-grant-minutes]').forEach(option => option.classList.toggle('selected', option === button));
+  });
+}
+
+function openGamePinModal(action, details = {}) {
+  const modal = document.getElementById('game-pin-modal');
+  if (!modal) return;
+  if (!screenTimeSnapshot?.settings.pinSet) {
+    document.getElementById('games-page-status').textContent = 'An adult needs to set a parent PIN in Settings first.';
+    document.querySelector('.tab-item[data-tab-target="settings-content"]')?.click();
+    return;
+  }
+  gamePinAction = { action, ...details };
+  gamePinValue = '';
+  document.getElementById('game-pin-title').textContent = action === 'grant' ? 'Add playtime' : action === 'remove' ? 'Remove game' : 'Parent override';
+  document.getElementById('game-pin-message').textContent = action === 'grant' ? 'Choose minutes, then enter the parent PIN.' : 'Enter the parent PIN to continue.';
+  document.getElementById('game-grant-options').hidden = action !== 'grant';
+  document.getElementById('game-pin-error').textContent = details.error || '';
+  updateGamePinDisplay();
+  modal.classList.add('show');
+}
+
+function updateGamePinDisplay() {
+  const display = document.getElementById('game-pin-display');
+  const submit = document.getElementById('game-pin-submit');
+  if (!display || !submit) return;
+  display.textContent = gamePinValue ? '● '.repeat(gamePinValue.length).trim() : '○ ○ ○ ○';
+  display.setAttribute('aria-label', gamePinValue ? `${gamePinValue.length} PIN digits entered` : 'PIN is empty');
+  submit.disabled = gamePinValue.length < 4;
+}
+
+async function submitGamePin() {
+  const submit = document.getElementById('game-pin-submit');
+  const errorBox = document.getElementById('game-pin-error');
+  submit.disabled = true;
+  errorBox.textContent = '';
+  try {
+    if (gamePinAction.action === 'override') {
+      await screenTimeRequest('api/screen-time/settings', { method: 'PUT', body: JSON.stringify({ pin: gamePinValue }) });
+      pendingGameOverridePin = gamePinValue;
+      closeModal(document.getElementById('game-pin-modal'));
+      renderGamesPage();
+    } else if (gamePinAction.action === 'remove') {
+      await screenTimeRequest(`api/games/${encodeURIComponent(gamePinAction.gameId)}`, {
+        method: 'DELETE', body: JSON.stringify({ pin: gamePinValue })
+      });
+      closeModal(document.getElementById('game-pin-modal'));
+      await loadGamesPageData({ resumeActive: false });
+    } else if (gamePinAction.action === 'grant') {
+      await screenTimeRequest('api/screen-time/grants', {
+        method: 'POST',
+        body: JSON.stringify({ pin: gamePinValue, profileId: selectedGameProfileId, minutes: selectedGrantMinutes, reason: 'Parent added game time' })
+      });
+      const gameId = activeGame?.id;
+      closeModal(document.getElementById('game-pin-modal'));
+      await loadGamesPageData({ resumeActive: false });
+      const resumed = screenTimeSnapshot.activeSession;
+      const profile = screenTimeSnapshot.profiles.find(candidate => candidate.id === selectedGameProfileId);
+      if (resumed && gameId && profile) {
+        openRunningGame(resumed, activeGame, profile);
+      } else {
+        activeGameSession = null;
+        if (gameId) await startGameSession(gameId);
+      }
+    }
+  } catch (error) {
+    errorBox.textContent = error.status === 429 && error.data?.retryAfterSeconds
+      ? `${error.message} ${error.data.retryAfterSeconds}s remaining.` : error.message;
+    gamePinValue = '';
+    updateGamePinDisplay();
+  } finally {
+    if (gamePinValue.length >= 4) submit.disabled = false;
+  }
+}
+
+async function initializeScreenTimeSettings() {
+  const form = document.getElementById('screen-time-settings-form');
+  if (!form || form.dataset.bound === 'true') return;
+  form.dataset.bound = 'true';
+  form.addEventListener('submit', event => {
+    event.preventDefault();
+    if (screenTimeSettingsSnapshot?.settings.pinSet) openSettingsPinFlow('save');
+    else saveScreenTimeSettings();
+  });
+  document.getElementById('screen-time-set-pin')?.addEventListener('click', () => openSettingsPinFlow('setPin'));
+  setupSettingsPinPad();
+  await loadScreenTimeSettings();
+}
+
+async function loadScreenTimeSettings() {
+  const status = document.getElementById('screen-time-settings-status');
+  try {
+    screenTimeSettingsSnapshot = await screenTimeRequest('api/screen-time');
+    const settings = screenTimeSettingsSnapshot.settings;
+    document.getElementById('screen-time-enabled').checked = settings.enabled;
+    document.getElementById('screen-time-require-chores').checked = settings.requireChoresFirst;
+    document.getElementById('screen-time-include-routines').checked = settings.includeRoutines;
+    document.getElementById('screen-time-default-minutes').value = settings.defaultDailyMinutes;
+    document.getElementById('screen-time-pin-state').textContent = settings.pinSet ? 'PIN protected' : 'PIN not set';
+    document.getElementById('screen-time-set-pin').innerHTML = `<i class="material-icons" aria-hidden="true">pin</i> ${settings.pinSet ? 'Change PIN' : 'Set PIN'}`;
+    const profiles = document.getElementById('screen-time-profile-settings');
+    profiles.innerHTML = screenTimeSettingsSnapshot.profiles.length
+      ? screenTimeSettingsSnapshot.profiles.map(profile => `
+        <label class="screen-time-profile-setting" style="--profile-color:${escapeHtml(getValidCalendarColor(profile.color))}">
+          <span class="profile-avatar">${escapeHtml(getProfileInitials(profile.name))}</span>
+          <span class="screen-time-profile-name">${escapeHtml(profile.name || 'Unnamed')}</span>
+          <input type="number" min="0" max="1440" step="1" value="${escapeHtml(String(profile.dailyMinutes))}" data-screen-time-profile="${escapeHtml(profile.id)}" aria-label="Daily minutes for ${escapeHtml(profile.name || 'profile')}">
+          <span>min/day</span>
+        </label>`).join('')
+      : '<p class="setting-description">Add household profiles before setting individual limits.</p>';
+    status.textContent = settings.pinSet ? '' : 'Set a PIN before using parent overrides, adding time, or removing games.';
+    status.classList.remove('is-error', 'is-success');
+  } catch (error) {
+    status.textContent = error.message;
+    status.classList.add('is-error');
+  }
+}
+
+function collectScreenTimeSettings(pin) {
+  const profiles = {};
+  document.querySelectorAll('[data-screen-time-profile]').forEach(input => {
+    profiles[input.dataset.screenTimeProfile] = { dailyMinutes: Number(input.value) };
+  });
+  return {
+    ...(pin ? { pin } : {}),
+    enabled: document.getElementById('screen-time-enabled').checked,
+    requireChoresFirst: document.getElementById('screen-time-require-chores').checked,
+    includeRoutines: document.getElementById('screen-time-include-routines').checked,
+    defaultDailyMinutes: Number(document.getElementById('screen-time-default-minutes').value),
+    profiles
+  };
+}
+
+async function saveScreenTimeSettings(pin = null) {
+  const status = document.getElementById('screen-time-settings-status');
+  const submit = document.querySelector('#screen-time-settings-form [type="submit"]');
+  submit.disabled = true;
+  status.textContent = 'Saving…';
+  status.classList.remove('is-error', 'is-success');
+  try {
+    await screenTimeRequest('api/screen-time/settings', {
+      method: 'PUT', body: JSON.stringify(collectScreenTimeSettings(pin))
+    });
+    closeModal(document.getElementById('settings-pin-modal'));
+    await loadScreenTimeSettings();
+    status.textContent = 'Screen time settings saved.';
+    status.classList.add('is-success');
+  } catch (error) {
+    if (pin) {
+      document.getElementById('settings-pin-error').textContent = error.status === 429 && error.data?.retryAfterSeconds
+        ? `${error.message} ${error.data.retryAfterSeconds}s remaining.` : error.message;
+      settingsPinValue = '';
+      updateSettingsPinDisplay();
+    } else {
+      status.textContent = error.message;
+      status.classList.add('is-error');
+    }
+  } finally {
+    submit.disabled = false;
+  }
+}
+
+function setupSettingsPinPad() {
+  const keypad = document.getElementById('settings-pin-keypad');
+  if (!keypad || keypad.dataset.bound === 'true') return;
+  keypad.dataset.bound = 'true';
+  keypad.addEventListener('click', event => {
+    const key = event.target.closest('[data-pin-key]')?.dataset.pinKey;
+    const action = event.target.closest('[data-pin-action]')?.dataset.pinAction;
+    if (key && settingsPinValue.length < 8) settingsPinValue += key;
+    if (action === 'clear') settingsPinValue = '';
+    if (action === 'backspace') settingsPinValue = settingsPinValue.slice(0, -1);
+    updateSettingsPinDisplay();
+  });
+  document.getElementById('settings-pin-submit')?.addEventListener('click', submitSettingsPin);
+}
+
+function openSettingsPinFlow(type) {
+  const pinSet = Boolean(screenTimeSettingsSnapshot?.settings.pinSet);
+  settingsPinFlow = {
+    type,
+    stage: type === 'save' || pinSet ? 'current' : 'new',
+    currentPin: null,
+    newPin: null
+  };
+  settingsPinValue = '';
+  document.getElementById('settings-pin-title').textContent = type === 'save' ? 'Save screen time' : (pinSet ? 'Change parent PIN' : 'Set parent PIN');
+  document.getElementById('settings-pin-error').textContent = '';
+  updateSettingsPinPrompt();
+  updateSettingsPinDisplay();
+  document.getElementById('settings-pin-modal').classList.add('show');
+}
+
+function updateSettingsPinPrompt() {
+  const prompt = document.getElementById('settings-pin-message');
+  if (!settingsPinFlow || !prompt) return;
+  prompt.textContent = settingsPinFlow.stage === 'current' ? 'Enter the current parent PIN.'
+    : settingsPinFlow.stage === 'new' ? 'Choose a new 4–8 digit PIN.'
+      : 'Enter the new PIN again.';
+}
+
+function updateSettingsPinDisplay() {
+  const display = document.getElementById('settings-pin-display');
+  const submit = document.getElementById('settings-pin-submit');
+  if (!display || !submit) return;
+  display.textContent = settingsPinValue ? '● '.repeat(settingsPinValue.length).trim() : '○ ○ ○ ○';
+  display.setAttribute('aria-label', settingsPinValue ? `${settingsPinValue.length} PIN digits entered` : 'PIN is empty');
+  submit.disabled = settingsPinValue.length < 4;
+}
+
+async function submitSettingsPin() {
+  if (!settingsPinFlow || settingsPinValue.length < 4) return;
+  const errorBox = document.getElementById('settings-pin-error');
+  errorBox.textContent = '';
+  if (settingsPinFlow.type === 'save') return saveScreenTimeSettings(settingsPinValue);
+  if (settingsPinFlow.stage === 'current') {
+    settingsPinFlow.currentPin = settingsPinValue;
+    settingsPinFlow.stage = 'new';
+  } else if (settingsPinFlow.stage === 'new') {
+    settingsPinFlow.newPin = settingsPinValue;
+    settingsPinFlow.stage = 'confirm';
+  } else if (settingsPinValue !== settingsPinFlow.newPin) {
+    errorBox.textContent = 'Those PINs do not match. Enter the new PIN again.';
+  } else {
+    const submit = document.getElementById('settings-pin-submit');
+    submit.disabled = true;
+    try {
+      await screenTimeRequest('api/screen-time/pin', {
+        method: 'PUT',
+        body: JSON.stringify({ currentPin: settingsPinFlow.currentPin, newPin: settingsPinFlow.newPin })
+      });
+      closeModal(document.getElementById('settings-pin-modal'));
+      await loadScreenTimeSettings();
+      const status = document.getElementById('screen-time-settings-status');
+      status.textContent = 'Parent PIN saved.';
+      status.classList.add('is-success');
+      return;
+    } catch (error) {
+      errorBox.textContent = error.status === 429 && error.data?.retryAfterSeconds
+        ? `${error.message} ${error.data.retryAfterSeconds}s remaining.` : error.message;
+      settingsPinFlow.stage = screenTimeSettingsSnapshot.settings.pinSet ? 'current' : 'new';
+      settingsPinFlow.currentPin = null;
+      settingsPinFlow.newPin = null;
+    }
+  }
+  settingsPinValue = '';
+  updateSettingsPinPrompt();
+  updateSettingsPinDisplay();
 }
 
 function initializeSettingsPage() {
@@ -968,7 +1428,7 @@ function initializeSettingsPage() {
           stopCameraBtn.disabled = false;
         } catch (error) {
           console.error('[ERROR] Camera access failed:', error);
-          alert('Camera access failed: ' + error.message);
+          showAppNotice('Camera unavailable', `Camera access failed: ${error.message}`);
         }
       });
 
@@ -1020,7 +1480,7 @@ function initializeSettingsPage() {
           stopMicBtn.disabled = false;
         } catch (error) {
           console.error('[ERROR] Microphone access failed:', error);
-          alert('Microphone access failed: ' + error.message);
+          showAppNotice('Microphone unavailable', `Microphone access failed: ${error.message}`);
         }
       });
 
@@ -1082,6 +1542,8 @@ function initializeSettingsPage() {
     if (typeof loadCalendarManagement === 'function') {
       loadCalendarManagement();
     }
+
+    initializeScreenTimeSettings();
 
     // Re-setup modals for settings page (generic closers)
     setupModals();
@@ -1167,6 +1629,7 @@ function initializeGlobalUI() {
 
   // Setup modal management
   setupModals();
+  setupAppDialog();
 
   // These listeners live on the stable document, so Turbo frame swaps cannot
   // orphan them or create duplicate handlers when Settings is reopened.
@@ -1184,6 +1647,36 @@ function initializeGlobalUI() {
   // Start the clock
   updateClock();
   setInterval(updateClock, 1000);
+}
+
+function setupAppDialog() {
+  document.getElementById('app-dialog-confirm')?.addEventListener('click', () => settleAppDialog(true));
+  document.getElementById('app-dialog-cancel')?.addEventListener('click', () => settleAppDialog(false));
+}
+
+function openAppDialog({ title, message, confirmLabel = 'OK', showCancel = false }) {
+  const modal = document.getElementById('app-dialog-modal');
+  document.getElementById('app-dialog-title').textContent = title;
+  document.getElementById('app-dialog-message').textContent = message;
+  document.getElementById('app-dialog-confirm').textContent = confirmLabel;
+  document.getElementById('app-dialog-cancel').hidden = !showCancel;
+  modal.classList.add('show');
+  return new Promise(resolve => { appDialogResolver = resolve; });
+}
+
+function showAppNotice(title, message) {
+  return openAppDialog({ title, message });
+}
+
+function requestAppConfirmation(title, message, confirmLabel = 'Continue') {
+  return openAppDialog({ title, message, confirmLabel, showCancel: true });
+}
+
+function settleAppDialog(value) {
+  const resolve = appDialogResolver;
+  appDialogResolver = null;
+  document.getElementById('app-dialog-modal')?.classList.remove('show');
+  if (resolve) resolve(value);
 }
 
 function handleDelegatedUiClick(event) {
@@ -1478,14 +1971,21 @@ function handleModalBackdropClick(event) {
 }
 
 function closeModal(modal) {
+  if (!modal) return;
+  if (modal.id === 'app-dialog-modal') {
+    settleAppDialog(false);
+    return;
+  }
   modal.classList.remove('show');
 
-  // If this is the game modal, clear the iframe src when closing
+  // A game spends time only while its modal is open. Blank the iframe first so
+  // audio stops immediately, then end the server session idempotently.
   if (modal.id === 'game-focus-modal') {
     const gameIframe = document.getElementById('game-iframe');
     if (gameIframe) {
-      gameIframe.src = '';
+      gameIframe.src = 'about:blank';
     }
+    if (activeGameSession) void stopActiveGameSession('closed');
   }
 }
 
@@ -2894,7 +3394,7 @@ function openMealForm({ date, mealType, meal, recipe } = {}) {
   if (deleteButton) {
     deleteButton.hidden = !meal;
     deleteButton.onclick = async () => {
-      if (!meal || !window.confirm(`Remove ${meal.description || 'this meal'}?`)) return;
+      if (!meal || !(await requestAppConfirmation('Remove meal?', `Remove ${meal.description || 'this meal'}?`, 'Remove'))) return;
       deleteButton.disabled = true;
       try {
         const response = await fetch(`api/meals/${encodeURIComponent(meal.id)}`, { method: 'DELETE' });
@@ -3112,7 +3612,7 @@ async function submitRecipeForm(event) {
 }
 
 async function deleteRecipe(recipe) {
-  if (!window.confirm(`Delete ${recipe.name}?`)) return;
+  if (!(await requestAppConfirmation('Delete recipe?', `Delete ${recipe.name}?`, 'Delete'))) return;
   try {
     const response = await fetch(`api/recipes/${encodeURIComponent(recipe.id)}`, { method: 'DELETE' });
     if (!response.ok) throw new Error('Unable to delete this recipe');
@@ -3557,7 +4057,7 @@ async function handleUpdateUser(e) {
     fetchUsers(); // Refresh list
     loadCalendarManagement();
   } catch (err) {
-    alert('Error: ' + err.message);
+    showAppNotice('Profile not saved', err.message);
   } finally {
     btn.textContent = originalText;
     btn.disabled = false;
@@ -3602,10 +4102,10 @@ async function handleCreateUser(e) {
     nameInput.value = '';
     fetchUsers(); // Refresh list
     loadCalendarManagement();
-    alert(`Profile "${name}" created successfully!`);
+    showAppNotice('Profile created', `${name} is ready to use.`);
 
   } catch (err) {
-    alert('Error: ' + err.message);
+    showAppNotice('Profile not created', err.message);
   } finally {
     btn.textContent = originalText;
     btn.disabled = false;
@@ -4101,7 +4601,7 @@ async function connectAppleCalendar() {
 }
 
 async function disconnectCalDAVAccount(accountId) {
-  if (!confirm('Disconnect this calendar account? Events from this account will no longer appear.')) {
+  if (!(await requestAppConfirmation('Disconnect calendar?', 'Events from this account will no longer appear.', 'Disconnect'))) {
     return;
   }
 
@@ -4119,7 +4619,7 @@ async function disconnectCalDAVAccount(accountId) {
     loadCalendarManagement();
     refreshCalendarAvailability();
   } catch (err) {
-    alert('Error disconnecting: ' + err.message);
+    showAppNotice('Calendar not disconnected', err.message);
   }
 }
 

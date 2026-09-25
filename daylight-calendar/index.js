@@ -12,7 +12,7 @@ const fs = require('fs');
 const { exec } = require('child_process');
 const axios = require('axios');
 const WebSocket = require('ws'); // Added for HA WebSocket API
-const { randomUUID } = require('crypto');
+const { randomUUID, randomBytes, scryptSync, timingSafeEqual } = require('crypto');
 const caldavService = require('./scripts/caldav-service');
 
 // Main initialization function to handle async imports
@@ -612,6 +612,244 @@ async function initializeApp() {
     const now = new Date();
     const offset = now.getTimezoneOffset() * 60000;
     return new Date(now.getTime() - offset).toISOString().slice(0, 10);
+  }
+
+  const DEFAULT_SCREEN_TIME_SETTINGS = {
+    enabled: true,
+    requireChoresFirst: true,
+    includeRoutines: false,
+    defaultDailyMinutes: 60,
+    warnAtMinutes: [5, 1],
+    pinHash: null,
+    pinSalt: null
+  };
+  const DEFAULT_GAMES = [
+    { id: 'geometry-dash', title: 'Geometry Dash', url: 'https://geometrydashonline.github.io/', icon: 'sports_esports' },
+    { id: 'hextris', title: 'Hextris', url: 'https://hextris.io/', icon: 'hexagon' },
+    { id: 'clumsy-bird', title: 'Clumsy Bird', url: 'https://ellisonleao.github.io/clumsy-bird/', icon: 'flutter_dash' }
+  ];
+  const screenTimeHeartbeatTimeoutSeconds = Math.max(1, Number(process.env.SCREEN_TIME_HEARTBEAT_TIMEOUT_SECONDS) || 90);
+  const screenTimePinLockSeconds = Math.max(1, Number(process.env.SCREEN_TIME_PIN_LOCK_SECONDS) || 60);
+
+  function normalizeScreenTime(data = {}) {
+    const settings = data.settings && typeof data.settings === 'object' ? data.settings : {};
+    const profiles = data.profiles && typeof data.profiles === 'object' && !Array.isArray(data.profiles)
+      ? data.profiles : {};
+    const pinFailures = data.pinFailures && typeof data.pinFailures === 'object' ? data.pinFailures : {};
+    return {
+      settings: {
+        enabled: settings.enabled !== false,
+        requireChoresFirst: settings.requireChoresFirst !== false,
+        includeRoutines: settings.includeRoutines === true,
+        defaultDailyMinutes: isValidDailyMinutes(settings.defaultDailyMinutes)
+          ? settings.defaultDailyMinutes : DEFAULT_SCREEN_TIME_SETTINGS.defaultDailyMinutes,
+        warnAtMinutes: Array.isArray(settings.warnAtMinutes)
+          ? settings.warnAtMinutes.filter(value => Number.isInteger(value) && value > 0)
+          : [...DEFAULT_SCREEN_TIME_SETTINGS.warnAtMinutes],
+        pinHash: typeof settings.pinHash === 'string' && /^[a-f0-9]{128}$/i.test(settings.pinHash) ? settings.pinHash : null,
+        pinSalt: typeof settings.pinSalt === 'string' && /^[a-f0-9]{32}$/i.test(settings.pinSalt) ? settings.pinSalt : null
+      },
+      profiles: Object.fromEntries(Object.entries(profiles)
+        .filter(([, value]) => value && isValidDailyMinutes(value.dailyMinutes))
+        .map(([profileId, value]) => [profileId, { dailyMinutes: value.dailyMinutes }])),
+      sessions: Array.isArray(data.sessions) ? data.sessions.filter(session => session && typeof session.id === 'string') : [],
+      grants: Array.isArray(data.grants) ? data.grants.filter(grant => grant && typeof grant.id === 'string') : [],
+      pinFailures: {
+        count: Number.isInteger(pinFailures.count) && pinFailures.count > 0 ? pinFailures.count : 0,
+        lockedUntil: typeof pinFailures.lockedUntil === 'string' ? pinFailures.lockedUntil : null
+      }
+    };
+  }
+
+  function isValidDailyMinutes(value) {
+    return Number.isFinite(value) && value >= 0 && value <= 1440;
+  }
+
+  function readScreenTime() {
+    return normalizeScreenTime(readJsonFile('screen_time.json', {}));
+  }
+
+  function publicScreenTimeSettings(settings) {
+    return {
+      enabled: settings.enabled,
+      requireChoresFirst: settings.requireChoresFirst,
+      includeRoutines: settings.includeRoutines,
+      defaultDailyMinutes: settings.defaultDailyMinutes,
+      warnAtMinutes: settings.warnAtMinutes,
+      pinSet: Boolean(settings.pinHash && settings.pinSalt)
+    };
+  }
+
+  function readGames() {
+    const games = readJsonFile('games.json', null);
+    return Array.isArray(games) ? games : null;
+  }
+
+  function ensureGamesLibrary() {
+    const existing = readGames();
+    if (existing) return existing;
+    const createdAt = new Date().toISOString();
+    const seeded = DEFAULT_GAMES.map(game => ({ ...game, createdAt }));
+    writeJsonFile('games.json', seeded);
+    return seeded;
+  }
+
+  function getLocalDayBounds(date) {
+    const start = new Date(`${date}T00:00:00`);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    return { startMs: start.getTime(), endMs: end.getTime() };
+  }
+
+  function sessionSecondsOnDate(session, date, nowMs, excludedSessionId = null) {
+    if (!session || session.id === excludedSessionId || session.metered === false) return 0;
+    const startedMs = Date.parse(session.startedAt);
+    const endedMs = session.endedAt ? Date.parse(session.endedAt) : nowMs;
+    if (!Number.isFinite(startedMs) || !Number.isFinite(endedMs)) return 0;
+    const { startMs, endMs } = getLocalDayBounds(date);
+    return Math.max(0, Math.min(endedMs, nowMs, endMs) - Math.max(startedMs, startMs)) / 1000;
+  }
+
+  function screenTimeTotals(state, profileId, date, nowMs = Date.now(), excludedSessionId = null) {
+    const allowanceMinutes = state.profiles[profileId]?.dailyMinutes ?? state.settings.defaultDailyMinutes;
+    const grantedMinutes = state.grants.reduce((total, grant) =>
+      grant.profileId === profileId && grant.date === date && Number.isFinite(grant.minutes)
+        ? total + grant.minutes : total, 0);
+    const usedSeconds = state.sessions.reduce((total, session) =>
+      session.profileId === profileId
+        ? total + sessionSecondsOnDate(session, date, nowMs, excludedSessionId) : total, 0);
+    const remainingSecondsExact = Math.max(0, (allowanceMinutes + grantedMinutes) * 60 - usedSeconds);
+    const remainingSeconds = Math.ceil(remainingSecondsExact);
+    return {
+      dailyMinutes: allowanceMinutes,
+      usedMinutes: Math.round((usedSeconds / 60) * 1000) / 1000,
+      grantedMinutes,
+      remainingMinutes: Math.round((remainingSecondsExact / 60) * 1000) / 1000,
+      remainingSeconds,
+      remainingSecondsExact
+    };
+  }
+
+  function activeScreenTimeSession(state) {
+    return state.sessions.find(session => !session.endedAt) || null;
+  }
+
+  function getSessionExpiry(state, session, nowMs = Date.now()) {
+    if (session.metered === false) return null;
+    const date = getServerLocalDate();
+    const totals = screenTimeTotals(state, session.profileId, date, nowMs, session.id);
+    const { startMs } = getLocalDayBounds(date);
+    const chargeStartMs = Math.max(Date.parse(session.startedAt), startMs);
+    return new Date(chargeStartMs + totals.remainingSecondsExact * 1000).toISOString();
+  }
+
+  function enforceActiveScreenTimeSession(state, nowMs = Date.now()) {
+    const session = activeScreenTimeSession(state);
+    if (!session) return { changed: false, session: null, expiresAt: null };
+    const lastHeartbeatMs = Date.parse(session.lastHeartbeatAt || session.startedAt);
+    const expiresAt = getSessionExpiry(state, session, nowMs);
+    const expiresMs = expiresAt ? Date.parse(expiresAt) : Infinity;
+    const heartbeatStale = Number.isFinite(lastHeartbeatMs) &&
+      nowMs - lastHeartbeatMs > screenTimeHeartbeatTimeoutSeconds * 1000;
+
+    if (heartbeatStale) {
+      if (expiresMs <= lastHeartbeatMs) {
+        session.endedAt = new Date(expiresMs).toISOString();
+        session.endReason = 'expired';
+      } else {
+        session.endedAt = new Date(lastHeartbeatMs).toISOString();
+        session.endReason = 'abandoned';
+      }
+      return { changed: true, session: null, expiresAt: null, closedSession: session };
+    }
+    if (expiresMs <= nowMs) {
+      session.endedAt = new Date(expiresMs).toISOString();
+      session.endReason = 'expired';
+      return { changed: true, session: null, expiresAt: null, closedSession: session };
+    }
+    return { changed: false, session, expiresAt };
+  }
+
+  function getScreenTimeBlocking(profileId, settings, chores, date) {
+    if (!settings.requireChoresFirst) return [];
+    const metaByUid = readChoreMeta();
+    const choreSettings = readChoreSettings();
+    const blocking = (chores || []).flatMap(chore => {
+      const meta = normalizeChoreMeta(metaByUid[chore.uid], choreSettings);
+      const unclaimed = meta.upForGrabs && meta.assignedProfileIds.length === 0;
+      const isDue = !meta.dueDate || meta.dueDate <= date;
+      return !unclaimed && meta.assignedProfileIds.includes(profileId) &&
+        chore.status === 'needs_action' && isDue
+        ? [{ type: 'chore', id: chore.uid, title: chore.summary || 'Untitled chore' }] : [];
+    });
+    if (!settings.includeRoutines) return blocking;
+    const progressByDate = readRoutineProgress()[date] || {};
+    readRoutines().filter(routine => routineIsDueToday(routine, date) &&
+      routine.assignedProfileIds.includes(profileId)).forEach(routine => {
+      const completedStepIds = progressByDate[routine.id]?.[profileId]?.completedStepIds || [];
+      const complete = routine.steps.length > 0 && routine.steps.every(step => completedStepIds.includes(step.id));
+      if (!complete) blocking.push({ type: 'routine', id: routine.id, title: routine.name || 'Untitled routine' });
+    });
+    return blocking;
+  }
+
+  function validatePin(state, pin, nowMs = Date.now()) {
+    if (!state.settings.pinHash || !state.settings.pinSalt) {
+      return { ok: false, status: 403, error: 'Set a parent PIN in Settings first' };
+    }
+    const lockedUntilMs = Date.parse(state.pinFailures.lockedUntil || '');
+    if (Number.isFinite(lockedUntilMs) && lockedUntilMs > nowMs) {
+      return {
+        ok: false,
+        status: 429,
+        error: 'Too many incorrect PIN attempts. Try again shortly.',
+        retryAfterSeconds: Math.ceil((lockedUntilMs - nowMs) / 1000)
+      };
+    }
+    if (Number.isFinite(lockedUntilMs) && lockedUntilMs <= nowMs) {
+      state.pinFailures = { count: 0, lockedUntil: null };
+    }
+    if (!/^\d{4,8}$/.test(String(pin || ''))) return recordPinFailure(state, nowMs);
+    const expected = Buffer.from(state.settings.pinHash, 'hex');
+    let supplied;
+    try {
+      supplied = scryptSync(String(pin), Buffer.from(state.settings.pinSalt, 'hex'), expected.length);
+    } catch (error) {
+      return { ok: false, status: 500, error: 'Parent PIN could not be checked' };
+    }
+    if (expected.length !== supplied.length || !timingSafeEqual(expected, supplied)) return recordPinFailure(state, nowMs);
+    state.pinFailures = { count: 0, lockedUntil: null };
+    return { ok: true };
+  }
+
+  function recordPinFailure(state, nowMs) {
+    const count = state.pinFailures.count + 1;
+    if (count >= 5) {
+      state.pinFailures = {
+        count,
+        lockedUntil: new Date(nowMs + screenTimePinLockSeconds * 1000).toISOString()
+      };
+      return {
+        ok: false,
+        status: 429,
+        error: 'Too many incorrect PIN attempts. Try again shortly.',
+        retryAfterSeconds: screenTimePinLockSeconds
+      };
+    }
+    state.pinFailures = { count, lockedUntil: null };
+    return { ok: false, status: 403, error: 'Incorrect parent PIN' };
+  }
+
+  function validateGameInput(input = {}) {
+    const title = typeof input.title === 'string' ? input.title.trim() : '';
+    if (!title) return { error: 'Game title is required' };
+    if (title.length > 100) return { error: 'Game title must be 100 characters or fewer' };
+    let parsedUrl;
+    try { parsedUrl = new URL(String(input.url || '')); } catch (error) { return { error: 'Enter a valid game URL' }; }
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) return { error: 'Game URL must use http or https' };
+    const icon = typeof input.icon === 'string' && /^[a-z0-9_]{1,40}$/.test(input.icon.trim())
+      ? input.icon.trim() : 'sports_esports';
+    return { game: { title, url: parsedUrl.toString(), icon } };
   }
 
   function normalizeRoutine(input = {}, existing = null) {
@@ -2914,6 +3152,304 @@ async function initializeApp() {
     });
     if (result.error) return res.status(result.status).json({ error: result.error });
     res.json(result);
+  });
+
+  // Screen time is an append-only usage ledger. Every mutation shares the
+  // household lock so simultaneous taps cannot create two active players or
+  // replace a grant/session written by another display.
+  app.get('/api/screen-time', async (req, res) => {
+    try {
+      const [users, todoResult] = await Promise.all([fetchHaUsers(), fetchTodoItems()]);
+      if (todoResult.error) return res.status(500).json({ error: todoResult.error });
+      const payload = await withHouseholdStorageLock(async () => {
+        const state = readScreenTime();
+        const nowMs = Date.now();
+        const date = getServerLocalDate();
+        const enforcement = enforceActiveScreenTimeSession(state, nowMs);
+        if (enforcement.changed) writeJsonFile('screen_time.json', state);
+        const active = enforcement.session;
+        return {
+          settings: publicScreenTimeSettings(state.settings),
+          activeSession: active ? {
+            ...active,
+            expiresAt: enforcement.expiresAt,
+            remainingSeconds: active.metered === false ? null :
+              screenTimeTotals(state, active.profileId, date, nowMs).remainingSeconds
+          } : null,
+          profiles: users.map(user => {
+            const totals = screenTimeTotals(state, user.id, date, nowMs);
+            const blocking = state.settings.enabled
+              ? getScreenTimeBlocking(user.id, state.settings, todoResult.items || [], date) : [];
+            return {
+              id: user.id,
+              name: user.name,
+              color: user.color,
+              dailyMinutes: totals.dailyMinutes,
+              usedMinutes: totals.usedMinutes,
+              grantedMinutes: totals.grantedMinutes,
+              remainingMinutes: totals.remainingMinutes,
+              blocking,
+              canStart: !active && (!state.settings.enabled ||
+                (totals.remainingSeconds > 0 && blocking.length === 0))
+            };
+          })
+        };
+      });
+      res.json(payload);
+    } catch (error) {
+      console.error('[ERROR] Failed to read screen time:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.put('/api/screen-time/settings', async (req, res) => {
+    const allowedBooleanKeys = ['enabled', 'requireChoresFirst', 'includeRoutines'];
+    for (const key of allowedBooleanKeys) {
+      if (req.body[key] !== undefined && typeof req.body[key] !== 'boolean') {
+        return res.status(400).json({ error: `${key} must be true or false` });
+      }
+    }
+    if (req.body.defaultDailyMinutes !== undefined && !isValidDailyMinutes(req.body.defaultDailyMinutes)) {
+      return res.status(400).json({ error: 'Default daily minutes must be between 0 and 1440' });
+    }
+    const profileUpdates = req.body.profiles;
+    if (profileUpdates !== undefined && (!profileUpdates || typeof profileUpdates !== 'object' || Array.isArray(profileUpdates))) {
+      return res.status(400).json({ error: 'profiles must be an object keyed by profile id' });
+    }
+    const users = await fetchHaUsers();
+    const validProfileIds = new Set(users.map(user => user.id));
+    for (const [profileId, value] of Object.entries(profileUpdates || {})) {
+      if (!validProfileIds.has(profileId)) return res.status(400).json({ error: `Unknown profile: ${profileId}` });
+      if (!value || !isValidDailyMinutes(value.dailyMinutes)) {
+        return res.status(400).json({ error: `Daily minutes for ${profileId} must be between 0 and 1440` });
+      }
+    }
+    const result = await withHouseholdStorageLock(async () => {
+      const state = readScreenTime();
+      if (state.settings.pinHash) {
+        const pinResult = validatePin(state, req.body.pin);
+        if (!pinResult.ok) {
+          writeJsonFile('screen_time.json', state);
+          return pinResult;
+        }
+      }
+      allowedBooleanKeys.forEach(key => {
+        if (req.body[key] !== undefined) state.settings[key] = req.body[key];
+      });
+      if (req.body.defaultDailyMinutes !== undefined) {
+        state.settings.defaultDailyMinutes = req.body.defaultDailyMinutes;
+      }
+      Object.entries(profileUpdates || {}).forEach(([profileId, value]) => {
+        state.profiles[profileId] = { dailyMinutes: value.dailyMinutes };
+      });
+      writeJsonFile('screen_time.json', state);
+      return { ok: true, settings: publicScreenTimeSettings(state.settings), profiles: state.profiles };
+    });
+    if (!result.ok) return res.status(result.status).json(result);
+    res.json({ settings: result.settings, profiles: result.profiles });
+  });
+
+  app.put('/api/screen-time/pin', async (req, res) => {
+    if (!/^\d{4,8}$/.test(String(req.body.newPin || ''))) {
+      return res.status(400).json({ error: 'New PIN must be 4–8 digits' });
+    }
+    const result = await withHouseholdStorageLock(async () => {
+      const state = readScreenTime();
+      if (state.settings.pinHash) {
+        const pinResult = validatePin(state, req.body.currentPin);
+        if (!pinResult.ok) {
+          writeJsonFile('screen_time.json', state);
+          return pinResult;
+        }
+      }
+      const salt = randomBytes(16);
+      const hash = scryptSync(String(req.body.newPin), salt, 64);
+      state.settings.pinSalt = salt.toString('hex');
+      state.settings.pinHash = hash.toString('hex');
+      state.pinFailures = { count: 0, lockedUntil: null };
+      writeJsonFile('screen_time.json', state);
+      return { ok: true };
+    });
+    if (!result.ok) return res.status(result.status).json(result);
+    res.json({ success: true, pinSet: true });
+  });
+
+  app.post('/api/screen-time/grants', async (req, res) => {
+    const { pin, profileId, minutes, reason } = req.body;
+    if (!(await validateProfileIds([profileId]))) return res.status(400).json({ error: 'Unknown profile' });
+    if (!Number.isInteger(minutes) || minutes <= 0 || minutes > 1440) {
+      return res.status(400).json({ error: 'Minutes must be a positive whole number no greater than 1440' });
+    }
+    if (typeof reason !== 'string' || !reason.trim()) return res.status(400).json({ error: 'A reason is required' });
+    const result = await withHouseholdStorageLock(async () => {
+      const state = readScreenTime();
+      const pinResult = validatePin(state, pin);
+      if (!pinResult.ok) {
+        writeJsonFile('screen_time.json', state);
+        return pinResult;
+      }
+      const grant = {
+        id: randomUUID(),
+        profileId,
+        date: getServerLocalDate(),
+        minutes,
+        reason: reason.trim().slice(0, 160),
+        createdAt: new Date().toISOString()
+      };
+      state.grants.push(grant);
+      writeJsonFile('screen_time.json', state);
+      return { ok: true, grant };
+    });
+    if (!result.ok) return res.status(result.status).json(result);
+    res.status(201).json(result.grant);
+  });
+
+  app.post('/api/screen-time/sessions', async (req, res) => {
+    const { profileId, gameId, pin } = req.body;
+    const [users, todoResult] = await Promise.all([fetchHaUsers(), fetchTodoItems()]);
+    if (!users.some(user => user.id === profileId)) return res.status(400).json({ error: 'Unknown profile' });
+    if (todoResult.error) return res.status(500).json({ error: todoResult.error });
+    const result = await withHouseholdStorageLock(async () => {
+      const state = readScreenTime();
+      const games = ensureGamesLibrary();
+      if (!games.some(game => game.id === gameId)) return { ok: false, status: 404, error: 'Game not found' };
+      const nowMs = Date.now();
+      const enforcement = enforceActiveScreenTimeSession(state, nowMs);
+      if (enforcement.changed) writeJsonFile('screen_time.json', state);
+      if (enforcement.session) return { ok: false, status: 409, error: 'Another game session is already active' };
+      const date = getServerLocalDate();
+      const blocking = state.settings.enabled
+        ? getScreenTimeBlocking(profileId, state.settings, todoResult.items || [], date) : [];
+      if (blocking.length) {
+        if (!pin) return { ok: false, status: 403, error: 'Finish assigned chores before playing', blocking };
+        const pinResult = validatePin(state, pin);
+        if (!pinResult.ok) {
+          writeJsonFile('screen_time.json', state);
+          return { ...pinResult, blocking };
+        }
+      }
+      const totals = screenTimeTotals(state, profileId, date, nowMs);
+      if (state.settings.enabled && totals.remainingSecondsExact <= 0) {
+        return { ok: false, status: 403, error: 'No playtime remains today' };
+      }
+      const now = new Date(nowMs).toISOString();
+      const session = {
+        id: randomUUID(),
+        profileId,
+        gameId,
+        startedAt: now,
+        lastHeartbeatAt: now,
+        endedAt: null,
+        endReason: null,
+        metered: state.settings.enabled
+      };
+      state.sessions.push(session);
+      const expiresAt = getSessionExpiry(state, session, nowMs);
+      writeJsonFile('screen_time.json', state);
+      return {
+        ok: true,
+        session,
+        expiresAt,
+        remainingSeconds: session.metered === false ? null : totals.remainingSeconds
+      };
+    });
+    if (!result.ok) {
+      const body = { error: result.error };
+      if (result.blocking) body.blocking = result.blocking;
+      if (result.retryAfterSeconds) body.retryAfterSeconds = result.retryAfterSeconds;
+      return res.status(result.status).json(body);
+    }
+    res.status(201).json({ ...result.session, expiresAt: result.expiresAt, remainingSeconds: result.remainingSeconds });
+  });
+
+  app.post('/api/screen-time/sessions/:id/heartbeat', async (req, res) => {
+    const result = await withHouseholdStorageLock(async () => {
+      const state = readScreenTime();
+      const target = state.sessions.find(session => session.id === req.params.id);
+      if (!target) return { ok: false, status: 404, error: 'Session not found' };
+      const nowMs = Date.now();
+      const enforcement = enforceActiveScreenTimeSession(state, nowMs);
+      if (target.endedAt || enforcement.session?.id !== target.id) {
+        if (enforcement.changed) writeJsonFile('screen_time.json', state);
+        return { ok: false, status: 409, error: 'Session has ended', session: target };
+      }
+      target.lastHeartbeatAt = new Date(nowMs).toISOString();
+      writeJsonFile('screen_time.json', state);
+      const totals = screenTimeTotals(state, target.profileId, getServerLocalDate(), nowMs);
+      return {
+        ok: true,
+        remainingSeconds: target.metered === false ? null : totals.remainingSeconds,
+        expiresAt: getSessionExpiry(state, target, nowMs)
+      };
+    });
+    if (!result.ok) return res.status(result.status).json({ error: result.error, session: result.session });
+    res.json({ remainingSeconds: result.remainingSeconds, expiresAt: result.expiresAt });
+  });
+
+  app.post('/api/screen-time/sessions/:id/stop', async (req, res) => {
+    const result = await withHouseholdStorageLock(async () => {
+      const state = readScreenTime();
+      const target = state.sessions.find(session => session.id === req.params.id);
+      if (!target) return null;
+      if (!target.endedAt) {
+        const enforcement = enforceActiveScreenTimeSession(state, Date.now());
+        if (!target.endedAt) {
+          target.endedAt = new Date().toISOString();
+          target.endReason = typeof req.body.reason === 'string' && req.body.reason.trim()
+            ? req.body.reason.trim().slice(0, 40) : 'stopped';
+        }
+        void enforcement;
+        writeJsonFile('screen_time.json', state);
+      }
+      return target;
+    });
+    if (!result) return res.status(404).json({ error: 'Session not found' });
+    res.json(result);
+  });
+
+  app.get('/api/games', async (req, res) => {
+    try {
+      const games = await withHouseholdStorageLock(async () => ensureGamesLibrary());
+      res.json(games);
+    } catch (error) { res.status(500).json({ error: error.message }); }
+  });
+
+  app.post('/api/games', async (req, res) => {
+    const normalized = validateGameInput(req.body);
+    if (normalized.error) return res.status(400).json({ error: normalized.error });
+    const result = await withHouseholdStorageLock(async () => {
+      const games = ensureGamesLibrary();
+      if (games.some(game => game.url === normalized.game.url)) return { duplicate: true };
+      const game = { id: randomUUID(), ...normalized.game, createdAt: new Date().toISOString() };
+      games.push(game);
+      writeJsonFile('games.json', games);
+      return { game };
+    });
+    if (result.duplicate) return res.status(409).json({ error: 'That game is already in the library' });
+    res.status(201).json(result.game);
+  });
+
+  app.delete('/api/games/:id', async (req, res) => {
+    const result = await withHouseholdStorageLock(async () => {
+      const state = readScreenTime();
+      const pinResult = validatePin(state, req.body.pin);
+      if (!pinResult.ok) {
+        writeJsonFile('screen_time.json', state);
+        return pinResult;
+      }
+      if (activeScreenTimeSession(state)?.gameId === req.params.id) {
+        return { ok: false, status: 409, error: 'Close the active game before removing it' };
+      }
+      const games = ensureGamesLibrary();
+      const index = games.findIndex(game => game.id === req.params.id);
+      if (index < 0) return { ok: false, status: 404, error: 'Game not found' };
+      const [game] = games.splice(index, 1);
+      writeJsonFile('games.json', games);
+      writeJsonFile('screen_time.json', state);
+      return { ok: true, game };
+    });
+    if (!result.ok) return res.status(result.status).json({ error: result.error, retryAfterSeconds: result.retryAfterSeconds });
+    res.json(result.game);
   });
 
   // Enhanced diagnostics endpoint

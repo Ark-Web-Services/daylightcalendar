@@ -1,178 +1,128 @@
 <turbo-frame id="games-content">
-<header class="content-header">
-  <h1>Games</h1>
-  <div class="header-actions">
-    <button id="add-game-button" class="btn btn-primary"><i class="material-icons">add</i> Add Game</button>
-    <!-- Button temporarily disabled until repository system is built
-    <button id="get-more-games-button" class="btn btn-secondary"><i class="material-icons">get_app</i> Get More Games</button>
-    -->
-  </div>
-</header>
-<div class="content-scrollable">
-  <div class="game-profile-selector">
-    <div class="game-profile-header">
-      <h3>Select Profile</h3>
-      <div class="profile-actions">
-        <span id="playtime-balance">Available Playtime: <span id="playtime-minutes">30</span> minutes</span>
-      </div>
+  <header class="content-header games-header">
+    <div>
+      <h1>Games</h1>
+      <p id="games-page-status" class="games-page-status" aria-live="polite">Choose who is playing to begin.</p>
     </div>
-    <div class="profile-list" id="profile-list">
-      <!-- Profiles will be populated by JavaScript -->
+    <button id="add-game-button" class="btn btn-primary" type="button">
+      <i class="material-icons" aria-hidden="true">add</i> Add Game
+    </button>
+  </header>
+
+  <div class="content-scrollable games-page-content">
+    <section class="game-profile-selector" aria-labelledby="game-profile-heading">
+      <div class="game-profile-header">
+        <h2 id="game-profile-heading">Who’s playing?</h2>
+        <span id="screen-time-mode" class="screen-time-mode"></span>
+      </div>
+      <div class="profile-list" id="profile-list" aria-live="polite">
+        <div class="profile-list-state"><i class="material-icons spin" aria-hidden="true">refresh</i> Loading people…</div>
+      </div>
+    </section>
+
+    <section id="game-gate-panel" class="game-gate-panel" hidden aria-live="polite">
+      <div class="game-gate-copy">
+        <i class="material-icons" aria-hidden="true">task_alt</i>
+        <div>
+          <h2>Finish these first:</h2>
+          <ul id="game-blocking-list"></ul>
+        </div>
+      </div>
+      <div class="game-gate-actions">
+        <button type="button" class="btn btn-primary" id="open-chores-from-games">Go to Chores</button>
+        <button type="button" class="btn btn-secondary" id="parent-game-override">Parent override</button>
+      </div>
+    </section>
+
+    <div id="game-selection-hint" class="game-selection-hint">
+      <i class="material-icons" aria-hidden="true">touch_app</i>
+      Pick who’s playing to unlock the games.
+    </div>
+
+    <div id="games-grid" class="games-grid" aria-live="polite">
+      <div class="games-loading"><i class="material-icons spin" aria-hidden="true">refresh</i> Loading games…</div>
     </div>
   </div>
 
-  <div class="games-grid">
-    <div class="game-item" data-game-url="https://geometrydashonline.github.io/" data-game-age="8+">
-      <div class="game-icon geometry-dash-icon">
-        <img src="https://vignette2.wikia.nocookie.net/geometry-dash/images/9/90/GeometryDash.png" alt="Geometry Dash" onerror="this.src='https://geometrydashonline.github.io/assets/images/icon.webp'">
-      </div>
-      <div class="game-title">Geometry Dash</div>
-      <div class="playtime-indicator">15 min</div>
-    </div>
-    <div class="game-item" data-game-url="https://hextris.io/" data-game-age="6+">
-      <div class="game-icon">
-        <img src="https://github.com/Hextris/hextris/blob/gh-pages/images/twitter-opengraph.png?raw=true" alt="Hextris" onerror="this.src='https://via.placeholder.com/64'">
-      </div>
-      <div class="game-title">Hextris</div>
-      <div class="playtime-indicator">10 min</div>
-    </div>
-    <div class="game-item" data-game-url="https://ellisonleao.github.io/clumsy-bird/" data-game-age="5+">
-      <div class="game-icon">
-        <img src="https://nathanprinsley-games.prinsh.com/NathanPrinsleyGames/clumsybird/thumb_1.jpg" alt="Clumsy Bird" onerror="this.src='https://via.placeholder.com/64'">
-      </div>
-      <div class="game-title">Clumsy Bird</div>
-      <div class="playtime-indicator">15 min</div>
-    </div>
-  </div>
-
-  <!-- Game Focus Modal -->
-  <div id="game-focus-modal" class="modal">
+  <div id="game-focus-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="game-modal-title">
     <div class="modal-content game-modal-content">
       <div class="modal-header">
         <h3 id="game-modal-title">Game</h3>
-        <button class="modal-close">&times;</button>
+        <button class="modal-close" type="button" aria-label="Close game">&times;</button>
       </div>
       <div class="modal-body game-modal-body">
+        <div id="game-warning-banner" class="game-warning-banner" hidden aria-live="assertive"></div>
         <div id="game-timer-overlay" class="game-timer-overlay">
-          <div class="game-timer-display" id="game-timer-display">15:00</div>
+          <div class="game-timer-display" id="game-timer-display">--:--</div>
           <div class="game-timer-user" id="game-timer-user"></div>
         </div>
-        <iframe id="game-iframe" src="" frameborder="0" allowfullscreen></iframe>
-      </div>
-    </div>
-  </div>
-
-  <!-- Get More Games Modal -->
-  <div id="get-more-games-modal" class="modal">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h3>Community Games</h3>
-        <button class="modal-close">&times;</button>
-      </div>
-      <div class="modal-body">
-        <div class="community-games-grid">
-          <div class="community-game-item">
-            <div class="community-game-icon">
-              <img src="https://cdn2.scratch.mit.edu/get_image/project/104711816_480x360.png" alt="Platformer">
-            </div>
-            <div class="community-game-info">
-              <h4>Platformer Adventure</h4>
-              <p>A classic platformer game with multiple levels</p>
-              <div class="community-game-meta">
-                <span><i class="material-icons">person</i> GameCreator123</span>
-                <span><i class="material-icons">star</i> 4.5/5</span>
-              </div>
-            </div>
-            <button class="btn btn-sm btn-primary install-game-btn"><i class="material-icons">get_app</i> Install</button>
-          </div>
-
-          <div class="community-game-item">
-            <div class="community-game-icon">
-              <img src="https://cdn2.scratch.mit.edu/get_image/project/31903442_480x360.png" alt="Space Shooter">
-            </div>
-            <div class="community-game-info">
-              <h4>Space Shooter</h4>
-              <p>Defend your ship against waves of alien invaders</p>
-              <div class="community-game-meta">
-                <span><i class="material-icons">person</i> SpaceGameDev</span>
-                <span><i class="material-icons">star</i> 4.2/5</span>
-              </div>
-            </div>
-            <button class="btn btn-sm btn-primary install-game-btn"><i class="material-icons">get_app</i> Install</button>
-          </div>
-
-          <div class="community-game-item">
-            <div class="community-game-icon">
-              <img src="https://cdn2.scratch.mit.edu/get_image/project/116222711_480x360.png" alt="Puzzle Quest">
-            </div>
-            <div class="community-game-info">
-              <h4>Puzzle Quest</h4>
-              <p>Test your brain with challenging puzzles</p>
-              <div class="community-game-meta">
-                <span><i class="material-icons">person</i> PuzzleMaster</span>
-                <span><i class="material-icons">star</i> 4.8/5</span>
-              </div>
-            </div>
-            <button class="btn btn-sm btn-primary install-game-btn"><i class="material-icons">get_app</i> Install</button>
-          </div>
+        <iframe id="game-iframe" src="about:blank" title="Selected game" allowfullscreen></iframe>
+        <div id="game-time-up" class="game-time-up" hidden>
+          <i class="material-icons" aria-hidden="true">timer_off</i>
+          <h2 id="game-time-up-title">Time’s up!</h2>
+          <p>Game audio and play have been stopped.</p>
+          <button type="button" class="btn btn-primary" id="add-game-time">Add time</button>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Add Game Modal -->
-  <div id="add-game-modal" class="modal">
+  <div id="add-game-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="add-game-title">
     <div class="modal-content">
       <div class="modal-header">
-        <h3>Add New Game</h3>
-        <button class="modal-close">&times;</button>
+        <h3 id="add-game-title">Add a game</h3>
+        <button class="modal-close" type="button" aria-label="Close">&times;</button>
       </div>
       <div class="modal-body">
         <form id="add-game-form">
-          <div class="form-row">
-            <div class="form-group">
-              <label for="gameTitle">Game Title</label>
-              <input type="text" id="gameTitle" name="gameTitle" placeholder="Enter game title" required>
-            </div>
+          <div class="form-group">
+            <label for="gameTitle">Game title</label>
+            <input type="text" id="gameTitle" name="title" maxlength="100" required>
           </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label for="gameURL">Game URL</label>
-              <input type="url" id="gameURL" name="gameURL" placeholder="https://example.com/game" required>
-            </div>
+          <div class="form-group">
+            <label for="gameURL">Game URL</label>
+            <input type="url" id="gameURL" name="url" placeholder="https://example.com/game" required>
           </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label for="gameIconURL">Icon URL</label>
-              <input type="url" id="gameIconURL" name="gameIconURL" placeholder="https://example.com/icon.png">
-            </div>
-            <div class="form-group">
-              <label for="gameIconUpload">Or Upload Icon</label>
-              <input type="file" id="gameIconUpload" name="gameIconUpload" accept="image/*">
-            </div>
+          <div class="form-group">
+            <label for="gameIcon">Material icon</label>
+            <input type="text" id="gameIcon" name="icon" maxlength="40" value="sports_esports">
+            <p class="setting-description">Use a Material icon name. No external image is loaded.</p>
           </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label for="gameAgeRating">Age Rating</label>
-              <select id="gameAgeRating" name="gameAgeRating">
-                <option value="all">All Ages</option>
-                <option value="5+">5+</option>
-                <option value="8+">8+</option>
-                <option value="12+">12+</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label for="gamePlaytime">Default Playtime (minutes)</label>
-              <input type="number" id="gamePlaytime" name="gamePlaytime" min="5" max="60" value="15">
-            </div>
-          </div>
+          <div id="add-game-error" class="inline-form-error" role="alert"></div>
           <div class="form-actions">
             <button type="button" class="btn btn-secondary modal-cancel">Cancel</button>
-            <button type="submit" class="btn btn-primary"><i class="material-icons">add_circle</i> Add Game</button>
+            <button type="submit" class="btn btn-primary"><i class="material-icons" aria-hidden="true">add_circle</i> Add Game</button>
           </div>
         </form>
       </div>
     </div>
   </div>
-</div>
+
+  <div id="game-pin-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="game-pin-title">
+    <div class="modal-content pin-modal-content">
+      <div class="modal-header">
+        <h3 id="game-pin-title">Parent PIN</h3>
+        <button class="modal-close" type="button" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body pin-modal-body">
+        <p id="game-pin-message">Enter the parent PIN.</p>
+        <div id="game-grant-options" class="game-grant-options" hidden>
+          <span>Add:</span>
+          <button type="button" data-grant-minutes="5">5 min</button>
+          <button type="button" data-grant-minutes="10">10 min</button>
+          <button type="button" data-grant-minutes="15" class="selected">15 min</button>
+          <button type="button" data-grant-minutes="30">30 min</button>
+        </div>
+        <div id="game-pin-display" class="pin-display" aria-label="PIN is empty">○ ○ ○ ○</div>
+        <div id="game-pin-error" class="inline-form-error" role="alert"></div>
+        <div id="game-pin-keypad" class="pin-keypad" aria-label="PIN keypad">
+          <button type="button" data-pin-key="1">1</button><button type="button" data-pin-key="2">2</button><button type="button" data-pin-key="3">3</button>
+          <button type="button" data-pin-key="4">4</button><button type="button" data-pin-key="5">5</button><button type="button" data-pin-key="6">6</button>
+          <button type="button" data-pin-key="7">7</button><button type="button" data-pin-key="8">8</button><button type="button" data-pin-key="9">9</button>
+          <button type="button" data-pin-action="clear" aria-label="Clear PIN">Clear</button><button type="button" data-pin-key="0">0</button><button type="button" data-pin-action="backspace" aria-label="Delete last digit"><i class="material-icons" aria-hidden="true">backspace</i></button>
+        </div>
+        <button type="button" id="game-pin-submit" class="btn btn-primary pin-submit" disabled>Continue</button>
+      </div>
+    </div>
+  </div>
 </turbo-frame>
