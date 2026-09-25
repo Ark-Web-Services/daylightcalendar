@@ -154,6 +154,23 @@ login. Delete or stub that file before local dev if you don't want that.
 
 ---
 
+### Host changes made 2026-09-25
+
+- **Edge camera policy**: `HKLM\SOFTWARE\Policies\Microsoft\Edge\VideoCaptureAllowedUrls\1 =
+  http://localhost:8099`, so the kiosk can use the webcam for face recognition without a permission
+  prompt. It allows that one origin only.
+- **Kiosk launcher hardened** (`C:\HAOS\start-daylight-display.ps1`, original kept as
+  `.bak-20260925`). Relaunching Edge while a previous kiosk instance was still shutting down made the
+  new one hand off to the dying process and exit, leaving the panel blank. The launcher now waits
+  for old kiosk processes to exit, confirms Edge stayed up, and retries up to 3 times. Verified by
+  force-killing and relaunching with no pause.
+- **Ollama 0.34.4 installed** (per-user, `%LOCALAPPDATA%\Programs\Ollama`) with `qwen2.5vl:3b`
+  (3.2 GB), served by a scheduled task `Ollama-Serve` in the logged-on session at below-normal
+  priority, listening on 127.0.0.1:11434 only. Receipt benchmark on this CPU: 10/10 items, prices
+  and quantities on a synthetic receipt in 145 s. **Not yet reachable from the add-on** (which runs
+  in the HA VM) — that needs a deliberate bind + firewall scope to the Default Switch subnet, never
+  the whole LAN.
+
 ## 4. Remaining work
 
 Packages 1-4 were completed on 2026-09-12 (versions 1.1.9.13 through 1.1.9.17), each verified
