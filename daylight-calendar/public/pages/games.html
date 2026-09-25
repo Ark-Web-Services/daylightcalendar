@@ -13,11 +13,23 @@
     <section class="game-profile-selector" aria-labelledby="game-profile-heading">
       <div class="game-profile-header">
         <h2 id="game-profile-heading">Who’s playing?</h2>
-        <span id="screen-time-mode" class="screen-time-mode"></span>
+        <div class="game-profile-statuses">
+          <span id="face-camera-status" class="face-camera-status" aria-live="polite" hidden>
+            <span class="face-camera-dot" aria-hidden="true"></span>
+            <span id="face-camera-status-text">Camera off</span>
+          </span>
+          <span id="screen-time-mode" class="screen-time-mode"></span>
+        </div>
       </div>
+      <video id="face-recognition-video" class="face-recognition-video" width="320" height="240" autoplay muted playsinline hidden></video>
       <div class="profile-list" id="profile-list" aria-live="polite">
         <div class="profile-list-state"><i class="material-icons spin" aria-hidden="true">refresh</i> Loading people…</div>
       </div>
+    </section>
+
+    <section id="face-match-banner" class="face-match-banner" hidden aria-live="assertive">
+      <strong id="face-match-message"></strong>
+      <button type="button" id="face-match-reject" class="btn btn-secondary">Not me</button>
     </section>
 
     <section id="game-gate-panel" class="game-gate-panel" hidden aria-live="polite">

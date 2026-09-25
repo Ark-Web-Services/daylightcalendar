@@ -151,6 +151,49 @@
           </div>
         </form>
       </div>
+
+      <div class="settings-card" id="face-recognition-settings-card">
+        <div class="face-settings-heading">
+          <div>
+            <h3>Face recognition</h3>
+            <p class="setting-description">Choose a player on Games without starting a game. Face vectors stay on this device; Daylight never saves photos or video.</p>
+          </div>
+          <span id="face-recognition-state" class="screen-time-pin-state">Loading…</span>
+        </div>
+        <form id="face-recognition-settings-form">
+          <label class="screen-time-toggle face-enabled-toggle" for="face-recognition-enabled">
+            <input type="checkbox" id="face-recognition-enabled">
+            <span><strong>Enable face recognition</strong><small>The camera runs only while Games is open and no game is active.</small></span>
+          </label>
+          <div class="form-row face-settings-controls">
+            <div class="form-group">
+              <label for="face-camera-device">Camera</label>
+              <select id="face-camera-device">
+                <option value="">Prefer Dell S2340T, then first camera</option>
+              </select>
+              <button type="button" id="refresh-face-cameras" class="btn btn-secondary face-refresh-cameras">
+                <i class="material-icons" aria-hidden="true">videocam</i> Find cameras
+              </button>
+            </div>
+            <div class="form-group">
+              <label for="face-match-threshold">Match threshold <output id="face-match-threshold-value">0.50</output></label>
+              <input id="face-match-threshold" type="range" min="0.3" max="0.8" step="0.01" value="0.5">
+              <p class="setting-description">Lower is stricter. The default is 0.50.</p>
+            </div>
+          </div>
+          <h4 class="screen-time-profile-heading">Enrolled people</h4>
+          <div id="face-profile-settings" class="face-profile-settings" aria-live="polite">Loading people…</div>
+          <div id="face-settings-status" class="screen-time-settings-status" aria-live="polite"></div>
+          <div class="form-actions face-settings-actions">
+            <button type="button" id="delete-all-face-data" class="btn btn-danger" disabled>
+              <i class="material-icons" aria-hidden="true">delete_forever</i> Delete all face data
+            </button>
+            <button type="submit" class="btn btn-primary">
+              <i class="material-icons" aria-hidden="true">save</i> Save face settings
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
 
     <div class="settings-section">
@@ -266,6 +309,24 @@
           <button type="button" data-pin-action="clear" aria-label="Clear PIN">Clear</button><button type="button" data-pin-key="0">0</button><button type="button" data-pin-action="backspace" aria-label="Delete last digit"><i class="material-icons" aria-hidden="true">backspace</i></button>
         </div>
         <button type="button" id="settings-pin-submit" class="btn btn-primary pin-submit" disabled>Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="face-enrollment-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="face-enrollment-title">
+    <div class="modal-content face-enrollment-modal-content">
+      <div class="modal-header">
+        <h3 id="face-enrollment-title">Enroll face</h3>
+        <button class="modal-close" type="button" aria-label="Cancel face enrollment">&times;</button>
+      </div>
+      <div class="modal-body face-enrollment-body">
+        <div class="face-enrollment-preview">
+          <video id="face-enrollment-video" width="640" height="480" autoplay muted playsinline></video>
+          <div class="face-enrollment-progress" id="face-enrollment-progress">0/5</div>
+        </div>
+        <p id="face-enrollment-guidance" class="face-enrollment-guidance" aria-live="polite">Preparing the camera…</p>
+        <p id="face-enrollment-error" class="inline-form-error" role="alert"></p>
+        <button type="button" id="cancel-face-enrollment" class="btn btn-secondary">Cancel</button>
       </div>
     </div>
   </div>

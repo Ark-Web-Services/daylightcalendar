@@ -1,5 +1,37 @@
 # Changelog
 
+## [1.1.9.26] - 2026-09-25
+
+Choosing a player on the wall display still required a tap even though the Dell panel already has
+a camera. Face recognition can now be enabled from Settings and enrolled per household profile;
+on Games, three clear matches in a row offer to choose that person after a three-second “Not me”
+window. Recognition never starts a game, and chores, remaining time, and the one-player limit all
+continue through the same screen-time gate. Similar-looking faces must also beat the next-best
+match by a safe margin, so uncertainty leaves manual selection in control.
+
+The face library and models are bundled with the add-on for offline use and load only when the
+feature actually needs them. Daylight saves no photos or video: only numeric face vectors remain
+in the add-on data volume, nothing is sent away from the device, and enabling, enrolling, or
+deleting those vectors requires the existing parent PIN and its lockout protection. Camera tracks
+stop when Games is left, the page is hidden, a game or modal takes over, or enrollment closes;
+permission and model failures fall back to tapping a name without blocking the kiosk.
+
+The “Finish these first” checklist on Games is now functional as well. Its chore rows are large
+touch controls that complete the underlying Home Assistant todo item, run the existing star-award
+path, and refresh the gate immediately instead of looking tappable while doing nothing.
+
+Two defects were found by exercising the camera pipeline in a real browser with a fake camera feed
+before release. TensorFlow.js was never told which backend to use, so on any machine without WebGL
+it chose its WebAssembly backend — which downloads its binaries from a CDN, unreachable offline and
+through ingress — and every detection failed. It is now pinned to WebGL with a pure-JavaScript CPU
+fallback that needs no downloads. And recognition discarded any face the detector scored below 0.8,
+but this detector scores a plainly visible face around 0.6-0.85, so an enrolled face measured at
+0.685 was never compared at all. The detector floor is now 0.5 (0.6 when enrolling); protection
+against choosing the wrong child comes from the match distance, the runner-up margin, three
+consecutive frames and the "Not me" button. Verified: an enrolled face matched at distance 0.33 and
+was chosen after 3 seconds; a stranger measured 0.70-0.73 and was never chosen in 60 seconds; the
+camera was released on leaving the tab in both runs.
+
 ## [1.1.9.25] - 2026-09-25
 
 The Games page looked as though it enforced playtime, but its 30-minute balance and every

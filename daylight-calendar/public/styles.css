@@ -1646,8 +1646,8 @@ main {
   font-size: 1.5rem;
   cursor: pointer;
   color: var(--md-on-surface-variant);
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -5354,6 +5354,149 @@ button.meal-slot.has-meal:focus-visible {
 .screen-time-settings-status.is-success { color: var(--md-success); }
 .screen-time-settings-actions { justify-content: space-between; }
 
+.game-profile-statuses {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--md-space-2);
+}
+
+.face-camera-status {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--md-space-1);
+  color: var(--md-on-surface-variant);
+  font-size: 0.75rem;
+}
+
+.face-camera-status[hidden],
+.face-match-banner[hidden] { display: none; }
+
+.face-camera-dot {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--md-outline);
+}
+
+.face-camera-status.is-active .face-camera-dot { background: var(--md-success); }
+.face-camera-status.is-unavailable .face-camera-dot { background: var(--md-warning); }
+.face-recognition-video { position: absolute; width: 1px; height: 1px; overflow: hidden; }
+
+.face-match-banner {
+  display: flex;
+  min-height: 52px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--md-space-3);
+  padding: var(--md-space-1) var(--md-space-2) var(--md-space-1) var(--md-space-3);
+  border-radius: var(--md-shape-large);
+  background: var(--md-primary-container);
+  color: var(--md-on-primary-container);
+}
+
+.face-match-banner strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.face-match-banner .btn { min-height: 44px; flex: 0 0 auto; }
+
+.game-blocking-chore {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  gap: var(--md-space-1);
+  padding: var(--md-space-1) var(--md-space-2);
+  border: 0;
+  border-radius: var(--md-shape-medium);
+  background: var(--md-surface-2);
+  color: var(--md-on-surface);
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.game-blocking-chore:focus-visible {
+  outline: 3px solid var(--md-primary);
+  outline-offset: -3px;
+}
+
+.game-blocking-chore:disabled { color: var(--md-on-surface-variant); cursor: default; }
+
+.face-settings-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--md-space-3);
+}
+
+#settings-content .face-enabled-toggle {
+  display: flex !important;
+  min-height: 72px;
+  align-items: center;
+  gap: var(--md-space-2);
+  margin: 0 0 var(--md-space-3);
+  padding: var(--md-space-2);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: var(--md-shape-large);
+  background: var(--md-surface-2);
+}
+
+.face-enabled-toggle input { width: 24px; height: 24px; flex: 0 0 auto; }
+.face-enabled-toggle span { display: flex; min-width: 0; flex-direction: column; gap: var(--md-space-1); }
+.face-enabled-toggle small { color: var(--md-on-surface-variant); }
+
+#settings-content .face-settings-controls select,
+#settings-content .face-settings-controls input[type="range"] {
+  width: 100%;
+  min-height: 44px;
+}
+
+.face-refresh-cameras { align-self: flex-start; margin-top: var(--md-space-2); }
+.face-profile-settings { display: grid; gap: var(--md-space-2); }
+
+.face-profile-setting {
+  display: grid;
+  min-width: 0;
+  min-height: 64px;
+  grid-template-columns: 44px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--md-space-2);
+  padding: var(--md-space-2);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: var(--md-shape-large);
+}
+
+.face-profile-copy { display: flex; min-width: 0; flex-direction: column; }
+.face-profile-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.face-profile-copy small { color: var(--md-on-surface-variant); }
+.face-profile-setting .btn { min-height: 44px; }
+.face-settings-actions { justify-content: space-between; }
+
+.face-enrollment-modal-content { max-width: 680px; overflow: hidden; }
+.face-enrollment-body { display: flex; align-items: center; flex-direction: column; gap: var(--md-space-3); }
+.face-enrollment-preview { position: relative; width: 100%; max-height: min(52vh, 480px); overflow: hidden; border-radius: var(--md-shape-large); background: var(--md-surface-3); }
+.face-enrollment-preview video { display: block; width: 100%; max-height: min(52vh, 480px); object-fit: cover; }
+.face-enrollment-progress {
+  position: absolute;
+  inset-block-start: var(--md-space-2);
+  inset-inline-end: var(--md-space-2);
+  padding: var(--md-space-1) var(--md-space-2);
+  border-radius: var(--md-shape-medium);
+  background: var(--md-surface-1);
+  color: var(--md-on-surface);
+  box-shadow: var(--md-shadow-1);
+  font-weight: 700;
+}
+.face-enrollment-guidance { margin: 0; color: var(--md-on-surface); font-size: 1.125rem; font-weight: 600; text-align: center; }
+.face-enrollment-body .inline-form-error { margin: 0; }
+.face-enrollment-body > .btn { min-width: 140px; min-height: 44px; }
+
 @media (max-width: 900px) {
   #games-content .profile-item { min-width: min(190px, 60vw); }
   .game-gate-panel { align-items: stretch; flex-direction: column; }
@@ -5361,4 +5504,8 @@ button.meal-slot.has-meal:focus-visible {
   #games-content .games-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
   #games-content .game-item { height: 132px; }
   .screen-time-toggle-grid { grid-template-columns: 1fr; }
+  .game-profile-statuses { align-items: flex-end; flex-direction: column-reverse; gap: var(--md-space-1); }
+  .face-profile-setting { grid-template-columns: 44px minmax(0, 1fr) auto; }
+  .face-profile-setting .delete-face-profile { grid-column: 2 / -1; justify-self: stretch; }
+  .face-settings-actions { align-items: stretch; flex-direction: column-reverse; }
 }

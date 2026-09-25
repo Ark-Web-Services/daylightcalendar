@@ -53,6 +53,21 @@ let selectedGrantMinutes = 15;
 let screenTimeSettingsSnapshot = null;
 let settingsPinFlow = null;
 let settingsPinValue = '';
+let faceProfilesSnapshot = null;
+let faceDescriptorSnapshot = null;
+let faceApiScriptPromise = null;
+let faceModelsPromise = null;
+let faceRecognitionStream = null;
+let faceRecognitionTimer = null;
+let faceRecognitionRunId = 0;
+let faceRecognitionMatcher = null;
+let faceRecognitionStreak = { profileId: null, count: 0 };
+let faceEnrollmentStream = null;
+let faceEnrollmentTimer = null;
+let faceEnrollmentRunId = 0;
+let faceEnrollmentState = null;
+let pendingFaceSelection = null;
+const suppressedFaceProfiles = new Map();
 let appDialogResolver = null;
 let addonLivenessTimer = null;
 let loadedAddonVersion = null;
@@ -597,6 +612,7 @@ function initializeGamesPage() {
   document.getElementById('add-game-button')?.addEventListener('click', () => {
     document.getElementById('add-game-error').textContent = '';
     document.getElementById('add-game-modal')?.classList.add('show');
+    stopFaceRecognitionCamera({ clearBanner: true });
   });
   document.getElementById('add-game-form')?.addEventListener('submit', handleAddGame);
   document.getElementById('open-chores-from-games')?.addEventListener('click', () => {
@@ -604,8 +620,10 @@ function initializeGamesPage() {
   });
   document.getElementById('parent-game-override')?.addEventListener('click', () => openGamePinModal('override'));
   document.getElementById('add-game-time')?.addEventListener('click', () => openGamePinModal('grant'));
+  document.getElementById('game-blocking-list')?.addEventListener('click', completeBlockingChoreFromGames);
+  document.getElementById('face-match-reject')?.addEventListener('click', rejectPendingFaceSelection);
   setupGamePinPad();
-  loadGamesPageData();
+  loadGamesPageData().then(loadFaceRecognitionForGames);
 }
 
 function listRequest(url, options = {}) {
@@ -877,6 +895,7 @@ async function loadGamesPageData({ resumeActive = true } = {}) {
       selectedGameProfileId = null;
     }
     renderGamesPage();
+    void syncFaceRecognitionState();
     if (resumeActive && screenTime.activeSession && !activeGameSession) {
       const game = gameLibrary.find(candidate => candidate.id === screenTime.activeSession.gameId);
       const profile = screenTime.profiles.find(candidate => candidate.id === screenTime.activeSession.profileId);
@@ -928,7 +947,9 @@ function renderGamesPage() {
   const isBlocked = Boolean(selected?.blocking?.length && !pendingGameOverridePin);
   gate.hidden = !isBlocked;
   if (isBlocked) {
-    blockingList.innerHTML = selected.blocking.map(item => `<li><i class="material-icons" aria-hidden="true">${item.type === 'routine' ? 'routine' : 'check_box_outline_blank'}</i><span>${escapeHtml(item.title)}</span></li>`).join('');
+    blockingList.innerHTML = selected.blocking.map(item => item.type === 'chore'
+      ? `<li><button type="button" class="game-blocking-chore" data-complete-blocking-chore="${escapeHtml(item.id)}"><i class="material-icons" aria-hidden="true">check_box_outline_blank</i><span>${escapeHtml(item.title)}</span></button></li>`
+      : `<li><i class="material-icons" aria-hidden="true">routine</i><span>${escapeHtml(item.title)}</span></li>`).join('');
   }
   hint.hidden = Boolean(selected) || isBlocked;
   if (status) {
@@ -964,6 +985,357 @@ function selectGameProfile(profileId, source = 'manual') {
   return true;
 }
 window.selectGameProfile = selectGameProfile;
+
+async function completeBlockingChoreFromGames(event) {
+  const button = event.target.closest('[data-complete-blocking-chore]');
+  if (!button || button.disabled) return;
+  const status = document.getElementById('games-page-status');
+  button.disabled = true;
+  if (status) status.textContent = 'Completing chore…';
+  try {
+    const response = await fetch(`api/chores/${encodeURIComponent(button.dataset.completeBlockingChore)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'completed' })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'Unable to complete this chore');
+    const refresh = await fetch('api/chores');
+    if (!refresh.ok) throw new Error('The chore was completed, but stars could not be refreshed yet');
+    await loadGamesPageData({ resumeActive: false });
+  } catch (error) {
+    if (status) status.textContent = error.message;
+    button.disabled = false;
+  }
+}
+
+async function faceProfileRequest(url, options = {}) {
+  const response = await fetch(url, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(data.error || 'Face recognition could not be updated');
+    error.status = response.status;
+    error.data = data;
+    throw error;
+  }
+  return data;
+}
+
+function loadFaceApi() {
+  if (window.faceapi) return Promise.resolve(window.faceapi);
+  if (faceApiScriptPromise) return faceApiScriptPromise;
+  faceApiScriptPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'vendor/face-api/face-api.js';
+    script.async = true;
+    script.onload = () => window.faceapi ? resolve(window.faceapi) : reject(new Error('Face recognition library did not initialize'));
+    script.onerror = () => reject(new Error('Face recognition library could not be loaded'));
+    document.head.appendChild(script);
+  }).catch(error => {
+    faceApiScriptPromise = null;
+    throw error;
+  });
+  return faceApiScriptPromise;
+}
+
+// TensorFlow.js ranks its WebAssembly backend first whenever WebGL is unavailable,
+// but that backend fetches its .wasm binaries from a CDN — unreachable offline and
+// through HA ingress — and then every call fails with "backend 'wasm' has not yet
+// been initialized". Pin WebGL (the panel's Intel GPU) and fall back to the
+// pure-JS CPU backend, which is slower but needs nothing downloaded.
+// Detector confidence answers "is this a face?", not "whose face is it?". The tiny
+// detector scores a plainly visible face around 0.6-0.85, so a 0.8 floor discarded
+// nearly every frame before matching (measured: an enrolled face at 0.685 was never
+// compared). Protection against picking the wrong child comes from the descriptor
+// distance threshold, the runner-up margin, three consecutive frames and "Not me".
+// Enrolment asks a little more, because a poor sample degrades every later match.
+const FACE_DETECT_MIN_SCORE = 0.5;
+const FACE_ENROL_MIN_SCORE = 0.6;
+
+async function ensureFaceBackend(faceapi) {
+  const tf = faceapi.tf;
+  for (const backend of ['webgl', 'cpu']) {
+    try {
+      if (await tf.setBackend(backend)) {
+        await tf.ready();
+        return backend;
+      }
+    } catch (error) {
+      console.warn(`[WARN] TensorFlow.js backend '${backend}' unavailable:`, error);
+    }
+  }
+  throw new Error('No usable TensorFlow.js backend');
+}
+
+async function loadFaceModels() {
+  if (faceModelsPromise) return faceModelsPromise;
+  faceModelsPromise = loadFaceApi().then(async faceapi => {
+    await ensureFaceBackend(faceapi);
+    await Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri('models'),
+      faceapi.nets.faceLandmark68TinyNet.loadFromUri('models'),
+      faceapi.nets.faceRecognitionNet.loadFromUri('models')
+    ]);
+    return faceapi;
+  }).catch(error => {
+    faceModelsPromise = null;
+    throw error;
+  });
+  return faceModelsPromise;
+}
+
+function stopMediaStream(stream) {
+  if (!stream) return;
+  stream.getTracks().forEach(track => track.stop());
+}
+
+async function openPreferredFaceCamera(video, savedDeviceId) {
+  if (!navigator.mediaDevices?.getUserMedia || !navigator.mediaDevices?.enumerateDevices) {
+    throw new Error('Camera access is not supported');
+  }
+  let stream = null;
+  if (savedDeviceId) {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { deviceId: { exact: savedDeviceId }, width: { ideal: 640 }, height: { ideal: 480 } },
+        audio: false
+      });
+    } catch (error) {
+      console.info('[INFO] Saved face camera is unavailable; choosing another camera');
+    }
+  }
+  if (!stream) {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 640 }, height: { ideal: 480 } },
+      audio: false
+    });
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const preferred = devices.find(device => device.kind === 'videoinput' && device.label.includes('S2340T'));
+    const activeDeviceId = stream.getVideoTracks()[0]?.getSettings?.().deviceId;
+    if (preferred?.deviceId && preferred.deviceId !== activeDeviceId) {
+      stopMediaStream(stream);
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { deviceId: { exact: preferred.deviceId }, width: { ideal: 640 }, height: { ideal: 480 } },
+        audio: false
+      });
+    }
+  }
+  video.srcObject = stream;
+  try {
+    await video.play();
+  } catch (error) {
+    stopMediaStream(stream);
+    video.srcObject = null;
+    throw error;
+  }
+  return stream;
+}
+
+function isGamesPageVisible() {
+  return Boolean(document.getElementById('games-content')?.classList.contains('active-content'));
+}
+
+function isGameSessionActive() {
+  return Boolean(activeGameSession || screenTimeSnapshot?.activeSession);
+}
+
+function setFaceCameraStatus(message, state = '') {
+  const indicator = document.getElementById('face-camera-status');
+  const text = document.getElementById('face-camera-status-text');
+  if (!indicator || !text) return;
+  indicator.hidden = !message;
+  indicator.classList.toggle('is-active', state === 'active');
+  indicator.classList.toggle('is-unavailable', state === 'unavailable');
+  text.textContent = message;
+}
+
+async function loadFaceRecognitionForGames() {
+  try {
+    faceDescriptorSnapshot = await faceProfileRequest('api/face-profiles/descriptors');
+    await syncFaceRecognitionState();
+  } catch (error) {
+    stopFaceRecognitionCamera();
+    setFaceCameraStatus('Camera unavailable — tap your name instead', 'unavailable');
+  }
+}
+
+function buildFaceMatcher(faceapi) {
+  const entries = Object.entries(faceDescriptorSnapshot?.profiles || {})
+    .filter(([, profile]) => Array.isArray(profile.descriptors) && profile.descriptors.length)
+    .map(([profileId, profile]) => new faceapi.LabeledFaceDescriptors(
+      profileId,
+      profile.descriptors.map(descriptor => new Float32Array(descriptor))
+    ));
+  faceRecognitionMatcher = entries.length
+    ? new faceapi.FaceMatcher(entries, faceDescriptorSnapshot.threshold || 0.5)
+    : null;
+  return entries.length;
+}
+
+async function syncFaceRecognitionState() {
+  if (!faceDescriptorSnapshot?.enabled) {
+    stopFaceRecognitionCamera({ clearBanner: true });
+    setFaceCameraStatus('');
+    return;
+  }
+  if (!isGamesPageVisible() || document.hidden || isGameSessionActive() || document.querySelector('.modal.show')) {
+    stopFaceRecognitionCamera({ clearBanner: true });
+    if (isGamesPageVisible() && (isGameSessionActive() || document.querySelector('.modal.show'))) {
+      setFaceCameraStatus('Camera paused');
+    }
+    return;
+  }
+  if (faceRecognitionStream) return;
+  const enrolledCount = Object.keys(faceDescriptorSnapshot.profiles || {}).length;
+  if (!enrolledCount) {
+    setFaceCameraStatus('No faces enrolled — tap your name instead');
+    return;
+  }
+  const runId = ++faceRecognitionRunId;
+  try {
+    setFaceCameraStatus('Starting camera…');
+    const faceapi = await loadFaceModels();
+    if (runId !== faceRecognitionRunId || !isGamesPageVisible() || document.hidden) return;
+    if (!buildFaceMatcher(faceapi)) return;
+    const video = document.getElementById('face-recognition-video');
+    const stream = await openPreferredFaceCamera(video, faceDescriptorSnapshot.deviceId);
+    if (runId !== faceRecognitionRunId || !isGamesPageVisible() || document.hidden || isGameSessionActive() || document.querySelector('.modal.show')) {
+      stopMediaStream(stream);
+      if (video) video.srcObject = null;
+      return;
+    }
+    faceRecognitionStream = stream;
+    setFaceCameraStatus('Camera on', 'active');
+    scheduleFaceRecognitionFrame(runId, 0);
+  } catch (error) {
+    if (runId !== faceRecognitionRunId) return;
+    console.warn('[WARN] Face recognition camera unavailable:', error);
+    stopFaceRecognitionCamera();
+    setFaceCameraStatus('Camera unavailable — tap your name instead', 'unavailable');
+  }
+}
+
+function scheduleFaceRecognitionFrame(runId, delay = 500) {
+  if (faceRecognitionTimer) window.clearTimeout(faceRecognitionTimer);
+  faceRecognitionTimer = window.setTimeout(() => runFaceRecognitionFrame(runId), delay);
+}
+
+async function runFaceRecognitionFrame(runId) {
+  if (runId !== faceRecognitionRunId || !faceRecognitionStream) return;
+  if (!isGamesPageVisible() || document.hidden || isGameSessionActive() || document.querySelector('.modal.show')) {
+    stopFaceRecognitionCamera({ clearBanner: !isGamesPageVisible() });
+    return;
+  }
+  if (pendingFaceSelection) {
+    scheduleFaceRecognitionFrame(runId);
+    return;
+  }
+  try {
+    const video = document.getElementById('face-recognition-video');
+    if (!video || video.readyState < 2) {
+      scheduleFaceRecognitionFrame(runId);
+      return;
+    }
+    const faceapi = window.faceapi;
+    const detections = await faceapi.detectAllFaces(
+      video,
+      new faceapi.TinyFaceDetectorOptions({ inputSize: 160, scoreThreshold: 0.5 })
+    ).withFaceLandmarks(true).withFaceDescriptors();
+    if (runId !== faceRecognitionRunId || !faceRecognitionStream) return;
+    if (document.hidden || isGameSessionActive() || document.querySelector('.modal.show')) {
+      stopFaceRecognitionCamera({ clearBanner: true });
+      return;
+    }
+    const detection = detections.length === 1 && detections[0].detection.score >= FACE_DETECT_MIN_SCORE ? detections[0] : null;
+    const winner = detection ? getUnambiguousFaceWinner(detection.descriptor) : null;
+    if (!winner || winner === selectedGameProfileId || (suppressedFaceProfiles.get(winner) || 0) > Date.now()) {
+      faceRecognitionStreak = { profileId: null, count: 0 };
+    } else if (faceRecognitionStreak.profileId === winner) {
+      faceRecognitionStreak.count += 1;
+    } else {
+      faceRecognitionStreak = { profileId: winner, count: 1 };
+    }
+    if (faceRecognitionStreak.count >= 3 && winner !== selectedGameProfileId) {
+      showPendingFaceSelection(winner);
+      faceRecognitionStreak = { profileId: null, count: 0 };
+    }
+  } catch (error) {
+    console.warn('[WARN] Face recognition frame failed:', error);
+  }
+  scheduleFaceRecognitionFrame(runId);
+}
+
+function getUnambiguousFaceWinner(descriptor) {
+  if (!faceRecognitionMatcher || !window.faceapi) return null;
+  const bestMatch = faceRecognitionMatcher.findBestMatch(descriptor);
+  if (bestMatch.label === 'unknown') return null;
+  const distances = Object.entries(faceDescriptorSnapshot.profiles || {}).map(([profileId, profile]) => ({
+    profileId,
+    distance: Math.min(...profile.descriptors.map(sample =>
+      window.faceapi.euclideanDistance(descriptor, new Float32Array(sample))))
+  })).sort((a, b) => a.distance - b.distance);
+  const best = distances[0];
+  const second = distances[1];
+  const threshold = faceDescriptorSnapshot.threshold || 0.5;
+  if (!best || best.profileId !== bestMatch.label || best.distance > threshold) return null;
+  if (second && second.distance - best.distance < 0.08) return null;
+  return best.profileId;
+}
+
+function showPendingFaceSelection(profileId) {
+  const profile = screenTimeSnapshot?.profiles.find(candidate => candidate.id === profileId);
+  const banner = document.getElementById('face-match-banner');
+  const message = document.getElementById('face-match-message');
+  if (!profile || !banner || !message || pendingFaceSelection) return;
+  let seconds = 3;
+  const update = () => { message.textContent = `Hi ${profile.name || 'there'}! Choosing you in ${seconds}…`; };
+  update();
+  banner.hidden = false;
+  const interval = window.setInterval(() => {
+    seconds -= 1;
+    if (seconds > 0) update();
+  }, 1000);
+  const timeout = window.setTimeout(() => {
+    clearPendingFaceSelection();
+    window.selectGameProfile(profileId, 'camera');
+  }, 3000);
+  pendingFaceSelection = { profileId, interval, timeout };
+}
+
+function clearPendingFaceSelection() {
+  if (pendingFaceSelection) {
+    window.clearInterval(pendingFaceSelection.interval);
+    window.clearTimeout(pendingFaceSelection.timeout);
+  }
+  pendingFaceSelection = null;
+  const banner = document.getElementById('face-match-banner');
+  if (banner) banner.hidden = true;
+}
+
+function rejectPendingFaceSelection() {
+  if (!pendingFaceSelection) return;
+  suppressedFaceProfiles.set(pendingFaceSelection.profileId, Date.now() + 30000);
+  clearPendingFaceSelection();
+  faceRecognitionStreak = { profileId: null, count: 0 };
+}
+
+function stopFaceRecognitionCamera({ clearBanner = false } = {}) {
+  faceRecognitionRunId += 1;
+  if (faceRecognitionTimer) window.clearTimeout(faceRecognitionTimer);
+  faceRecognitionTimer = null;
+  stopMediaStream(faceRecognitionStream);
+  faceRecognitionStream = null;
+  const video = document.getElementById('face-recognition-video');
+  if (video?.srcObject) {
+    stopMediaStream(video.srcObject);
+    video.srcObject = null;
+  }
+  faceRecognitionStreak = { profileId: null, count: 0 };
+  if (clearBanner) clearPendingFaceSelection();
+}
 
 async function handleAddGame(event) {
   event.preventDefault();
@@ -1033,6 +1405,7 @@ function openRunningGame(session, game, profile) {
   iframe.hidden = false;
   iframe.src = game.url;
   modal.classList.add('show');
+  stopFaceRecognitionCamera({ clearBanner: true });
   clearGameTimers();
   renderGameCountdown();
   gameTimerInterval = window.setInterval(renderGameCountdown, 1000);
@@ -1152,6 +1525,7 @@ function openGamePinModal(action, details = {}) {
   document.getElementById('game-pin-error').textContent = details.error || '';
   updateGamePinDisplay();
   modal.classList.add('show');
+  stopFaceRecognitionCamera({ clearBanner: true });
 }
 
 function updateGamePinDisplay() {
@@ -1294,6 +1668,295 @@ async function saveScreenTimeSettings(pin = null) {
   }
 }
 
+async function initializeFaceRecognitionSettings() {
+  const form = document.getElementById('face-recognition-settings-form');
+  if (!form || form.dataset.bound === 'true') return;
+  form.dataset.bound = 'true';
+  form.addEventListener('submit', event => {
+    event.preventDefault();
+    requestFacePinAction('faceSettings');
+  });
+  document.getElementById('face-match-threshold')?.addEventListener('input', event => {
+    document.getElementById('face-match-threshold-value').textContent = Number(event.target.value).toFixed(2);
+  });
+  document.getElementById('refresh-face-cameras')?.addEventListener('click', async event => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    try {
+      await populateFaceCameraOptions({ requestPermission: true });
+      setFaceSettingsStatus('Camera list refreshed.');
+    } catch (error) {
+      setFaceSettingsStatus('Cameras could not be listed. You can keep automatic selection.', true);
+    } finally {
+      button.disabled = false;
+    }
+  });
+  document.getElementById('face-profile-settings')?.addEventListener('click', event => {
+    const enroll = event.target.closest('[data-enroll-face]');
+    if (enroll) return requestFacePinAction('faceEnroll', { profileId: enroll.dataset.enrollFace });
+    const remove = event.target.closest('[data-delete-face]');
+    if (remove) requestFacePinAction('faceDelete', { profileId: remove.dataset.deleteFace });
+  });
+  document.getElementById('delete-all-face-data')?.addEventListener('click', () => requestFacePinAction('faceDeleteAll'));
+  document.getElementById('cancel-face-enrollment')?.addEventListener('click', () => closeModal(document.getElementById('face-enrollment-modal')));
+  await loadFaceRecognitionSettings();
+  await populateFaceCameraOptions();
+}
+
+function setFaceSettingsStatus(message, isError = false, isSuccess = false) {
+  const status = document.getElementById('face-settings-status');
+  if (!status) return;
+  status.textContent = message;
+  status.classList.toggle('is-error', isError);
+  status.classList.toggle('is-success', isSuccess);
+}
+
+async function loadFaceRecognitionSettings() {
+  try {
+    faceProfilesSnapshot = await faceProfileRequest('api/face-profiles');
+    faceDescriptorSnapshot = null;
+    const enabled = document.getElementById('face-recognition-enabled');
+    const threshold = document.getElementById('face-match-threshold');
+    if (enabled) enabled.checked = faceProfilesSnapshot.enabled;
+    if (threshold) threshold.value = faceProfilesSnapshot.threshold;
+    const thresholdValue = document.getElementById('face-match-threshold-value');
+    if (thresholdValue) thresholdValue.textContent = Number(faceProfilesSnapshot.threshold).toFixed(2);
+    const state = document.getElementById('face-recognition-state');
+    if (state) state.textContent = faceProfilesSnapshot.enabled ? 'Enabled' : 'Off by default';
+    renderFaceProfileSettings();
+    const anyEnrolled = faceProfilesSnapshot.profiles.some(profile => profile.enrolled);
+    const deleteAll = document.getElementById('delete-all-face-data');
+    if (deleteAll) deleteAll.disabled = !anyEnrolled;
+    setFaceSettingsStatus(screenTimeSettingsSnapshot?.settings.pinSet
+      ? '' : 'Set a parent PIN before enabling recognition or changing face data.');
+  } catch (error) {
+    setFaceSettingsStatus(error.message, true);
+  }
+}
+
+function renderFaceProfileSettings() {
+  const container = document.getElementById('face-profile-settings');
+  if (!container) return;
+  const profiles = faceProfilesSnapshot?.profiles || [];
+  container.innerHTML = profiles.length ? profiles.map(profile => `
+    <div class="face-profile-setting" style="--profile-color:${escapeHtml(getValidCalendarColor(profile.color))}">
+      <span class="profile-avatar">${escapeHtml(getProfileInitials(profile.name))}</span>
+      <span class="face-profile-copy">
+        <strong>${escapeHtml(profile.name || 'Unnamed')}</strong>
+        <small>${profile.enrolled ? `${profile.sampleCount} sample${profile.sampleCount === 1 ? '' : 's'} stored` : 'Not enrolled'}</small>
+      </span>
+      <button type="button" class="btn btn-secondary" data-enroll-face="${escapeHtml(profile.profileId)}">${profile.enrolled ? 'Re-enroll' : 'Enroll'}</button>
+      ${profile.enrolled ? `<button type="button" class="btn btn-danger delete-face-profile" data-delete-face="${escapeHtml(profile.profileId)}">Delete face data</button>` : ''}
+    </div>`).join('') : '<p class="setting-description">Add household profiles before enrolling faces.</p>';
+}
+
+async function populateFaceCameraOptions({ requestPermission = false } = {}) {
+  const select = document.getElementById('face-camera-device');
+  if (!select || !navigator.mediaDevices?.enumerateDevices) return;
+  let permissionStream = null;
+  try {
+    if (requestPermission) permissionStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    const devices = (await navigator.mediaDevices.enumerateDevices()).filter(device => device.kind === 'videoinput');
+    const selectedId = faceProfilesSnapshot?.deviceId || select.value || '';
+    select.replaceChildren();
+    const automatic = document.createElement('option');
+    automatic.value = '';
+    automatic.textContent = 'Prefer Dell S2340T, then first camera';
+    select.appendChild(automatic);
+    devices.forEach((device, index) => {
+      const option = document.createElement('option');
+      option.value = device.deviceId;
+      option.textContent = device.label || `Camera ${index + 1}`;
+      select.appendChild(option);
+    });
+    if (selectedId && !devices.some(device => device.deviceId === selectedId)) {
+      const unavailable = document.createElement('option');
+      unavailable.value = selectedId;
+      unavailable.textContent = 'Previously selected camera (unavailable)';
+      select.appendChild(unavailable);
+    }
+    select.value = selectedId;
+  } finally {
+    stopMediaStream(permissionStream);
+  }
+}
+
+function collectFaceSettings(pin) {
+  return {
+    pin,
+    enabled: document.getElementById('face-recognition-enabled').checked,
+    deviceId: document.getElementById('face-camera-device').value || null,
+    threshold: Number(document.getElementById('face-match-threshold').value)
+  };
+}
+
+function requestFacePinAction(type, details = {}) {
+  if (!screenTimeSettingsSnapshot?.settings.pinSet) {
+    setFaceSettingsStatus('Set a parent PIN first, then try this action again.', true);
+    openSettingsPinFlow('setPin');
+    return;
+  }
+  openSettingsPinFlow(type, details);
+}
+
+async function submitFaceProtectedAction(pin) {
+  const flow = settingsPinFlow;
+  const submit = document.getElementById('settings-pin-submit');
+  const errorBox = document.getElementById('settings-pin-error');
+  submit.disabled = true;
+  try {
+    if (flow.type === 'faceSettings') {
+      await faceProfileRequest('api/face-profiles/settings', {
+        method: 'PUT', body: JSON.stringify(collectFaceSettings(pin))
+      });
+      closeModal(document.getElementById('settings-pin-modal'));
+      settingsPinValue = '';
+      settingsPinFlow = null;
+      await loadFaceRecognitionSettings();
+      setFaceSettingsStatus('Face recognition settings saved.', false, true);
+    } else if (flow.type === 'faceEnroll') {
+      await faceProfileRequest('api/face-profiles/settings', {
+        method: 'PUT', body: JSON.stringify({ pin })
+      });
+      closeModal(document.getElementById('settings-pin-modal'));
+      settingsPinValue = '';
+      settingsPinFlow = null;
+      await startFaceEnrollment(flow.profileId, pin);
+    } else if (flow.type === 'faceDelete') {
+      await faceProfileRequest(`api/face-profiles/${encodeURIComponent(flow.profileId)}`, {
+        method: 'DELETE', body: JSON.stringify({ pin })
+      });
+      closeModal(document.getElementById('settings-pin-modal'));
+      settingsPinValue = '';
+      settingsPinFlow = null;
+      await loadFaceRecognitionSettings();
+      setFaceSettingsStatus('Face data deleted.', false, true);
+    } else if (flow.type === 'faceDeleteAll') {
+      await faceProfileRequest('api/face-profiles', {
+        method: 'DELETE', body: JSON.stringify({ pin })
+      });
+      closeModal(document.getElementById('settings-pin-modal'));
+      settingsPinValue = '';
+      settingsPinFlow = null;
+      await loadFaceRecognitionSettings();
+      setFaceSettingsStatus('All face data deleted.', false, true);
+    }
+  } catch (error) {
+    errorBox.textContent = error.status === 429 && error.data?.retryAfterSeconds
+      ? `${error.message} ${error.data.retryAfterSeconds}s remaining.` : error.message;
+    settingsPinValue = '';
+    updateSettingsPinDisplay();
+  } finally {
+    if (settingsPinValue.length >= 4) submit.disabled = false;
+  }
+}
+
+async function startFaceEnrollment(profileId, pin) {
+  const profile = faceProfilesSnapshot?.profiles.find(candidate => candidate.profileId === profileId);
+  if (!profile) return;
+  stopFaceEnrollmentCamera();
+  const modal = document.getElementById('face-enrollment-modal');
+  const video = document.getElementById('face-enrollment-video');
+  const guidance = document.getElementById('face-enrollment-guidance');
+  const errorBox = document.getElementById('face-enrollment-error');
+  document.getElementById('face-enrollment-title').textContent = `Enroll ${profile.name || 'profile'}`;
+  document.getElementById('face-enrollment-progress').textContent = '0/5';
+  guidance.textContent = 'Preparing the camera…';
+  errorBox.textContent = '';
+  modal.classList.add('show');
+  const runId = ++faceEnrollmentRunId;
+  faceEnrollmentState = { profileId, pin, descriptors: [] };
+  try {
+    await loadFaceModels();
+    if (runId !== faceEnrollmentRunId || !modal.classList.contains('show') || document.hidden) return;
+    const stream = await openPreferredFaceCamera(video, document.getElementById('face-camera-device')?.value || faceProfilesSnapshot.deviceId);
+    if (runId !== faceEnrollmentRunId || !modal.classList.contains('show') || document.hidden) {
+      stopMediaStream(stream);
+      video.srcObject = null;
+      return;
+    }
+    faceEnrollmentStream = stream;
+    guidance.textContent = faceEnrollmentGuidance(0);
+    scheduleFaceEnrollmentFrame(runId, 600);
+  } catch (error) {
+    if (runId !== faceEnrollmentRunId) return;
+    stopFaceEnrollmentCamera({ preserveState: true });
+    guidance.textContent = 'Camera unavailable.';
+    errorBox.textContent = 'Use Find cameras above, check camera permission, then try again.';
+  }
+}
+
+function faceEnrollmentGuidance(index) {
+  return ['Look straight at the camera', 'Turn slightly left', 'Turn slightly right', 'Lift your chin slightly', 'Smile naturally'][index] || 'Saving face data…';
+}
+
+function scheduleFaceEnrollmentFrame(runId, delay = 700) {
+  if (faceEnrollmentTimer) window.clearTimeout(faceEnrollmentTimer);
+  faceEnrollmentTimer = window.setTimeout(() => captureFaceEnrollmentFrame(runId), delay);
+}
+
+async function captureFaceEnrollmentFrame(runId) {
+  const state = faceEnrollmentState;
+  if (runId !== faceEnrollmentRunId || !state || !faceEnrollmentStream || document.hidden) return;
+  const video = document.getElementById('face-enrollment-video');
+  const guidance = document.getElementById('face-enrollment-guidance');
+  const errorBox = document.getElementById('face-enrollment-error');
+  try {
+    if (video.readyState < 2) return scheduleFaceEnrollmentFrame(runId);
+    const detections = await window.faceapi.detectAllFaces(
+      video,
+      new window.faceapi.TinyFaceDetectorOptions({ inputSize: 160, scoreThreshold: 0.5 })
+    ).withFaceLandmarks(true).withFaceDescriptors();
+    if (runId !== faceEnrollmentRunId || !faceEnrollmentStream) return;
+    if (detections.length === 0) errorBox.textContent = 'No face found — move into the center of the preview.';
+    else if (detections.length > 1) errorBox.textContent = 'More than one face found — please enroll one person at a time.';
+    else if (detections[0].detection.score < FACE_ENROL_MIN_SCORE) errorBox.textContent = 'Face confidence is too low — face the camera in better light.';
+    else {
+      errorBox.textContent = '';
+      state.descriptors.push(Array.from(detections[0].descriptor));
+      document.getElementById('face-enrollment-progress').textContent = `${state.descriptors.length}/5`;
+      guidance.textContent = faceEnrollmentGuidance(state.descriptors.length);
+      if (state.descriptors.length >= 5) return saveFaceEnrollment(runId);
+    }
+  } catch (error) {
+    errorBox.textContent = 'That frame could not be read. Hold still and try again.';
+  }
+  scheduleFaceEnrollmentFrame(runId);
+}
+
+async function saveFaceEnrollment(runId) {
+  const state = faceEnrollmentState;
+  if (runId !== faceEnrollmentRunId || !state) return;
+  document.getElementById('face-enrollment-guidance').textContent = 'Saving face data…';
+  try {
+    await faceProfileRequest(`api/face-profiles/${encodeURIComponent(state.profileId)}`, {
+      method: 'POST',
+      body: JSON.stringify({ pin: state.pin, descriptors: state.descriptors })
+    });
+    closeModal(document.getElementById('face-enrollment-modal'));
+    await loadFaceRecognitionSettings();
+    setFaceSettingsStatus('Face enrollment saved. Only numeric face vectors were stored.', false, true);
+  } catch (error) {
+    document.getElementById('face-enrollment-error').textContent = error.message;
+    document.getElementById('face-enrollment-guidance').textContent = 'Enrollment was not saved.';
+    stopFaceEnrollmentCamera({ preserveState: true });
+  }
+}
+
+function stopFaceEnrollmentCamera({ preserveState = false } = {}) {
+  faceEnrollmentRunId += 1;
+  if (faceEnrollmentTimer) window.clearTimeout(faceEnrollmentTimer);
+  faceEnrollmentTimer = null;
+  stopMediaStream(faceEnrollmentStream);
+  faceEnrollmentStream = null;
+  const video = document.getElementById('face-enrollment-video');
+  if (video?.srcObject) {
+    stopMediaStream(video.srcObject);
+    video.srcObject = null;
+  }
+  if (!preserveState) faceEnrollmentState = null;
+}
+
 function setupSettingsPinPad() {
   const keypad = document.getElementById('settings-pin-keypad');
   if (!keypad || keypad.dataset.bound === 'true') return;
@@ -1309,16 +1972,31 @@ function setupSettingsPinPad() {
   document.getElementById('settings-pin-submit')?.addEventListener('click', submitSettingsPin);
 }
 
-function openSettingsPinFlow(type) {
+function openSettingsPinFlow(type, details = {}) {
   const pinSet = Boolean(screenTimeSettingsSnapshot?.settings.pinSet);
+  const titles = {
+    save: 'Save screen time',
+    faceSettings: 'Save face settings',
+    faceEnroll: 'Enroll face',
+    faceDelete: 'Delete face data',
+    faceDeleteAll: 'Delete all face data'
+  };
+  const prompts = {
+    faceSettings: 'Enter the parent PIN to save face recognition settings.',
+    faceEnroll: 'Enter the parent PIN before the camera opens.',
+    faceDelete: 'Enter the parent PIN to delete this profile’s face data.',
+    faceDeleteAll: 'Enter the parent PIN to delete every stored face vector.'
+  };
   settingsPinFlow = {
     type,
     stage: type === 'save' || pinSet ? 'current' : 'new',
     currentPin: null,
-    newPin: null
+    newPin: null,
+    prompt: prompts[type] || null,
+    ...details
   };
   settingsPinValue = '';
-  document.getElementById('settings-pin-title').textContent = type === 'save' ? 'Save screen time' : (pinSet ? 'Change parent PIN' : 'Set parent PIN');
+  document.getElementById('settings-pin-title').textContent = titles[type] || (pinSet ? 'Change parent PIN' : 'Set parent PIN');
   document.getElementById('settings-pin-error').textContent = '';
   updateSettingsPinPrompt();
   updateSettingsPinDisplay();
@@ -1328,7 +2006,7 @@ function openSettingsPinFlow(type) {
 function updateSettingsPinPrompt() {
   const prompt = document.getElementById('settings-pin-message');
   if (!settingsPinFlow || !prompt) return;
-  prompt.textContent = settingsPinFlow.stage === 'current' ? 'Enter the current parent PIN.'
+  prompt.textContent = settingsPinFlow.stage === 'current' ? (settingsPinFlow.prompt || 'Enter the current parent PIN.')
     : settingsPinFlow.stage === 'new' ? 'Choose a new 4–8 digit PIN.'
       : 'Enter the new PIN again.';
 }
@@ -1347,6 +2025,7 @@ async function submitSettingsPin() {
   const errorBox = document.getElementById('settings-pin-error');
   errorBox.textContent = '';
   if (settingsPinFlow.type === 'save') return saveScreenTimeSettings(settingsPinValue);
+  if (settingsPinFlow.type.startsWith('face')) return submitFaceProtectedAction(settingsPinValue);
   if (settingsPinFlow.stage === 'current') {
     settingsPinFlow.currentPin = settingsPinValue;
     settingsPinFlow.stage = 'new';
@@ -1365,6 +2044,7 @@ async function submitSettingsPin() {
       });
       closeModal(document.getElementById('settings-pin-modal'));
       await loadScreenTimeSettings();
+      await loadFaceRecognitionSettings();
       const status = document.getElementById('screen-time-settings-status');
       status.textContent = 'Parent PIN saved.';
       status.classList.add('is-success');
@@ -1386,7 +2066,7 @@ function initializeSettingsPage() {
   console.log('[INFO] Initializing settings page...');
 
   // Setup display settings event listeners only when settings page is loaded
-  setTimeout(() => {
+  setTimeout(async () => {
     console.log('[DEBUG] Settings page timeout reached, setting up elements...');
 
     const screenBurnProtection = document.getElementById('screen-burn-protection');
@@ -1423,6 +2103,10 @@ function initializeSettingsPage() {
         try {
           console.log('[INFO] Starting camera test');
           const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          if (document.hidden || !document.getElementById('settings-content')?.classList.contains('active-content')) {
+            stopMediaStream(stream);
+            return;
+          }
           cameraVideo.srcObject = stream;
           startCameraBtn.disabled = true;
           stopCameraBtn.disabled = false;
@@ -1434,13 +2118,7 @@ function initializeSettingsPage() {
 
       stopCameraBtn.addEventListener('click', () => {
         console.log('[INFO] Stopping camera test');
-        const stream = cameraVideo.srcObject;
-        if (stream) {
-          stream.getTracks().forEach(track => track.stop());
-          cameraVideo.srcObject = null;
-        }
-        startCameraBtn.disabled = false;
-        stopCameraBtn.disabled = true;
+        stopCameraTest();
       });
       console.log('[DEBUG] Camera button listeners added');
     }
@@ -1543,7 +2221,8 @@ function initializeSettingsPage() {
       loadCalendarManagement();
     }
 
-    initializeScreenTimeSettings();
+    await initializeScreenTimeSettings();
+    await initializeFaceRecognitionSettings();
 
     // Re-setup modals for settings page (generic closers)
     setupModals();
@@ -1559,6 +2238,51 @@ function initializeSettingsPage() {
 function initializeDebugPage() {
   console.log('[INFO] Debug page loaded in iframe');
   // Debug page is an iframe, so no special initialization needed
+}
+
+function stopCameraTest() {
+  const video = document.getElementById('camera-test');
+  if (video?.srcObject) {
+    stopMediaStream(video.srcObject);
+    video.srcObject = null;
+  }
+  const start = document.getElementById('start-camera');
+  const stop = document.getElementById('stop-camera');
+  if (start) start.disabled = false;
+  if (stop) stop.disabled = true;
+}
+
+function handleCameraPageChange(target) {
+  if (target !== 'games-content') {
+    stopFaceRecognitionCamera({ clearBanner: true });
+  }
+  if (target !== 'settings-content') {
+    const enrollmentModal = document.getElementById('face-enrollment-modal');
+    if (enrollmentModal?.classList.contains('show')) closeModal(enrollmentModal);
+    else stopFaceEnrollmentCamera();
+    stopCameraTest();
+  }
+  if (target === 'games-content') {
+    window.setTimeout(() => {
+      if (faceDescriptorSnapshot) void syncFaceRecognitionState();
+      else void loadFaceRecognitionForGames();
+    }, 0);
+  }
+}
+
+function handleCameraVisibilityChange() {
+  if (document.hidden) {
+    stopFaceRecognitionCamera({ clearBanner: true });
+    const enrollmentModal = document.getElementById('face-enrollment-modal');
+    if (enrollmentModal?.classList.contains('show')) closeModal(enrollmentModal);
+    else stopFaceEnrollmentCamera();
+    stopCameraTest();
+    return;
+  }
+  if (isGamesPageVisible()) {
+    if (faceDescriptorSnapshot) void syncFaceRecognitionState();
+    else void loadFaceRecognitionForGames();
+  }
 }
 
 // Initialize sidebar and global UI
@@ -1583,6 +2307,7 @@ function initializeSidebar() {
   tabItems.forEach(item => {
     item.addEventListener('click', () => {
       const target = item.dataset.tabTarget;
+      handleCameraPageChange(target);
 
       // Remove active classes
       tabItems.forEach(tab => tab.classList.remove('active-tab'));
@@ -1626,6 +2351,8 @@ function initializeGlobalUI() {
   document.addEventListener('keypress', resetInactivityTimer);
   document.addEventListener('touchstart', resetInactivityTimer);
   document.addEventListener('scroll', resetInactivityTimer);
+  document.removeEventListener('visibilitychange', handleCameraVisibilityChange);
+  document.addEventListener('visibilitychange', handleCameraVisibilityChange);
 
   // Setup modal management
   setupModals();
@@ -1978,6 +2705,8 @@ function closeModal(modal) {
   }
   modal.classList.remove('show');
 
+  if (modal.id === 'face-enrollment-modal') stopFaceEnrollmentCamera();
+
   // A game spends time only while its modal is open. Blank the iframe first so
   // audio stops immediately, then end the server session idempotently.
   if (modal.id === 'game-focus-modal') {
@@ -1987,6 +2716,7 @@ function closeModal(modal) {
     }
     if (activeGameSession) void stopActiveGameSession('closed');
   }
+  window.setTimeout(() => void syncFaceRecognitionState(), 0);
 }
 
 function setupCalendar() {

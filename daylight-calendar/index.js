@@ -680,6 +680,71 @@ async function initializeApp() {
     };
   }
 
+  const DEFAULT_FACE_PROFILES = {
+    enabled: false,
+    deviceId: null,
+    threshold: 0.5,
+    profiles: {}
+  };
+
+  function normalizeFaceProfiles(data = {}) {
+    const profiles = data.profiles && typeof data.profiles === 'object' && !Array.isArray(data.profiles)
+      ? data.profiles : {};
+    return {
+      enabled: data.enabled === true,
+      deviceId: typeof data.deviceId === 'string' && data.deviceId.trim()
+        ? data.deviceId.trim().slice(0, 255) : null,
+      threshold: Number.isFinite(data.threshold) && data.threshold >= 0.3 && data.threshold <= 0.8
+        ? data.threshold : DEFAULT_FACE_PROFILES.threshold,
+      profiles: Object.fromEntries(Object.entries(profiles).flatMap(([profileId, profile]) => {
+        const validation = validateFaceDescriptors(profile?.descriptors);
+        if (validation.error) return [];
+        return [[profileId, {
+          descriptors: validation.descriptors,
+          enrolledAt: typeof profile.enrolledAt === 'string' ? profile.enrolledAt : null
+        }]];
+      }))
+    };
+  }
+
+  function readFaceProfiles() {
+    return normalizeFaceProfiles(readJsonFile('face_profiles.json', DEFAULT_FACE_PROFILES));
+  }
+
+  function validateFaceDescriptors(value) {
+    if (!Array.isArray(value) || value.length < 1 || value.length > 10) {
+      return { error: 'descriptors must contain between 1 and 10 samples' };
+    }
+    const descriptors = [];
+    for (const descriptor of value) {
+      if (!Array.isArray(descriptor) || descriptor.length !== 128 ||
+        descriptor.some(number => typeof number !== 'number' || !Number.isFinite(number))) {
+        return { error: 'Each face descriptor must contain exactly 128 finite numbers' };
+      }
+      descriptors.push([...descriptor]);
+    }
+    return { descriptors };
+  }
+
+  function publicFaceProfiles(state, users) {
+    return {
+      enabled: state.enabled,
+      deviceId: state.deviceId,
+      threshold: state.threshold,
+      profiles: users.map(user => {
+        const enrolled = state.profiles[user.id];
+        return {
+          profileId: user.id,
+          name: user.name,
+          color: user.color,
+          enrolled: Boolean(enrolled),
+          sampleCount: enrolled?.descriptors.length || 0,
+          enrolledAt: enrolled?.enrolledAt || null
+        };
+      })
+    };
+  }
+
   function readGames() {
     const games = readJsonFile('games.json', null);
     return Array.isArray(games) ? games : null;
@@ -3152,6 +3217,130 @@ async function initializeApp() {
     });
     if (result.error) return res.status(result.status).json({ error: result.error });
     res.json(result);
+  });
+
+  app.get('/api/face-profiles', async (req, res) => {
+    try {
+      const users = await fetchHaUsers();
+      const state = await withHouseholdStorageLock(async () => readFaceProfiles());
+      res.json(publicFaceProfiles(state, users));
+    } catch (error) {
+      console.error('[ERROR] Failed to read face profile status:', error);
+      res.status(500).json({ error: 'Face recognition settings could not be read' });
+    }
+  });
+
+  app.get('/api/face-profiles/descriptors', async (req, res) => {
+    try {
+      const users = await fetchHaUsers();
+      const validProfileIds = new Set(users.map(user => user.id));
+      const state = await withHouseholdStorageLock(async () => readFaceProfiles());
+      res.json({
+        enabled: state.enabled,
+        deviceId: state.deviceId,
+        threshold: state.threshold,
+        profiles: Object.fromEntries(Object.entries(state.profiles)
+          .filter(([profileId]) => validProfileIds.has(profileId))
+          .map(([profileId, profile]) => [profileId, { descriptors: profile.descriptors }]))
+      });
+    } catch (error) {
+      console.error('[ERROR] Failed to read face descriptors:', error);
+      res.status(500).json({ error: 'Face recognition data could not be read' });
+    }
+  });
+
+  app.put('/api/face-profiles/settings', async (req, res) => {
+    if (req.body.enabled !== undefined && typeof req.body.enabled !== 'boolean') {
+      return res.status(400).json({ error: 'enabled must be true or false' });
+    }
+    if (req.body.deviceId !== undefined && req.body.deviceId !== null &&
+      (typeof req.body.deviceId !== 'string' || !req.body.deviceId.trim() || req.body.deviceId.length > 255)) {
+      return res.status(400).json({ error: 'deviceId must be null or a camera id no longer than 255 characters' });
+    }
+    if (req.body.threshold !== undefined &&
+      (!Number.isFinite(req.body.threshold) || req.body.threshold < 0.3 || req.body.threshold > 0.8)) {
+      return res.status(400).json({ error: 'threshold must be between 0.3 and 0.8' });
+    }
+    const result = await withHouseholdStorageLock(async () => {
+      const screenTime = readScreenTime();
+      const pinResult = validatePin(screenTime, req.body.pin);
+      writeJsonFile('screen_time.json', screenTime);
+      if (!pinResult.ok) return pinResult;
+      const state = readFaceProfiles();
+      if (req.body.enabled !== undefined) state.enabled = req.body.enabled;
+      if (req.body.deviceId !== undefined) {
+        state.deviceId = req.body.deviceId === null ? null : req.body.deviceId.trim();
+      }
+      if (req.body.threshold !== undefined) state.threshold = req.body.threshold;
+      writeJsonFile('face_profiles.json', state);
+      return { ok: true, state };
+    });
+    if (!result.ok) return res.status(result.status).json(result);
+    const users = await fetchHaUsers();
+    res.json(publicFaceProfiles(result.state, users));
+  });
+
+  app.post('/api/face-profiles/:profileId', async (req, res) => {
+    if (!(await validateProfileIds([req.params.profileId]))) {
+      return res.status(400).json({ error: 'Unknown profile' });
+    }
+    const validation = validateFaceDescriptors(req.body.descriptors);
+    if (validation.error) return res.status(400).json({ error: validation.error });
+    const result = await withHouseholdStorageLock(async () => {
+      const screenTime = readScreenTime();
+      const pinResult = validatePin(screenTime, req.body.pin);
+      writeJsonFile('screen_time.json', screenTime);
+      if (!pinResult.ok) return pinResult;
+      const state = readFaceProfiles();
+      const enrolledAt = new Date().toISOString();
+      state.profiles[req.params.profileId] = {
+        descriptors: validation.descriptors,
+        enrolledAt
+      };
+      writeJsonFile('face_profiles.json', state);
+      return { ok: true, enrolledAt };
+    });
+    if (!result.ok) return res.status(result.status).json(result);
+    res.status(201).json({
+      profileId: req.params.profileId,
+      sampleCount: validation.descriptors.length,
+      enrolledAt: result.enrolledAt
+    });
+  });
+
+  app.delete('/api/face-profiles/:profileId', async (req, res) => {
+    if (!(await validateProfileIds([req.params.profileId]))) {
+      return res.status(400).json({ error: 'Unknown profile' });
+    }
+    const result = await withHouseholdStorageLock(async () => {
+      const screenTime = readScreenTime();
+      const pinResult = validatePin(screenTime, req.body.pin);
+      writeJsonFile('screen_time.json', screenTime);
+      if (!pinResult.ok) return pinResult;
+      const state = readFaceProfiles();
+      const existed = Boolean(state.profiles[req.params.profileId]);
+      delete state.profiles[req.params.profileId];
+      writeJsonFile('face_profiles.json', state);
+      return { ok: true, existed };
+    });
+    if (!result.ok) return res.status(result.status).json(result);
+    res.json({ success: true, deleted: result.existed });
+  });
+
+  app.delete('/api/face-profiles', async (req, res) => {
+    const result = await withHouseholdStorageLock(async () => {
+      const screenTime = readScreenTime();
+      const pinResult = validatePin(screenTime, req.body.pin);
+      writeJsonFile('screen_time.json', screenTime);
+      if (!pinResult.ok) return pinResult;
+      const state = readFaceProfiles();
+      const deletedProfiles = Object.keys(state.profiles).length;
+      state.profiles = {};
+      writeJsonFile('face_profiles.json', state);
+      return { ok: true, deletedProfiles };
+    });
+    if (!result.ok) return res.status(result.status).json(result);
+    res.json({ success: true, deletedProfiles: result.deletedProfiles });
   });
 
   // Screen time is an append-only usage ledger. Every mutation shares the
