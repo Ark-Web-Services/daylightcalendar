@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.1.9.29] - 2026-09-25
+
+Receipt photos can now be queued for the local Qwen vision model and turned into durable,
+reviewable grocery rows without making the wall panel wait for inference. One background worker
+feeds Ollama a receipt at a time, survives add-on restarts by re-queuing interrupted work, records
+timings and readable failures, and supports retry, row correction, confirmation, deletion and CSV
+export. Reader address and model settings live in the persistent add-on data volume and include a
+connection/model check.
+
+The parser accepts both the current item-code format and the earlier four-field output, distrusts
+unsupported quantities, recovers weights from printed evidence, removes payment, tax, total and
+adjacent weight-artifact rows, and reconciles included prices and counts against the receipt. A
+confirmed correction is remembered by store and item code (or printed text), so later receipts
+start with the household's preferred name and category.
+
+Receipt JPEGs are capped at 12 MB, stay in the persistent private data directory only while review
+is pending, and are deleted on confirmation or receipt deletion. Payment/card text is never kept as
+an item and is redacted in the dropped-row audit. Verified through the real HTTP API with an
+isolated Ollama stub: queued/processing/review state, strict one-at-a-time inference, confirmation
+and item memory, garbage and timeout failures, retry, photo deletion and spreadsheet-safe CSV.
+
 ## [1.1.9.28] - 2026-09-25
 
 Security update to the add-on's JavaScript dependencies. `npm audit` reported 31 known

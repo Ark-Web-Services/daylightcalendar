@@ -14,6 +14,11 @@ const axios = require('axios');
 const WebSocket = require('ws'); // Added for HA WebSocket API
 const { randomUUID, randomBytes, scryptSync, timingSafeEqual } = require('crypto');
 const caldavService = require('./scripts/caldav-service');
+const {
+  ReceiptError,
+  createReceiptService,
+  decodeJpegBase64
+} = require('./scripts/receipt-service');
 
 // Main initialization function to handle async imports
 async function initializeApp() {
@@ -40,7 +45,7 @@ async function initializeApp() {
   const supervisorOptionsPath = '/data/options.json';
   const isProduction = process.env.SUPERVISOR_TOKEN !== undefined;
   const isIngressMode = isProduction && process.env.INGRESS_PORT !== undefined;
-  const DATA_DIR = isProduction ? '/data' : path.join(__dirname, 'data');
+  const DATA_DIR = isProduction ? '/data' : (process.env.DAYLIGHT_DATA_DIR || path.join(__dirname, 'data'));
 
   if (isIngressMode) {
     console.log(`[INFO] Running in Home Assistant ingress mode on port ${process.env.INGRESS_PORT}`);
@@ -115,7 +120,21 @@ async function initializeApp() {
     path: isIngressMode ? '/socket.io' : undefined
   });
 
-  app.use(express.json());
+  const standardJsonParser = express.json();
+  const receiptUploadJsonParser = express.json({ limit: '17mb' });
+  app.use((req, res, next) => {
+    const isReceiptUpload = req.method === 'POST' && req.path === '/api/receipts';
+    const parser = isReceiptUpload ? receiptUploadJsonParser : standardJsonParser;
+    parser(req, res, error => {
+      if (error && isReceiptUpload) {
+        const message = error.type === 'entity.too.large'
+          ? 'The receipt image must be 12 MB or smaller.'
+          : 'The receipt upload must be valid JSON.';
+        return res.status(400).json({ error: message });
+      }
+      return error ? next(error) : next();
+    });
+  });
 
   // Debug middleware to log all requests in development mode
   if (config.development_mode) {
@@ -551,6 +570,122 @@ async function initializeApp() {
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
     fs.writeFileSync(path.join(DATA_DIR, fileName), JSON.stringify(value, null, 2));
   }
+
+  const receiptModelTimeoutMs = Number.isFinite(Number(process.env.RECEIPT_MODEL_TIMEOUT_MS))
+    ? Math.max(100, Number(process.env.RECEIPT_MODEL_TIMEOUT_MS))
+    : 15 * 60 * 1000;
+  const receiptService = createReceiptService({
+    DATA_DIR,
+    readJsonFile,
+    writeJsonFile,
+    withHouseholdStorageLock,
+    axios,
+    getLocalDate: () => getServerLocalDate(),
+    modelTimeoutMs: receiptModelTimeoutMs
+  });
+
+  function sendReceiptError(res, error) {
+    const status = error instanceof ReceiptError ? error.status : 500;
+    if (status >= 500) console.error('[ERROR] Receipt API:', error.message);
+    return res.status(status).json({
+      error: status >= 500 && !(error instanceof ReceiptError)
+        ? 'The receipt request could not be completed.'
+        : error.message
+    });
+  }
+
+  app.post('/api/receipts', async (req, res) => {
+    try {
+      const image = decodeJpegBase64(req.body && req.body.image);
+      const receipt = await receiptService.create(image);
+      res.status(202).json(receipt);
+    } catch (error) {
+      sendReceiptError(res, error);
+    }
+  });
+
+  app.get('/api/receipts', async (req, res) => {
+    try {
+      res.json(await receiptService.list());
+    } catch (error) {
+      sendReceiptError(res, error);
+    }
+  });
+
+  app.get('/api/receipts/:id', async (req, res) => {
+    try {
+      const receipt = await receiptService.get(req.params.id);
+      if (!receipt) return res.status(404).json({ error: 'Receipt not found.' });
+      return res.json(receipt);
+    } catch (error) {
+      return sendReceiptError(res, error);
+    }
+  });
+
+  app.put('/api/receipts/:id', async (req, res) => {
+    try {
+      res.json(await receiptService.update(req.params.id, req.body));
+    } catch (error) {
+      sendReceiptError(res, error);
+    }
+  });
+
+  app.post('/api/receipts/:id/confirm', async (req, res) => {
+    try {
+      res.json(await receiptService.confirm(req.params.id));
+    } catch (error) {
+      sendReceiptError(res, error);
+    }
+  });
+
+  app.post('/api/receipts/:id/retry', async (req, res) => {
+    try {
+      res.status(202).json(await receiptService.retry(req.params.id));
+    } catch (error) {
+      sendReceiptError(res, error);
+    }
+  });
+
+  app.delete('/api/receipts/:id', async (req, res) => {
+    try {
+      const deleted = await receiptService.remove(req.params.id);
+      if (!deleted) return res.status(404).json({ error: 'Receipt not found.' });
+      return res.status(204).end();
+    } catch (error) {
+      return sendReceiptError(res, error);
+    }
+  });
+
+  app.get('/api/receipts/:id/csv', async (req, res) => {
+    try {
+      const csv = await receiptService.csv(req.params.id);
+      res.set('Content-Type', 'text/csv; charset=utf-8');
+      res.set('Content-Disposition', `attachment; filename="receipt-${req.params.id}.csv"`);
+      res.send(csv);
+    } catch (error) {
+      sendReceiptError(res, error);
+    }
+  });
+
+  app.get('/api/receipt-settings', (req, res) => {
+    res.json(receiptService.readSettings());
+  });
+
+  app.put('/api/receipt-settings', async (req, res) => {
+    try {
+      res.json(await receiptService.saveSettings(req.body));
+    } catch (error) {
+      sendReceiptError(res, error);
+    }
+  });
+
+  app.post('/api/receipt-settings/test', async (req, res) => {
+    try {
+      res.json(await receiptService.testSettings());
+    } catch (error) {
+      sendReceiptError(res, error);
+    }
+  });
 
   function readChoreSettings() {
     const settings = readJsonFile('chore_settings.json', {});
@@ -4121,6 +4256,10 @@ async function initializeApp() {
       res.status(500).json({ success: false, error: err.message, logs: [`[FATAL] ${err.message}`] });
     }
   });
+
+  // Recover interrupted receipt jobs before accepting requests, then let the
+  // single background worker drain them in queue order.
+  await receiptService.initialize();
 
   // Start the server
   server.listen(PORT, () => {
