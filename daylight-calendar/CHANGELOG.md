@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.1.9.28] - 2026-09-25
+
+Security update to the add-on's JavaScript dependencies. `npm audit` reported 31 known
+vulnerabilities (3 critical, 14 high); after this release it reports none in production
+dependencies and 3 moderate ones in development-only build tooling. Twenty production packages
+moved by patch or minor versions — notably express 4.21.2 -> 4.22.3, axios 1.9.0 -> 1.20.0 and
+ws 8.17.1 -> 8.21.3.
+
+`ws` is now declared as a runtime dependency. The server requires it, but it was listed as a
+development dependency, so it only worked because the image installs development packages too;
+a production-only install would have crashed the add-on.
+
+Verified on Node 16.20.2 — the exact runtime of the current base image — in a throwaway
+container: every API endpoint answered 200 with no runtime errors.
+
+
 ## [1.1.9.27] - 2026-09-25
 
 Hextris is gone from the game library. Its site, hextris.io, no longer exists (the domain stopped
