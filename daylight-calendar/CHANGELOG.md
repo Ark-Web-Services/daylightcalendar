@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.1.9.31] - 2026-09-25
+
+Taps on the Settings page could land on invisible parts of closed dialogs. Settings forces its
+labels and descriptions to `visibility: visible`, and that also matched the ones inside the closed
+Add-profile and Edit-profile dialogs — twelve elements that stayed transparent but caught taps on
+whatever lay beneath them, including face recognition's Enroll button. A closed dialog now never
+receives pointer events; nothing looks different.
+
+Found by driving face enrolment through the real screens for the first time (it had previously
+been tested through the API). Verified afterwards: Enroll -> PIN keypad -> five guided poses saved
+in about six seconds; the enrolled face was recognised on the Games tab in three seconds, a stranger
+was never chosen in sixty, and the camera was released on leaving the tab. No invisible tappable
+elements remain on any page.
+
+
 ## [1.1.9.30] - 2026-09-25
 
 Pantry now opens the receipt workflow on both phones and the wall panel. A camera-first scan control

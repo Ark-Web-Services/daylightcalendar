@@ -5911,3 +5911,13 @@ button.receipt-status-chip { min-height: 44px; cursor: pointer; }
   padding: var(--md-space-2) var(--md-space-3); border-radius: var(--md-shape-medium);
   background: var(--md-surface-2); color: var(--md-on-surface); border: 1px solid var(--md-outline-variant); }
 .receipt-merge-hint .btn { min-height: 44px; }
+
+/* A closed dialog must never catch taps. Settings forces `visibility: visible` on its
+   labels and descriptions (#settings-content .form-group label, .setting-description),
+   which also matched those inside closed dialogs: they stayed transparent (the dialog
+   is opacity 0) but intercepted taps on whatever lay beneath — including the face
+   recognition Enroll button. Only pointer events are changed, so nothing looks different. */
+.modal:not(.show),
+.modal:not(.show) * {
+  pointer-events: none !important;
+}
