@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.1.9.27] - 2026-09-25
+
+Hextris is gone from the game library. Its site, hextris.io, no longer exists (the domain stopped
+resolving), so its tile opened to an empty frame on the wall panel. It is removed from the defaults
+and retired automatically from libraries that were seeded before it died; the clean-up runs at
+start-up, before any request can race it.
+
+The Debug tab no longer appears on the family panel. The code revealed it when development mode
+was on but nothing ever hid it otherwise, so it showed in production too. It now defaults to hidden
+and appears only with `development_mode` enabled — verified both ways.
+
+Also verified end to end in a browser for the first time: tapping a game (the launch target covers
+98% of the tile) starts a session, the countdown runs and shows its one-minute warning, and at zero
+the game is unloaded, "Time's up" appears, and the server refuses a restart.
+
+
 ## [1.1.9.26] - 2026-09-25
 
 Choosing a player on the wall display still required a tap even though the Dell panel already has

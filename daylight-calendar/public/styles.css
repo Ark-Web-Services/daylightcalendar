@@ -5509,3 +5509,8 @@ button.meal-slot.has-meal:focus-visible {
   .face-profile-setting .delete-face-profile { grid-column: 2 / -1; justify-self: stretch; }
   .face-settings-actions { align-items: stretch; flex-direction: column-reverse; }
 }
+
+/* The Debug tab is for development only. script.js reveals it when the add-on runs
+   with development_mode on; it previously had no default rule, so it showed on the
+   family panel in production too. */
+.dev-only-tab { display: none; }

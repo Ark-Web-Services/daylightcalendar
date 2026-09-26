@@ -623,9 +623,12 @@ async function initializeApp() {
     pinHash: null,
     pinSalt: null
   };
+  // Games whose sites no longer exist. hextris.io stopped resolving (NXDOMAIN) in
+  // September 2026, so its tile opened to a blank frame. Removed from libraries that
+  // were seeded before it died.
+  const RETIRED_GAME_URLS = ['https://hextris.io/'];
   const DEFAULT_GAMES = [
     { id: 'geometry-dash', title: 'Geometry Dash', url: 'https://geometrydashonline.github.io/', icon: 'sports_esports' },
-    { id: 'hextris', title: 'Hextris', url: 'https://hextris.io/', icon: 'hexagon' },
     { id: 'clumsy-bird', title: 'Clumsy Bird', url: 'https://ellisonleao.github.io/clumsy-bird/', icon: 'flutter_dash' }
   ];
   const screenTimeHeartbeatTimeoutSeconds = Math.max(1, Number(process.env.SCREEN_TIME_HEARTBEAT_TIMEOUT_SECONDS) || 90);
@@ -749,6 +752,19 @@ async function initializeApp() {
     const games = readJsonFile('games.json', null);
     return Array.isArray(games) ? games : null;
   }
+
+  // Runs once during start-up, before the server accepts requests, so it cannot race
+  // with a game being added through the API.
+  function retireDeadGames() {
+    const existing = readGames();
+    if (!existing) return;
+    const kept = existing.filter(game => !RETIRED_GAME_URLS.includes(game.url));
+    if (kept.length !== existing.length) {
+      writeJsonFile('games.json', kept);
+      console.log(`[INFO] Removed ${existing.length - kept.length} retired game(s) from the library`);
+    }
+  }
+  retireDeadGames();
 
   function ensureGamesLibrary() {
     const existing = readGames();

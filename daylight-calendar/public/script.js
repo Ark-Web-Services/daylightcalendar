@@ -111,7 +111,7 @@ document.addEventListener('DOMContentLoaded', function () {
       setupTurboFrameListeners();
 
       if (config.development_mode) {
-        document.getElementById('debug-tab').style.display = 'block';
+        document.getElementById('debug-tab').style.display = 'flex';
         console.log('[INFO] Debug mode enabled - showing debug tab');
       }
     })
