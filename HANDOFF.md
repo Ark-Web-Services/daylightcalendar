@@ -221,6 +221,30 @@ of it is deployed.** See §7.
   The Chores board went from 22% to 83-94% of its own page. Verified by the harness in §3:
   16/16 layout checks and 10/10 contrast checks at four viewports.
 
+- **Pantry step 1 — receipts (1.1.9.29-.30).** Pantry tab: scan (phone camera via the HA app) ->
+  touch crop -> upload -> one background worker sends it to the local model -> review -> confirm.
+  Backend in `scripts/receipt-service.js` + `scripts/receipt-parser.js`; tests in
+  `scripts/test-receipts.js <model-output.txt> <truth.json>` (fixtures live OUTSIDE the repo — real
+  receipts carry card digits). Parser rules that real output forced: totals may arrive on one
+  comma-separated line; weight lines arrive after the item row (prefer the `(N)` net line);
+  quantities are 1 unless the receipt itself shows weight or multi-buy (the model's counts and units
+  are unreliable — it writes ALDI tax codes as units); reconciliation vs the printed subtotal and
+  ITEMS count is the safety net, and names a merged repeat with a one-tap fix. Photos are deleted on
+  confirm/delete. Verified end to end on the live panel with a real ALDI receipt (244 s).
+- **Not built yet:** pantry stock (step 2) and meals <-> pantry (step 3). Review rows are tall cards
+  on phones; a compact layout for long receipts is a worthwhile follow-up.
+
+### Pending decision: image hardening (blocked by the permission classifier, not attempted again)
+
+The add-on image is still `ghcr.io/home-assistant/*-base:3.15` (Alpine 3.15, EOL Nov 2023, Node
+16), runs `npm install` (dev deps ship) and a dead `npm run build`, installs Chromium + Xorg +
+Openbox, and `config.yaml` grants `privileged: SYS_ADMIN` plus framebuffer/GPU/TTY/input devices —
+all only for an on-device `kiosk_mode` whose option no longer exists. Proposed: base 3.23, `nodejs
+npm` only, `npm ci --omit=dev`, drop the build step and the kiosk stack/privileges, add a
+`.dockerignore` (local builds would otherwise copy `data/` — real Apple credentials — and
+`.env.local` — an HA token). Needs the user's go-ahead; verify with a local `docker build` first.
+`ws` has already been moved to runtime dependencies, so `--omit=dev` is safe once applied.
+
 ### Still open, from the teardown's ranked recommendations
 
 - [ ] Household change notifications — alert when someone adds/edits an event (rec #4)
