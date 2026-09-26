@@ -164,12 +164,28 @@ login. Delete or stub that file before local dev if you don't want that.
   new one hand off to the dying process and exit, leaving the panel blank. The launcher now waits
   for old kiosk processes to exit, confirms Edge stayed up, and retries up to 3 times. Verified by
   force-killing and relaunching with no pause.
-- **Ollama 0.34.4 installed** (per-user, `%LOCALAPPDATA%\Programs\Ollama`) with `qwen2.5vl:3b`
-  (3.2 GB), served by a scheduled task `Ollama-Serve` in the logged-on session at below-normal
-  priority, listening on 127.0.0.1:11434 only. Receipt benchmark on this CPU: 10/10 items, prices
-  and quantities on a synthetic receipt in 145 s. **Not yet reachable from the add-on** (which runs
-  in the HA VM) — that needs a deliberate bind + firewall scope to the Default Switch subnet, never
-  the whole LAN.
+- **Local model: Ollama 0.34.4 + `qwen2.5vl:3b`** (3.2 GB) on the Windows side, set up in HA.
+  - Chosen by benchmark on a real crumpled ALDI receipt (38 lines): Qwen2.5-VL 3B read 38/38 with
+    compact one-line-per-item output in 229 s. Qwen3-VL 2B looped ("Paper Bags" x79, never
+    finished); Tesseract -> Qwen3 1.7B/0.6B got 12/38 and 10/38, because Tesseract pairs prices with
+    the wrong names where the paper curls. Ollama itself costs 27 MB idle; raw llama.cpp would only
+    save disk (Ollama bundles ~2.7 GB of GPU libraries this laptop cannot use).
+  - Runs from scheduled task `Ollama-Serve` (at logon +30 s, below-normal priority, restarts on
+    failure) with user env `OLLAMA_HOST=0.0.0.0:11434`.
+  - **Private link to the HA VM**: Hyper-V internal switch `HA-Link`, laptop `10.77.77.1/24`, HA VM
+    `eth1` static `10.77.77.2/24` with **no gateway** (eth0 stays primary; HA's LAN/internet traffic
+    is unchanged). This exists because the Default Switch re-subnets on every reboot, and because
+    Windows' strong-host model drops VM traffic aimed at the laptop's Wi-Fi IP. `10.77.77.x` never
+    changes.
+  - **Firewall**: `Ollama - HA VM only (allow)` admits only `10.77.77.2`; `Ollama - everything else
+    (block)` and `Ollama - IPv6 (block)` cover all other IPv4/IPv6. Block beats allow in Windows
+    Firewall, so a stray "Allow access?" prompt can never expose the model to the LAN. Verified: LAN
+    requests to 192.168.1.118:11434 get no response. (Windows rejects `::/0`; use the full range.)
+  - **In HA**: Ollama integration at `http://10.77.77.1:11434`, AI Task entity
+    `ai_task.receipt_reader_local` (num_ctx 8192, keep_alive 120 s so RAM is freed after use).
+    Verified end to end: HA -> model -> answer in 12 s.
+  - Not yet reboot-tested. Every piece is persistent by design (switch, static IPs, firewall rules,
+    env var, logon-triggered task), but it has not been proven through a restart.
 
 ## 4. Remaining work
 
