@@ -56,15 +56,27 @@ function cleanLine(line) {
     .trim();
 }
 
-function parseMetadataLine(line) {
-  const match = line.match(/^\s*(SUB\s*TOTAL|TOTAL|ITEMS?)\s*[|:]\s*\$?\s*([\d,]+(?:\.\d+)?)\s*$/i);
-  if (!match) return null;
-  const key = match[1].replace(/\s+/g, '').toUpperCase();
-  const value = parseNumber(match[2]);
+const METADATA_SEGMENT = /(SUB\s*TOTAL|TOTAL|ITEMS?)\s*[|:]\s*\$?\s*(\d[\d,]*(?:\.\d+)?)/gi;
+
+function metadataEntry(label, rawValue) {
+  const key = label.replace(/\s+/g, '').toUpperCase();
+  const value = parseNumber(rawValue);
   if (value === null) return null;
   if (key === 'ITEM' || key === 'ITEMS') return { key: 'itemsPrinted', value: Math.max(0, Math.round(value)) };
   if (key === 'SUBTOTAL') return { key: 'subtotal', value: roundMoney(value) };
   return { key: 'total', value: roundMoney(value) };
+}
+
+// Returns every KEY|value entry on the line, or null when the line is not purely
+// metadata. The model has written them one per line and also all on one line
+// separated by commas, e.g. "SUBTOTAL|92.16, TOTAL|$ 94.03, ITEMS|38".
+function parseMetadataLine(line) {
+  const matches = [...String(line).matchAll(METADATA_SEGMENT)];
+  if (!matches.length) return null;
+  const leftover = String(line).replace(METADATA_SEGMENT, '').replace(/[\s,;|]+/g, '');
+  if (leftover) return null;
+  const entries = matches.map(match => metadataEntry(match[1], match[2])).filter(Boolean);
+  return entries.length ? entries : null;
 }
 
 function parseStandaloneTotal(line) {
@@ -99,7 +111,10 @@ function isPrivateOrNonItemText(text) {
 }
 
 function quantityFromEvidence(candidate) {
-  const evidence = `${candidate.printed} ${candidate.modelUnit}`;
+  // Prefer the net weight line "(N) ..." over gross/tare lines when a scale printed all three.
+  const extra = String(candidate.extraEvidence || '');
+  const netLine = extra.match(/\(N\)([^()]*)/i);
+  const evidence = `${candidate.printed} ${candidate.modelUnit} ${netLine ? netLine[1] : extra}`;
   const multiBuy = evidence.match(/(?:^|\s)(\d+(?:\.\d+)?)\s*@\s*\$?\s*\d+(?:\.\d+)?/i);
   if (multiBuy) {
     return {
@@ -131,7 +146,7 @@ function quantityFromEvidence(candidate) {
     }
   }
 
-  const corrected = candidate.modelQuantity !== 1 || normalizeText(candidate.modelUnit) !== 'each';
+  const corrected = candidate.modelQuantity !== null && candidate.modelQuantity !== 1;
   return {
     quantity: 1,
     unit: 'each',
@@ -186,6 +201,18 @@ function calculateReconciliation(rows, subtotal, itemsPrinted) {
   if (hasItemCount && !countMatches) {
     issues.push(`There are ${count} included rows but the receipt says ${itemsPrinted} items.`);
   }
+  if (hasSubtotal && difference > 0.009) {
+    const merged = included.filter(row => Number(row.modelQuantity) > 1 &&
+      Math.abs(Number(row.price) * (Number(row.modelQuantity) - 1) - difference) < 0.011);
+    const seen = new Set();
+    for (const row of merged) {
+      const label = row.name || row.printed;
+      if (seen.has(label)) continue;
+      seen.add(label);
+      const extra = Number(row.modelQuantity) - 1;
+      issues.push(`${label} may be on the receipt ${row.modelQuantity} times — the reader counted ${row.modelQuantity}. Adding ${extra === 1 ? 'one more' : extra + ' more'} $${Number(row.price).toFixed(2)} line makes it add up exactly.`);
+    }
+  }
 
   return {
     status,
@@ -209,9 +236,9 @@ function parseReceiptOutput(output, options = {}) {
   const standaloneAmounts = [];
 
   for (const line of lines) {
-    const metadataLine = parseMetadataLine(line);
-    if (metadataLine) {
-      metadata[metadataLine.key] = metadataLine.value;
+    const metadataEntries = parseMetadataLine(line);
+    if (metadataEntries) {
+      for (const entry of metadataEntries) metadata[entry.key] = entry.value;
       continue;
     }
     const standaloneTotal = parseStandaloneTotal(line);
@@ -220,7 +247,15 @@ function parseReceiptOutput(output, options = {}) {
       continue;
     }
     const candidate = parseItemLine(line);
-    if (candidate) itemCandidates.push(candidate);
+    if (candidate) {
+      itemCandidates.push(candidate);
+    } else if (itemCandidates.length) {
+      // Weighed items print their weight on the lines below the name, and the model
+      // copies those lines through verbatim: "(G) 1.681lb - (T) 0.011b" then
+      // "(N) 1.67 lb x 0.48/lb". Keep them as evidence for the row above.
+      const previous = itemCandidates[itemCandidates.length - 1];
+      previous.extraEvidence = `${previous.extraEvidence || ''} ${line}`.trim();
+    }
   }
   if (metadata.total === null && standaloneAmounts.length) {
     metadata.total = standaloneAmounts[standaloneAmounts.length - 1];
@@ -241,8 +276,12 @@ function parseReceiptOutput(output, options = {}) {
       dropped.push(makeDropped(candidate.printed, candidate.price, 'payment/card/tax/total wording', true));
       continue;
     }
-    if ((Number.isFinite(metadata.total) && candidate.price === metadata.total) ||
-        (Number.isFinite(metadata.subtotal) && candidate.price === metadata.subtotal)) {
+    // A row priced exactly at the receipt total is usually the payment line echoed as
+    // an item — but on a one-item receipt the item legitimately equals the subtotal,
+    // so this only applies when there are other items to compare against.
+    if (itemCandidates.length > 1 &&
+        ((Number.isFinite(metadata.total) && candidate.price === metadata.total) ||
+         (Number.isFinite(metadata.subtotal) && candidate.price === metadata.subtotal))) {
       dropped.push(makeDropped(candidate.printed, candidate.price, 'price matches a receipt total'));
       continue;
     }
@@ -269,6 +308,7 @@ function parseReceiptOutput(output, options = {}) {
       unit: currentEvidence.unit,
       price: candidate.price,
       include: true,
+      modelQuantity: candidate.modelQuantity,
       remembered: Boolean(remembered),
       flags: currentEvidence.flags
     });

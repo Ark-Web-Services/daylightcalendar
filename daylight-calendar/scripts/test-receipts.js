@@ -7,7 +7,7 @@ const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 const axios = require('axios');
-const { parseReceiptOutput } = require('./receipt-parser');
+const { parseReceiptOutput, roundMoney } = require('./receipt-parser');
 
 const fixturePath = process.argv[2];
 const truthPath = process.argv[3];
@@ -157,20 +157,27 @@ async function main() {
   const parsed = parseReceiptOutput(fixture);
   const missing = difference(truth.items, parsed.rows);
   const unexpected = difference(parsed.rows.map(row => ({ raw: row.printed, price: row.price })), truth.items);
-  assert.strictEqual(parsed.rows.length, 37);
-  assert.deepStrictEqual(missing, [{ raw: 'OM Lunchble Trk/Ha', price: 2.84 }]);
-  assert.deepStrictEqual(unexpected, []);
-  assert.strictEqual(parsed.reconciliation.rowsTotal, 89.32);
+  // Properties that must hold for ANY real model output of this receipt, not one
+  // recording's particular miss (different runs merge different repeated lines).
+  const missingTotal = roundMoney(missing.reduce((sum, row) => sum + row.price, 0));
+  assert.deepStrictEqual(unexpected, [], 'no invented or junk rows may survive');
+  assert.ok(missing.length <= 1, `at most one printed line may be lost, lost ${missing.length}`);
+  assert.strictEqual(parsed.rows.length, truth.items.length - missing.length);
+  assert.strictEqual(parsed.reconciliation.rowsTotal, roundMoney(truth.subtotal - missingTotal));
   assert.strictEqual(parsed.total, truth.total);
-  assert.deepStrictEqual(parsed.dropped.map(row => row.reason), [
-    'duplicates an adjacent weighed item weight',
-    'payment/card/tax/total wording',
-    'payment/card/tax/total wording'
-  ]);
+  const allowedDropReasons = new Set(['duplicates an adjacent weighed item weight', 'payment/card/tax/total wording', 'price matches a receipt total']);
+  assert.ok(parsed.dropped.every(row => allowedDropReasons.has(row.reason)));
   const reconciledAgainstTruth = parseReceiptOutput(`${fixture}\nSUBTOTAL|${truth.subtotal}\nITEMS|${truth.items.length}`);
-  assert.strictEqual(reconciledAgainstTruth.reconciliation.status, 'mismatch');
-  assert.strictEqual(reconciledAgainstTruth.reconciliation.difference, 2.84);
-  assert.strictEqual(reconciledAgainstTruth.reconciliation.countDifference, 1);
+  // A lost line must be surfaced, never absorbed silently.
+  assert.strictEqual(reconciledAgainstTruth.reconciliation.status, missing.length ? 'mismatch' : 'ok');
+  assert.strictEqual(reconciledAgainstTruth.reconciliation.difference, missingTotal);
+  assert.strictEqual(reconciledAgainstTruth.reconciliation.countDifference, missing.length);
+  // Totals written all on one comma-separated line (seen from the real model).
+  const oneLineTotals = parseReceiptOutput('1.00|1|each|-|Test item\nSUBTOTAL|1.00, TOTAL|$ 1.08, ITEMS|1');
+  assert.deepStrictEqual([oneLineTotals.subtotal, oneLineTotals.total, oneLineTotals.itemsPrinted], [1, 1.08, 1]);
+  // Net weight printed on the line below a weighed item (seen from the real model).
+  const weighed = parseReceiptOutput('0.80|1|FB|262747|Bananas LRW\n(G) 1.681lb - (T) 0.011b\n(N) 1.67 lb x 0.48/lb\nSUBTOTAL|0.80');
+  assert.deepStrictEqual([weighed.rows[0].quantity, weighed.rows[0].unit], [1.67, 'lb']);
   const currentFormat = parseReceiptOutput([
     '1.36|9|wrong|ABC-123|Cans 2 @ 0.68',
     '0.80|1|lb x 0.48/lb|-|Bananas 1.67 lb x 0.48/lb',
