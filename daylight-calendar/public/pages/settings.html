@@ -112,6 +112,37 @@
     </div>
 
     <div class="settings-section">
+      <h2>Receipt reader</h2>
+      <div class="settings-card" id="receipt-reader-settings-card">
+        <h3>Local vision model</h3>
+        <p class="setting-description">Daylight sends receipt photos only to this local model address. Changes apply to the next receipt.</p>
+        <form id="receipt-reader-settings-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="receipt-model-url">Model URL</label>
+              <input id="receipt-model-url" name="url" type="url" inputmode="url" required>
+            </div>
+            <div class="form-group">
+              <label for="receipt-model-name">Model name</label>
+              <input id="receipt-model-name" name="model" type="text" maxlength="160" required>
+            </div>
+          </div>
+          <div id="receipt-reader-settings-status" class="receipt-reader-settings-status" role="status" aria-live="polite"></div>
+          <div class="form-actions receipt-reader-settings-actions">
+            <button type="button" id="test-receipt-reader" class="btn btn-secondary">
+              <i class="material-icons" aria-hidden="true">network_check</i>
+              Test connection
+            </button>
+            <button type="submit" class="btn btn-primary">
+              <i class="material-icons" aria-hidden="true">save</i>
+              Save receipt reader
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="settings-section">
       <h2>Screen time</h2>
       <div class="settings-card" id="screen-time-settings-card">
         <div class="screen-time-settings-heading">

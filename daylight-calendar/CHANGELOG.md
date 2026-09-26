@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.1.9.30] - 2026-09-25
+
+Pantry now opens the receipt workflow on both phones and the wall panel. A camera-first scan control
+opens a touch cropper with four large corner handles, honours the photo's orientation, removes the
+table or background before upload, and downsizes the result to a model-friendly JPEG. Upload progress,
+ten-second queued/reading updates, retryable failures and the model's four-minute expectation remain
+visible without letting the Pantry page itself scroll.
+
+Ready receipts open into a phone-sized card review as well as a wide panel review. Printed evidence,
+remembered names, quantities, units, prices, categories and parser flags stay visible; included rows,
+restored dropped lines and reconciliation totals update together as corrections are made. Confirmation
+teaches item memory and plainly notes that it deletes the photo, while corrected CSV export and receipt
+deletion use the same saved review. Settings now includes the local receipt reader URL, model name and a
+connection check that distinguishes an unreachable reader from a missing model.
+
 ## [1.1.9.29] - 2026-09-25
 
 Receipt photos can now be queued for the local Qwen vision model and turned into durable,

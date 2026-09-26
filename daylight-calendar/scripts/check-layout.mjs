@@ -41,7 +41,7 @@ const VIEWPORTS = [
   { name: '1080x1920', width: 1080, height: 1920 },
 ];
 // Pages that must NEVER scroll. Settings is deliberately excluded.
-const PAGES = ['calendar', 'chores', 'meals', 'lists', 'games'];
+const PAGES = ['calendar', 'chores', 'meals', 'lists', 'pantry', 'games'];
 
 fs.mkdirSync(OUT, { recursive: true });
 const browser = await chromium.launch(EXEC ? { executablePath: EXEC } : {});

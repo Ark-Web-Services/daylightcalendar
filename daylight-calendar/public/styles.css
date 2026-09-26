@@ -4825,7 +4825,7 @@ button.meal-slot.has-meal:focus-visible {
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 0 var(--md-space-1) var(--md-space-1) 0;
-  scrollbar-color: var(--md-outline) transparent;
+  scrollbar-color: var(--md-outline) var(--md-surface-2);
   scrollbar-gutter: stable;
   scrollbar-width: thin;
 }
@@ -5514,3 +5514,400 @@ button.meal-slot.has-meal:focus-visible {
    with development_mode on; it previously had no default rule, so it showed on the
    family panel in production too. */
 .dev-only-tab { display: none; }
+
+/* Pantry receipts: the page stays fixed to the panel while its receipt list and
+   review dialog own their bounded overflow. Every colour comes from the active
+   Material theme so all six Daylight themes retain the same hierarchy. */
+#pantry-content {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#pantry-content .pantry-header {
+  flex: 0 0 auto;
+  gap: var(--md-space-3);
+  margin-bottom: var(--md-space-2);
+  padding: var(--md-space-2) var(--md-space-4);
+}
+
+.pantry-header > div { min-width: 0; }
+.pantry-header h1 { margin-bottom: var(--md-space-1); }
+.receipt-page-status {
+  margin: 0;
+  color: var(--md-on-surface-variant);
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+.receipt-page-status.is-error { color: var(--md-error); }
+
+.receipt-scan-button {
+  min-width: 190px;
+  min-height: 56px;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+#pantry-content .btn,
+#receipt-reader-settings-card .btn { min-height: 44px; }
+
+.receipt-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.receipt-scan-button:has(+ .receipt-file-input:focus-visible) {
+  outline: 3px solid var(--md-secondary-container);
+  outline-offset: 2px;
+}
+
+#pantry-content .pantry-page {
+  display: flex;
+  flex: 1 1 0;
+  height: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.receipts-panel {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+  flex-direction: column;
+  gap: var(--md-space-3);
+  padding: var(--md-space-4);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: var(--md-shape-large);
+  background: var(--md-surface-2);
+}
+
+.receipts-panel-heading {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--md-space-4);
+}
+.receipts-panel-heading > div { min-width: 0; }
+.receipts-panel-heading h2 { margin: 0 0 var(--md-space-1); color: var(--md-on-surface); font-size: 1.25rem; }
+.receipts-panel-heading p { max-width: 70ch; margin: 0; color: var(--md-on-surface-variant); line-height: 1.45; }
+
+.receipt-upload-progress {
+  display: grid;
+  flex: 0 0 auto;
+  grid-template-columns: minmax(120px, 240px) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--md-space-3);
+  min-height: 44px;
+  padding: var(--md-space-2) var(--md-space-3);
+  border-radius: var(--md-shape-medium);
+  background: var(--md-primary-container);
+  color: var(--md-on-primary-container);
+}
+.receipt-upload-progress[hidden] { display: none; }
+.receipt-upload-progress.is-error { background: var(--md-error-container); color: var(--md-on-error-container); }
+.receipt-progress-track { height: var(--md-space-2); overflow: hidden; border-radius: var(--md-shape-small); background: var(--md-surface-variant); }
+.receipt-progress-track span { display: block; width: 100%; height: 100%; background: var(--md-primary); transform: scaleX(0); transform-origin: left; transition: transform var(--md-transition-standard); }
+.receipt-upload-progress.is-error .receipt-progress-track span { background: var(--md-error); }
+
+.receipt-list {
+  display: flex;
+  flex: 1 1 0;
+  height: 0;
+  min-height: 0;
+  flex-direction: column;
+  gap: var(--md-space-2);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-inline-end: var(--md-space-1);
+  scrollbar-color: var(--md-outline) var(--md-surface-2);
+  scrollbar-gutter: stable;
+}
+
+.receipt-list-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(84px, auto) minmax(140px, auto) auto;
+  align-items: center;
+  gap: var(--md-space-3);
+  min-width: 0;
+  padding: var(--md-space-3);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: var(--md-shape-medium);
+  background: var(--md-surface);
+  color: var(--md-on-surface);
+}
+.receipt-list-main { display: flex; min-width: 0; flex-direction: column; gap: var(--md-space-1); }
+.receipt-list-main strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.receipt-list-main > span,
+.receipt-list-total span { color: var(--md-on-surface-variant); font-size: 0.8125rem; }
+.receipt-row-error { margin: var(--md-space-1) 0 0; color: var(--md-error); font-size: 0.8125rem; overflow-wrap: anywhere; }
+.receipt-list-total { display: flex; min-width: 76px; flex-direction: column; }
+.receipt-list-total strong { font-size: 1.05rem; }
+.receipt-list-status,
+.receipt-list-actions { display: flex; justify-content: flex-end; }
+
+.receipt-status-chip {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  padding: var(--md-space-1) var(--md-space-3);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: var(--md-shape-xlarge);
+  background: var(--md-surface-variant);
+  color: var(--md-on-surface-variant);
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  text-align: center;
+}
+button.receipt-status-chip { min-height: 44px; cursor: pointer; }
+.receipt-status-chip.is-queued { background: var(--md-primary-container); color: var(--md-on-primary-container); }
+.receipt-status-chip.is-processing { background: var(--md-secondary-container); color: var(--md-on-secondary-container); }
+.receipt-status-chip.is-review { border-color: var(--md-warning); background: var(--md-surface); color: var(--md-on-surface); }
+.receipt-status-chip.is-confirmed { background: var(--md-tertiary-container); color: var(--md-on-tertiary-container); }
+.receipt-status-chip.is-failed { background: var(--md-error-container); color: var(--md-on-error-container); }
+
+.receipt-empty {
+  display: flex;
+  flex: 1;
+  min-height: 160px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: var(--md-space-2);
+  padding: var(--md-space-5);
+  color: var(--md-on-surface-variant);
+  text-align: center;
+}
+.receipt-empty .material-icons { color: var(--md-primary); font-size: 2rem; }
+.receipt-empty strong { color: var(--md-on-surface); font-size: 1.125rem; }
+.receipt-error .material-icons,
+.receipt-error > span { color: var(--md-error); }
+
+.receipt-crop-modal-content {
+  display: flex;
+  width: min(94vw, 980px);
+  max-width: none;
+  max-height: 94dvh;
+  flex-direction: column;
+  overflow: hidden;
+}
+.receipt-crop-modal-content .modal-header > div { min-width: 0; }
+.receipt-crop-modal-content .modal-header p,
+.receipt-review-header p { margin: var(--md-space-1) 0 0; color: var(--md-on-surface-variant); }
+.receipt-crop-body { min-height: 0; overflow-y: auto; }
+.receipt-crop-stage {
+  display: flex;
+  min-height: 240px;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+  overflow: hidden;
+  border-radius: var(--md-shape-medium);
+  background: var(--md-surface-3);
+}
+.receipt-crop-surface { position: relative; flex: 0 0 auto; touch-action: none; }
+.receipt-crop-surface canvas { display: block; width: 100%; height: 100%; border-radius: var(--md-shape-small); }
+.receipt-crop-selection {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid var(--md-primary);
+  box-shadow: 0 0 0 200vmax color-mix(in srgb, var(--md-contrast-dark) 55%, var(--md-surface) 45%);
+  cursor: move;
+  touch-action: none;
+}
+.receipt-crop-shade { display: none; }
+.receipt-crop-handle {
+  position: absolute;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  touch-action: none;
+}
+.receipt-crop-handle::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 18px;
+  height: 18px;
+  border: 3px solid var(--md-primary);
+  border-radius: 50%;
+  background: var(--md-surface);
+  content: '';
+  transform: translate(-50%, -50%);
+}
+.receipt-crop-handle-nw { top: -22px; left: -22px; cursor: nwse-resize; }
+.receipt-crop-handle-ne { top: -22px; right: -22px; cursor: nesw-resize; }
+.receipt-crop-handle-sw { bottom: -22px; left: -22px; cursor: nesw-resize; }
+.receipt-crop-handle-se { right: -22px; bottom: -22px; cursor: nwse-resize; }
+.receipt-crop-actions { justify-content: flex-end; }
+
+.receipt-review-modal-content {
+  display: flex;
+  width: min(96vw, 1280px);
+  max-width: none;
+  max-height: 94dvh;
+  flex-direction: column;
+  overflow: hidden;
+}
+.receipt-review-header { flex: 0 0 auto; }
+.receipt-review-header > div { min-width: 0; }
+.receipt-review-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+#receipt-review-form { display: flex; flex-direction: column; gap: var(--md-space-4); }
+
+.receipt-reconciliation {
+  padding: var(--md-space-3) var(--md-space-4);
+  border-radius: var(--md-shape-medium);
+  font-weight: 700;
+  line-height: 1.45;
+}
+.receipt-reconciliation.is-match { background: var(--md-tertiary-container); color: var(--md-on-tertiary-container); }
+.receipt-reconciliation.needs-attention { border: 1px solid var(--md-warning); background: var(--md-surface-2); color: var(--md-on-surface); }
+
+.receipt-document-fields {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(150px, 0.4fr) minmax(120px, auto);
+  align-items: end;
+  gap: var(--md-space-3);
+}
+.receipt-review-total { display: flex; min-height: 44px; justify-content: center; flex-direction: column; }
+.receipt-review-total span { color: var(--md-on-surface-variant); font-size: 0.75rem; }
+.receipt-review-total strong { color: var(--md-on-surface); font-size: 1.25rem; }
+
+.receipt-field { display: flex; min-width: 0; flex-direction: column; gap: var(--md-space-1); color: var(--md-on-surface-variant); font-size: 0.75rem; font-weight: 700; }
+.receipt-field input,
+.receipt-field select,
+#receipt-reader-settings-card input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: var(--md-space-2) var(--md-space-3);
+  border: 1px solid var(--md-outline);
+  border-radius: var(--md-shape-small);
+  background: var(--md-surface);
+  color: var(--md-on-surface);
+  font: inherit;
+}
+
+.receipt-review-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--md-space-3);
+}
+#receipt-review-summary { color: var(--md-on-surface-variant); font-weight: 700; }
+.receipt-review-rows { display: flex; flex-direction: column; gap: var(--md-space-3); }
+.receipt-review-row {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--md-space-2);
+  padding: var(--md-space-3);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: var(--md-shape-medium);
+  background: var(--md-surface-2);
+}
+.receipt-row-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--md-space-3); }
+.receipt-include-toggle { display: inline-flex; min-height: 44px; align-items: center; gap: var(--md-space-2); color: var(--md-on-surface); font-weight: 700; }
+.receipt-include-toggle input { width: 24px; height: 24px; margin: 0; }
+.receipt-printed-text { display: flex; min-width: 0; align-items: center; flex-wrap: wrap; gap: var(--md-space-2); color: var(--md-on-surface-variant); font-size: 0.75rem; }
+.receipt-printed-text strong { min-width: 0; color: var(--md-on-surface-variant); font-weight: 500; overflow-wrap: anywhere; }
+.receipt-remembered-badge,
+.receipt-row-flags span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 2px var(--md-space-2);
+  border-radius: var(--md-shape-xlarge);
+  background: var(--md-secondary-container);
+  color: var(--md-on-secondary-container);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.receipt-row-fields { display: grid; grid-template-columns: minmax(180px, 1.8fr) minmax(86px, 0.5fr) minmax(86px, 0.5fr) minmax(96px, 0.55fr) minmax(130px, 0.8fr); gap: var(--md-space-2); }
+.receipt-row-flags { display: flex; flex-wrap: wrap; gap: var(--md-space-1); }
+.receipt-row-flags span { background: var(--md-surface-variant); color: var(--md-on-surface-variant); font-weight: 500; }
+
+.receipt-dropped-lines { border-top: 1px solid var(--md-outline-variant); }
+.receipt-dropped-lines summary { display: flex; min-height: 48px; align-items: center; color: var(--md-on-surface); cursor: pointer; font-weight: 700; }
+.receipt-dropped-lines > p { margin: 0 0 var(--md-space-3); color: var(--md-on-surface-variant); }
+.receipt-dropped-list { display: flex; flex-direction: column; gap: var(--md-space-2); }
+.receipt-dropped-row { display: flex; align-items: center; justify-content: space-between; gap: var(--md-space-3); padding: var(--md-space-2); background: var(--md-surface-2); border-radius: var(--md-shape-small); }
+.receipt-dropped-row > div { display: flex; min-width: 0; flex-direction: column; gap: var(--md-space-1); }
+.receipt-dropped-row strong { color: var(--md-on-surface); overflow-wrap: anywhere; }
+.receipt-dropped-row span { color: var(--md-on-surface-variant); font-size: 0.8125rem; overflow-wrap: anywhere; }
+
+.receipt-review-status,
+.receipt-reader-settings-status { min-height: 1.4em; color: var(--md-on-surface-variant); overflow-wrap: anywhere; }
+.receipt-review-status.is-error,
+.receipt-reader-settings-status.is-error { color: var(--md-error); }
+.receipt-reader-settings-status.is-success { color: var(--md-success); }
+.receipt-photo-note { margin: 0; color: var(--md-on-surface-variant); font-size: 0.8125rem; }
+.receipt-review-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--md-space-3); padding-top: var(--md-space-2); border-top: 1px solid var(--md-outline-variant); }
+.receipt-review-actions > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--md-space-2); }
+
+.receipt-reader-settings-actions { justify-content: space-between; }
+#receipt-reader-settings-card .form-group { min-width: 0; }
+
+@media (max-width: 700px) {
+  /* Phone ingress needs usable content width even before this device has saved a
+     sidebar preference. The existing sidebar script remains the only state owner. */
+  #sidebar { width: var(--sidebar-collapsed-width); }
+  #sidebar-logo { justify-content: center; padding: var(--md-space-3); }
+  #sidebar-logo span,
+  .tab-item span { display: none; }
+  #sidebar-logo i,
+  .tab-item i { margin-right: 0; }
+  .tab-item { justify-content: center; padding: var(--md-space-3); }
+
+  #pantry-content .pantry-header { align-items: stretch; flex-direction: column; padding: var(--md-space-2); }
+  .receipt-scan-button { width: 100%; min-width: 0; }
+  #pantry-content .pantry-page { padding: 0 var(--md-space-2) var(--md-space-2); }
+  .receipts-panel { padding: var(--md-space-2); }
+  .receipts-panel-heading { align-items: stretch; flex-direction: column; gap: var(--md-space-2); }
+  .receipts-panel-heading .btn { width: 100%; }
+  .receipt-upload-progress { grid-template-columns: 1fr; }
+  .receipt-list-row { grid-template-columns: minmax(0, 1fr) auto; gap: var(--md-space-2); }
+  .receipt-list-main { grid-column: 1; }
+  .receipt-list-total { grid-column: 2; grid-row: 1; text-align: right; }
+  .receipt-list-status { grid-column: 1 / -1; justify-content: flex-start; }
+  .receipt-list-actions { grid-column: 1 / -1; justify-content: stretch; }
+  .receipt-list-actions .btn { width: 100%; }
+
+  .receipt-crop-modal-content,
+  .receipt-review-modal-content { width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 0; }
+  .receipt-crop-modal-content .modal-header,
+  .receipt-review-modal-content .modal-header { padding: var(--md-space-3); }
+  .receipt-crop-body,
+  .receipt-review-body { padding: var(--md-space-3); }
+  .receipt-crop-stage { min-height: 180px; padding: 24px; }
+  .receipt-crop-actions { align-items: stretch; flex-direction: column-reverse; }
+  .receipt-crop-actions .btn { width: 100%; }
+  .receipt-document-fields { grid-template-columns: 1fr; }
+  .receipt-review-toolbar { align-items: stretch; flex-direction: column; }
+  .receipt-review-toolbar .btn { width: 100%; }
+  .receipt-row-fields { grid-template-columns: 1fr; }
+  .receipt-dropped-row { align-items: stretch; flex-direction: column; }
+  .receipt-dropped-row .btn { width: 100%; }
+  .receipt-review-actions { align-items: stretch; flex-direction: column-reverse; }
+  .receipt-review-actions > div { flex-direction: column; }
+  .receipt-review-actions .btn { width: 100%; }
+  .receipt-reader-settings-actions { align-items: stretch; flex-direction: column-reverse; }
+  .receipt-reader-settings-actions .btn { width: 100%; }
+}
+
+.receipt-merge-hints { display: grid; gap: var(--md-space-2); margin-top: var(--md-space-2); }
+.receipt-merge-hint { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--md-space-2);
+  padding: var(--md-space-2) var(--md-space-3); border-radius: var(--md-shape-medium);
+  background: var(--md-surface-2); color: var(--md-on-surface); border: 1px solid var(--md-outline-variant); }
+.receipt-merge-hint .btn { min-height: 44px; }

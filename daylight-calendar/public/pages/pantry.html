@@ -1,0 +1,84 @@
+<turbo-frame id="pantry-content">
+  <header class="content-header pantry-header">
+    <div>
+      <h1>Pantry</h1>
+      <p id="receipt-page-status" class="receipt-page-status" role="status" aria-live="polite">Receipts stay private on this device.</p>
+    </div>
+    <label class="btn btn-primary receipt-scan-button" for="receipt-photo-input">
+      <i class="material-icons" aria-hidden="true">document_scanner</i>
+      Scan receipt
+    </label>
+    <input id="receipt-photo-input" class="receipt-file-input" type="file" accept="image/*" capture="environment">
+  </header>
+
+  <div class="content-scrollable pantry-page">
+    <section class="receipts-panel" aria-labelledby="receipts-heading">
+      <div class="receipts-panel-heading">
+        <div>
+          <h2 id="receipts-heading">Receipts</h2>
+          <p>Photograph a grocery receipt, then review every line before adding it to your pantry history.</p>
+        </div>
+        <button id="refresh-receipts" class="btn btn-secondary" type="button">
+          <i class="material-icons" aria-hidden="true">refresh</i>
+          Refresh
+        </button>
+      </div>
+      <div id="receipt-upload-progress" class="receipt-upload-progress" role="status" aria-live="polite" hidden>
+        <div class="receipt-progress-track" aria-hidden="true"><span id="receipt-progress-bar"></span></div>
+        <span id="receipt-upload-message">Preparing photo…</span>
+      </div>
+      <div id="receipt-list" class="receipt-list" aria-live="polite" aria-busy="true">
+        <div class="receipt-empty"><i class="material-icons spin" aria-hidden="true">refresh</i> Loading receipts…</div>
+      </div>
+    </section>
+  </div>
+
+  <div id="receipt-crop-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="receipt-crop-title">
+    <div class="modal-content receipt-crop-modal-content">
+      <div class="modal-header">
+        <div>
+          <h3 id="receipt-crop-title">Crop receipt</h3>
+          <p>Drag the frame or any corner so only the paper remains.</p>
+        </div>
+        <button class="modal-close" type="button" aria-label="Close crop receipt">&times;</button>
+      </div>
+      <div class="modal-body receipt-crop-body">
+        <div id="receipt-crop-stage" class="receipt-crop-stage">
+          <div id="receipt-crop-surface" class="receipt-crop-surface">
+            <canvas id="receipt-crop-canvas" aria-label="Selected receipt photo"></canvas>
+            <div id="receipt-crop-selection" class="receipt-crop-selection" role="group" aria-label="Crop area">
+              <span class="receipt-crop-shade receipt-crop-shade-top" aria-hidden="true"></span>
+              <button type="button" class="receipt-crop-handle receipt-crop-handle-nw" data-crop-handle="nw" aria-label="Resize crop from top left"></button>
+              <button type="button" class="receipt-crop-handle receipt-crop-handle-ne" data-crop-handle="ne" aria-label="Resize crop from top right"></button>
+              <button type="button" class="receipt-crop-handle receipt-crop-handle-sw" data-crop-handle="sw" aria-label="Resize crop from bottom left"></button>
+              <button type="button" class="receipt-crop-handle receipt-crop-handle-se" data-crop-handle="se" aria-label="Resize crop from bottom right"></button>
+            </div>
+          </div>
+        </div>
+        <div id="receipt-crop-error" class="inline-form-error" role="alert"></div>
+        <div class="form-actions receipt-crop-actions">
+          <button type="button" class="btn btn-secondary modal-cancel">Cancel</button>
+          <button type="button" id="upload-cropped-receipt" class="btn btn-primary">
+            <i class="material-icons" aria-hidden="true">cloud_upload</i>
+            Use this crop
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="receipt-review-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="receipt-review-title">
+    <div class="modal-content receipt-review-modal-content">
+      <div class="modal-header receipt-review-header">
+        <div>
+          <h3 id="receipt-review-title">Review receipt</h3>
+          <p>Check names, quantities, prices, and anything the reader skipped.</p>
+        </div>
+        <button class="modal-close" type="button" aria-label="Close receipt review">&times;</button>
+      </div>
+      <div class="modal-body receipt-review-body">
+        <div id="receipt-review-content"></div>
+      </div>
+    </div>
+  </div>
+</turbo-frame>

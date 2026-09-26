@@ -30,6 +30,16 @@ let selectedListId = null;
 let listsPollTimer = null;
 let listEditInProgress = false;
 let listPeople = [];
+let receiptRecords = [];
+let receiptPollTimer = null;
+let receiptVisibilityListenerAdded = false;
+let activeReceiptReview = null;
+let receiptCropBitmap = null;
+let receiptCropBounds = { x: 0, y: 0, width: 1, height: 1 };
+let receiptCropGesture = null;
+let receiptCropResizeObserver = null;
+let receiptUploadRequest = null;
+const RECEIPT_CATEGORIES = ['produce', 'dairy', 'meat', 'bakery', 'pantry', 'frozen', 'snacks', 'drinks', 'household', 'other'];
 let choreProfiles = [];
 let choreRewards = [];
 let pendingStarAwards = [];
@@ -237,6 +247,9 @@ function initializeLoadedFrame(frame) {
       break;
     case 'lists-content':
       initializeListsPage();
+      break;
+    case 'pantry-content':
+      initializePantryPage();
       break;
     case 'games-content':
       initializeGamesPage();
@@ -829,6 +842,942 @@ function initializeListsPage() {
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden && isListsPageVisible() && !listEditInProgress) loadHouseholdLists({ preserveEdit: true });
     });
+  }
+}
+
+function isPantryPageVisible() {
+  const frame = document.getElementById('pantry-content');
+  return Boolean(frame?.classList.contains('active-content'));
+}
+
+async function receiptRequest(url, options = {}) {
+  const response = await fetch(url, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }
+  });
+  const data = response.status === 204 ? null : await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data?.error || 'The receipt request could not be completed.');
+  return data;
+}
+
+function initializePantryPage() {
+  const frame = document.getElementById('pantry-content');
+  if (!frame || frame.dataset.pantryInitialized === 'true') return;
+  frame.dataset.pantryInitialized = 'true';
+
+  const photoInput = document.getElementById('receipt-photo-input');
+  const cropSelection = document.getElementById('receipt-crop-selection');
+  const reviewContent = document.getElementById('receipt-review-content');
+
+  photoInput?.addEventListener('change', async event => {
+    const file = event.target.files?.[0];
+    if (file) await openReceiptCrop(file);
+    event.target.value = '';
+  });
+  document.getElementById('refresh-receipts')?.addEventListener('click', () => loadReceipts());
+  document.getElementById('upload-cropped-receipt')?.addEventListener('click', uploadCroppedReceipt);
+  document.getElementById('receipt-list')?.addEventListener('click', handleReceiptListClick);
+  reviewContent?.addEventListener('input', handleReceiptReviewInput);
+  reviewContent?.addEventListener('change', handleReceiptReviewInput);
+  reviewContent?.addEventListener('click', handleReceiptReviewClick);
+  reviewContent?.addEventListener('submit', handleReceiptReviewSubmit);
+
+  cropSelection?.addEventListener('pointerdown', beginReceiptCropGesture);
+  cropSelection?.addEventListener('pointermove', moveReceiptCropGesture);
+  cropSelection?.addEventListener('pointerup', endReceiptCropGesture);
+  cropSelection?.addEventListener('pointercancel', endReceiptCropGesture);
+  document.getElementById('receipt-crop-modal')?.querySelectorAll('.modal-close, .modal-cancel').forEach(button => {
+    button.addEventListener('click', clearReceiptCrop);
+  });
+
+  if (window.ResizeObserver) {
+    receiptCropResizeObserver?.disconnect();
+    receiptCropResizeObserver = new ResizeObserver(() => {
+      if (receiptCropBitmap && document.getElementById('receipt-crop-modal')?.classList.contains('show')) {
+        renderReceiptCropPreview();
+      }
+    });
+    const stage = document.getElementById('receipt-crop-stage');
+    if (stage) receiptCropResizeObserver.observe(stage);
+  }
+
+  if (!receiptVisibilityListenerAdded) {
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && isPantryPageVisible() && receiptRecords.some(receipt => ['queued', 'processing'].includes(receipt.status))) {
+        loadReceipts();
+      }
+    });
+    receiptVisibilityListenerAdded = true;
+  }
+
+  loadReceipts();
+}
+
+function receiptStatusDefinition(status) {
+  return {
+    queued: { label: 'Queued', className: 'is-queued' },
+    processing: { label: 'Reading… (about 4 min)', className: 'is-processing' },
+    review: { label: 'Needs review', className: 'is-review' },
+    confirmed: { label: 'Confirmed', className: 'is-confirmed' },
+    failed: { label: 'Failed — Retry', className: 'is-failed' }
+  }[status] || { label: 'Unknown', className: 'is-failed' };
+}
+
+function formatReceiptMoney(value) {
+  if (value === null || value === undefined || value === '') return '—';
+  const amount = Number(value);
+  return Number.isFinite(amount) ? `$${amount.toFixed(2)}` : '—';
+}
+
+function hasReceiptNumber(value) {
+  return value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
+}
+
+function formatReceiptDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))) return value || 'Date not set';
+  const date = new Date(`${value}T12:00:00`);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function setReceiptPageStatus(message, isError = false) {
+  const status = document.getElementById('receipt-page-status');
+  if (!status) return;
+  status.textContent = message;
+  status.classList.toggle('is-error', isError);
+}
+
+async function loadReceipts() {
+  const list = document.getElementById('receipt-list');
+  if (!list) return;
+  list.setAttribute('aria-busy', 'true');
+  try {
+    const receipts = await receiptRequest('api/receipts');
+    receiptRecords = Array.isArray(receipts) ? receipts : [];
+    renderReceiptList();
+    const reading = receiptRecords.filter(receipt => ['queued', 'processing'].includes(receipt.status)).length;
+    setReceiptPageStatus(reading ? `${reading} receipt${reading === 1 ? '' : 's'} waiting or being read.` : 'Receipts stay private on this device.');
+  } catch (error) {
+    list.innerHTML = `<div class="receipt-empty receipt-error"><i class="material-icons" aria-hidden="true">error_outline</i><span>${escapeHtml(error.message)}</span><button type="button" class="btn btn-secondary" data-reload-receipts>Try again</button></div>`;
+    setReceiptPageStatus(error.message, true);
+  } finally {
+    list.setAttribute('aria-busy', 'false');
+    updateReceiptPolling();
+  }
+}
+
+function renderReceiptList() {
+  const list = document.getElementById('receipt-list');
+  if (!list) return;
+  if (!receiptRecords.length) {
+    list.innerHTML = '<div class="receipt-empty"><i class="material-icons" aria-hidden="true">receipt_long</i><strong>No receipts yet</strong><span>Scan one from a phone or choose a photo on the wall panel.</span></div>';
+    return;
+  }
+
+  list.innerHTML = receiptRecords.map(receipt => {
+    const status = receiptStatusDefinition(receipt.status);
+    const id = escapeReceiptAttribute(receipt.id);
+    const store = receipt.store || 'Store not set';
+    const action = receipt.status === 'review'
+      ? `<button type="button" class="btn btn-primary" data-review-receipt="${id}">Review</button>`
+      : receipt.status === 'confirmed'
+        ? `<button type="button" class="btn btn-secondary" data-export-receipt="${id}"><i class="material-icons" aria-hidden="true">download</i> CSV</button>`
+        : '';
+    const statusMarkup = receipt.status === 'failed'
+      ? `<button type="button" class="receipt-status-chip ${status.className}" data-retry-receipt="${id}">${escapeHtml(status.label)}</button>`
+      : `<span class="receipt-status-chip ${status.className}">${escapeHtml(status.label)}</span>`;
+    const error = receipt.status === 'failed' && receipt.error
+      ? `<p class="receipt-row-error">${escapeHtml(receipt.error)}</p>` : '';
+    return `
+      <article class="receipt-list-row">
+        <div class="receipt-list-main">
+          <strong>${escapeHtml(store)}</strong>
+          <span>${escapeHtml(formatReceiptDate(receipt.date))}</span>
+          ${error}
+        </div>
+        <div class="receipt-list-total"><span>Total</span><strong>${escapeHtml(formatReceiptMoney(receipt.total ?? receipt.subtotal))}</strong></div>
+        <div class="receipt-list-status">${statusMarkup}</div>
+        <div class="receipt-list-actions">${action}</div>
+      </article>`;
+  }).join('');
+}
+
+function updateReceiptPolling() {
+  const needsPolling = receiptRecords.some(receipt => ['queued', 'processing'].includes(receipt.status));
+  if (needsPolling && !receiptPollTimer) {
+    receiptPollTimer = window.setInterval(() => {
+      if (!document.hidden && isPantryPageVisible()) loadReceipts();
+    }, 10000);
+  } else if (!needsPolling && receiptPollTimer) {
+    clearInterval(receiptPollTimer);
+    receiptPollTimer = null;
+  }
+}
+
+async function handleReceiptListClick(event) {
+  if (event.target.closest('[data-reload-receipts]')) {
+    await loadReceipts();
+    return;
+  }
+  const review = event.target.closest('[data-review-receipt]');
+  if (review) {
+    await openReceiptReview(review.dataset.reviewReceipt);
+    return;
+  }
+  const retry = event.target.closest('[data-retry-receipt]');
+  if (retry) {
+    retry.disabled = true;
+    try {
+      await receiptRequest(`api/receipts/${encodeURIComponent(retry.dataset.retryReceipt)}/retry`, { method: 'POST' });
+      setReceiptPageStatus('Receipt queued again. Reading takes about 4 minutes.');
+      await loadReceipts();
+    } catch (error) {
+      setReceiptPageStatus(error.message, true);
+      retry.disabled = false;
+    }
+    return;
+  }
+  const exportButton = event.target.closest('[data-export-receipt]');
+  if (exportButton) await exportReceiptCsv(exportButton.dataset.exportReceipt, exportButton);
+}
+
+async function decodeReceiptPhoto(file) {
+  if ('createImageBitmap' in window) {
+    try {
+      return await createImageBitmap(file, { imageOrientation: 'from-image' });
+    } catch (error) {
+      console.warn('[WARN] EXIF-aware image decoding failed; using the browser image decoder.', error);
+    }
+  }
+  const url = URL.createObjectURL(file);
+  try {
+    const image = new Image();
+    image.decoding = 'async';
+    image.src = url;
+    await image.decode();
+    return image;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function openReceiptCrop(file) {
+  const errorBox = document.getElementById('receipt-crop-error');
+  if (errorBox) errorBox.textContent = '';
+  if (!file.type.startsWith('image/')) {
+    setReceiptPageStatus('Choose a photo of a receipt.', true);
+    return;
+  }
+  clearReceiptCrop();
+  try {
+    receiptCropBitmap = await decodeReceiptPhoto(file);
+    receiptCropBounds = { x: 0, y: 0, width: 1, height: 1 };
+    const modal = document.getElementById('receipt-crop-modal');
+    modal?.classList.add('show');
+    window.requestAnimationFrame(renderReceiptCropPreview);
+  } catch (error) {
+    setReceiptPageStatus(`This photo could not be opened: ${error.message}`, true);
+  }
+}
+
+function receiptBitmapWidth() {
+  return receiptCropBitmap?.width || receiptCropBitmap?.naturalWidth || 0;
+}
+
+function receiptBitmapHeight() {
+  return receiptCropBitmap?.height || receiptCropBitmap?.naturalHeight || 0;
+}
+
+function renderReceiptCropPreview() {
+  const canvas = document.getElementById('receipt-crop-canvas');
+  const surface = document.getElementById('receipt-crop-surface');
+  const stage = document.getElementById('receipt-crop-stage');
+  if (!canvas || !surface || !stage || !receiptCropBitmap) return;
+  const sourceWidth = receiptBitmapWidth();
+  const sourceHeight = receiptBitmapHeight();
+  const maxWidth = Math.max(1, stage.clientWidth - 56);
+  const maxHeight = Math.max(180, Math.min(window.innerHeight * 0.48, 560));
+  const scale = Math.min(maxWidth / sourceWidth, maxHeight / sourceHeight, 1);
+  const width = Math.max(1, Math.round(sourceWidth * scale));
+  const height = Math.max(1, Math.round(sourceHeight * scale));
+  surface.style.width = `${width}px`;
+  surface.style.height = `${height}px`;
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d');
+  context.clearRect(0, 0, width, height);
+  context.drawImage(receiptCropBitmap, 0, 0, width, height);
+  updateReceiptCropSelection();
+}
+
+function updateReceiptCropSelection() {
+  const selection = document.getElementById('receipt-crop-selection');
+  if (!selection) return;
+  selection.style.left = `${receiptCropBounds.x * 100}%`;
+  selection.style.top = `${receiptCropBounds.y * 100}%`;
+  selection.style.width = `${receiptCropBounds.width * 100}%`;
+  selection.style.height = `${receiptCropBounds.height * 100}%`;
+}
+
+function beginReceiptCropGesture(event) {
+  if (event.button !== 0) return;
+  const surface = document.getElementById('receipt-crop-surface');
+  const selection = document.getElementById('receipt-crop-selection');
+  if (!surface || !selection) return;
+  const rect = surface.getBoundingClientRect();
+  receiptCropGesture = {
+    pointerId: event.pointerId,
+    handle: event.target.closest('[data-crop-handle]')?.dataset.cropHandle || 'move',
+    startX: event.clientX,
+    startY: event.clientY,
+    surfaceWidth: rect.width,
+    surfaceHeight: rect.height,
+    bounds: { ...receiptCropBounds }
+  };
+  selection.setPointerCapture(event.pointerId);
+  event.preventDefault();
+}
+
+function moveReceiptCropGesture(event) {
+  if (!receiptCropGesture || event.pointerId !== receiptCropGesture.pointerId) return;
+  const { handle, bounds, surfaceWidth, surfaceHeight } = receiptCropGesture;
+  const dx = (event.clientX - receiptCropGesture.startX) / surfaceWidth;
+  const dy = (event.clientY - receiptCropGesture.startY) / surfaceHeight;
+  const minWidth = Math.min(0.35, Math.max(0.08, 44 / surfaceWidth));
+  const minHeight = Math.min(0.35, Math.max(0.08, 44 / surfaceHeight));
+  let { x, y, width, height } = bounds;
+
+  if (handle === 'move') {
+    x = Math.min(1 - width, Math.max(0, bounds.x + dx));
+    y = Math.min(1 - height, Math.max(0, bounds.y + dy));
+  } else {
+    if (handle.includes('w')) {
+      const nextX = Math.min(bounds.x + bounds.width - minWidth, Math.max(0, bounds.x + dx));
+      width = bounds.width + bounds.x - nextX;
+      x = nextX;
+    }
+    if (handle.includes('e')) width = Math.min(1 - bounds.x, Math.max(minWidth, bounds.width + dx));
+    if (handle.includes('n')) {
+      const nextY = Math.min(bounds.y + bounds.height - minHeight, Math.max(0, bounds.y + dy));
+      height = bounds.height + bounds.y - nextY;
+      y = nextY;
+    }
+    if (handle.includes('s')) height = Math.min(1 - bounds.y, Math.max(minHeight, bounds.height + dy));
+  }
+  receiptCropBounds = { x, y, width, height };
+  updateReceiptCropSelection();
+  event.preventDefault();
+}
+
+function endReceiptCropGesture(event) {
+  if (!receiptCropGesture || event.pointerId !== receiptCropGesture.pointerId) return;
+  const selection = document.getElementById('receipt-crop-selection');
+  if (selection?.hasPointerCapture(event.pointerId)) selection.releasePointerCapture(event.pointerId);
+  receiptCropGesture = null;
+}
+
+function clearReceiptCrop() {
+  if (receiptCropBitmap?.close) receiptCropBitmap.close();
+  receiptCropBitmap = null;
+  receiptCropGesture = null;
+  receiptCropBounds = { x: 0, y: 0, width: 1, height: 1 };
+  const canvas = document.getElementById('receipt-crop-canvas');
+  if (canvas) {
+    canvas.width = 1;
+    canvas.height = 1;
+  }
+}
+
+function canvasToJpeg(canvas) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('The cropped photo could not be encoded.')), 'image/jpeg', 0.85);
+  });
+}
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('The cropped photo could not be read.'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function setReceiptUploadProgress(message, percent = 0, isError = false) {
+  const progress = document.getElementById('receipt-upload-progress');
+  const messageElement = document.getElementById('receipt-upload-message');
+  const bar = document.getElementById('receipt-progress-bar');
+  if (!progress || !messageElement || !bar) return;
+  progress.hidden = false;
+  progress.classList.toggle('is-error', isError);
+  messageElement.textContent = message;
+  bar.style.transform = `scaleX(${Math.max(0, Math.min(100, percent)) / 100})`;
+}
+
+function uploadReceiptImage(image) {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    receiptUploadRequest = request;
+    request.open('POST', 'api/receipts');
+    request.setRequestHeader('Content-Type', 'application/json');
+    request.upload.addEventListener('progress', event => {
+      const percent = event.lengthComputable ? Math.round((event.loaded / event.total) * 100) : 0;
+      setReceiptUploadProgress(event.lengthComputable ? `Uploading receipt… ${percent}%` : 'Uploading receipt…', percent);
+    });
+    request.addEventListener('load', () => {
+      receiptUploadRequest = null;
+      let data = {};
+      try { data = JSON.parse(request.responseText || '{}'); } catch (error) { /* handled below */ }
+      if (request.status >= 200 && request.status < 300) resolve(data);
+      else reject(new Error(data.error || 'The receipt could not be uploaded.'));
+    });
+    request.addEventListener('error', () => {
+      receiptUploadRequest = null;
+      reject(new Error('The receipt upload lost its connection. Try again.'));
+    });
+    request.send(JSON.stringify({ image }));
+  });
+}
+
+async function uploadCroppedReceipt() {
+  const button = document.getElementById('upload-cropped-receipt');
+  const errorBox = document.getElementById('receipt-crop-error');
+  if (!receiptCropBitmap || !button) return;
+  button.disabled = true;
+  if (errorBox) errorBox.textContent = '';
+  try {
+    setReceiptUploadProgress('Preparing cropped photo…', 2);
+    const sourceWidth = receiptBitmapWidth();
+    const sourceHeight = receiptBitmapHeight();
+    const sourceX = Math.round(receiptCropBounds.x * sourceWidth);
+    const sourceY = Math.round(receiptCropBounds.y * sourceHeight);
+    const cropWidth = Math.max(1, Math.round(receiptCropBounds.width * sourceWidth));
+    const cropHeight = Math.max(1, Math.round(receiptCropBounds.height * sourceHeight));
+    const scale = Math.min(1, 2000 / Math.max(cropWidth, cropHeight));
+    const output = document.createElement('canvas');
+    output.width = Math.max(1, Math.round(cropWidth * scale));
+    output.height = Math.max(1, Math.round(cropHeight * scale));
+    output.getContext('2d').drawImage(
+      receiptCropBitmap,
+      sourceX, sourceY, cropWidth, cropHeight,
+      0, 0, output.width, output.height
+    );
+    const jpeg = await canvasToJpeg(output);
+    const image = await blobToDataUrl(jpeg);
+    document.getElementById('receipt-crop-modal')?.classList.remove('show');
+    clearReceiptCrop();
+    await uploadReceiptImage(image);
+    setReceiptUploadProgress('Uploaded — queued for reading (about 4 minutes).', 100);
+    setReceiptPageStatus('Receipt queued. Reading takes about 4 minutes.');
+    await loadReceipts();
+  } catch (error) {
+    setReceiptUploadProgress(error.message, 0, true);
+    if (document.getElementById('receipt-crop-modal')?.classList.contains('show') && errorBox) errorBox.textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function escapeReceiptAttribute(value) {
+  return escapeHtml(value).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function receiptCategoryOptions(selectedCategory) {
+  const selected = RECEIPT_CATEGORIES.includes(selectedCategory) ? selectedCategory : 'other';
+  return RECEIPT_CATEGORIES.map(category => `<option value="${escapeReceiptAttribute(category)}"${category === selected ? ' selected' : ''}>${escapeHtml(category.charAt(0).toUpperCase() + category.slice(1))}</option>`).join('');
+}
+
+const RECEIPT_FLAG_LABELS = {
+  quantity_reset_without_receipt_evidence: 'Quantity set to 1',
+  quantity_from_weight: 'Weighed item',
+  quantity_from_multi_buy: 'Multi-buy',
+  quantity_from_unit_price: 'Weight worked out from the price',
+  manually_added: 'Added by you',
+  restored: 'Restored',
+  added_from_reconciliation: 'Added to make the receipt add up'
+};
+
+function humanizeReceiptFlag(flag) {
+  return RECEIPT_FLAG_LABELS[flag] ||
+    String(flag || '').replace(/_/g, ' ').replace(/^./, character => character.toUpperCase());
+}
+
+// When the gap between the rows and the printed subtotal is exactly a repeat of a
+// line the reader counted more than once, it almost always merged identical printed
+// lines (seen on a real ALDI receipt: two "Pineapples" lines became one row). Offer
+// the fix as one tap rather than asking someone to type a row on a touchscreen.
+function findReceiptMergeHints(reconciliation) {
+  const difference = Number(reconciliation.difference);
+  if (!(difference > 0.009)) return [];
+  const hints = [];
+  const seen = new Set();
+  (activeReceiptReview?.rows || []).forEach((row, index) => {
+    const counted = Number(row.modelQuantity);
+    if (row.include === false || !(counted > 1)) return;
+    if (Math.abs((Number(row.price) || 0) * (counted - 1) - difference) >= 0.011) return;
+    const label = row.name || row.printed || 'This item';
+    if (seen.has(label)) return;
+    seen.add(label);
+    hints.push({ index, label, counted, missing: counted - 1, price: Number(row.price) || 0 });
+  });
+  return hints;
+}
+
+async function openReceiptReview(id) {
+  setReceiptPageStatus('Opening receipt…');
+  try {
+    const receipt = await receiptRequest(`api/receipts/${encodeURIComponent(id)}`);
+    if (receipt.status !== 'review') {
+      setReceiptPageStatus('This receipt is not ready for review yet.', true);
+      await loadReceipts();
+      return;
+    }
+    activeReceiptReview = JSON.parse(JSON.stringify(receipt));
+    renderReceiptReview();
+    document.getElementById('receipt-review-modal')?.classList.add('show');
+    setReceiptPageStatus('Review the receipt, then confirm it.');
+  } catch (error) {
+    setReceiptPageStatus(error.message, true);
+  }
+}
+
+function renderReceiptReviewRow(row, index) {
+  const printed = row._isNew && !row.printed ? 'New row — its name will become the printed text.' : row.printed;
+  const remembered = row.remembered ? '<span class="receipt-remembered-badge">Remembered</span>' : '';
+  const flags = Array.isArray(row.flags) && row.flags.length
+    ? `<div class="receipt-row-flags">${row.flags.map(flag => `<span>${escapeHtml(humanizeReceiptFlag(flag))}</span>`).join('')}</div>` : '';
+  return `
+    <article class="receipt-review-row" data-receipt-row-index="${escapeReceiptAttribute(index)}">
+      <div class="receipt-row-heading">
+        <label class="receipt-include-toggle" for="receipt-include-${escapeReceiptAttribute(index)}">
+          <input id="receipt-include-${escapeReceiptAttribute(index)}" type="checkbox" data-receipt-field="include"${row.include === false ? '' : ' checked'}>
+          <span>Include</span>
+        </label>
+        <button type="button" class="btn btn-secondary receipt-remove-row" data-remove-receipt-row="${escapeReceiptAttribute(index)}">
+          <i class="material-icons" aria-hidden="true">remove_circle_outline</i>
+          Remove
+        </button>
+      </div>
+      <div class="receipt-printed-text"><span>Printed</span><strong>${escapeHtml(printed || '')}</strong>${remembered}</div>
+      <div class="receipt-row-fields">
+        <label class="receipt-field receipt-field-name"><span>Name</span><input type="text" data-receipt-field="name" maxlength="300" value="${escapeReceiptAttribute(row.name || '')}" required></label>
+        <label class="receipt-field"><span>Quantity</span><input type="number" data-receipt-field="quantity" min="0.01" max="100000" step="0.01" inputmode="decimal" value="${escapeReceiptAttribute(row.quantity ?? 1)}" required></label>
+        <label class="receipt-field"><span>Unit</span><input type="text" data-receipt-field="unit" maxlength="30" value="${escapeReceiptAttribute(row.unit || 'each')}" required></label>
+        <label class="receipt-field"><span>Price</span><input type="number" data-receipt-field="price" min="0" max="1000000" step="0.01" inputmode="decimal" value="${escapeReceiptAttribute(row.price ?? 0)}" required></label>
+        <label class="receipt-field receipt-field-category"><span>Category</span><select data-receipt-field="category">${receiptCategoryOptions(row.category)}</select></label>
+      </div>
+      ${flags}
+    </article>`;
+}
+
+function renderDroppedReceiptLines() {
+  const dropped = Array.isArray(activeReceiptReview?.dropped) ? activeReceiptReview.dropped : [];
+  if (!dropped.length) return '';
+  return `
+    <details class="receipt-dropped-lines">
+      <summary>Dropped lines (${escapeHtml(dropped.length)})</summary>
+      <p>The reader removed these as payment, tax, total, or weight lines. Restore any real item.</p>
+      <div class="receipt-dropped-list">
+        ${dropped.map((line, index) => `
+          <div class="receipt-dropped-row">
+            <div><strong>${escapeHtml(line.printed || 'Unlabeled line')}</strong><span>${escapeHtml(line.reason || 'Removed by the reader')}${hasReceiptNumber(line.price) ? ` · ${escapeHtml(formatReceiptMoney(line.price))}` : ''}</span></div>
+            <button type="button" class="btn btn-secondary" data-restore-receipt-line="${escapeReceiptAttribute(index)}">Restore</button>
+          </div>`).join('')}
+      </div>
+    </details>`;
+}
+
+function renderReceiptReview() {
+  const content = document.getElementById('receipt-review-content');
+  if (!content || !activeReceiptReview) return;
+  content.innerHTML = `
+    <form id="receipt-review-form">
+      <div id="receipt-reconciliation" class="receipt-reconciliation" role="status" aria-live="polite"></div>
+      <div class="receipt-document-fields">
+        <label class="receipt-field"><span>Store</span><input id="receipt-review-store" type="text" maxlength="120" value="${escapeReceiptAttribute(activeReceiptReview.store || '')}" placeholder="Store name"></label>
+        <label class="receipt-field"><span>Date</span><input id="receipt-review-date" type="date" value="${escapeReceiptAttribute(activeReceiptReview.date || '')}" required></label>
+        <div class="receipt-review-total"><span>Receipt total</span><strong>${escapeHtml(formatReceiptMoney(activeReceiptReview.total ?? activeReceiptReview.subtotal))}</strong></div>
+      </div>
+      <div class="receipt-review-toolbar">
+        <div id="receipt-review-summary"></div>
+        <button type="button" class="btn btn-secondary" data-add-receipt-row><i class="material-icons" aria-hidden="true">add</i> Add row</button>
+      </div>
+      <div id="receipt-review-rows" class="receipt-review-rows">
+        ${(activeReceiptReview.rows || []).map(renderReceiptReviewRow).join('')}
+      </div>
+      ${renderDroppedReceiptLines()}
+      <div id="receipt-review-status" class="receipt-review-status" role="status" aria-live="polite"></div>
+      <p class="receipt-photo-note">The photo is deleted when you confirm.</p>
+      <div class="receipt-review-actions">
+        <button type="button" class="btn btn-danger" data-delete-receipt><i class="material-icons" aria-hidden="true">delete</i> Delete receipt</button>
+        <div>
+          <button type="button" class="btn btn-secondary" data-save-receipt>Save changes</button>
+          <button type="button" class="btn btn-secondary" data-export-current-receipt><i class="material-icons" aria-hidden="true">download</i> Export CSV</button>
+          <button type="submit" class="btn btn-primary"><i class="material-icons" aria-hidden="true">check_circle</i> Confirm</button>
+        </div>
+      </div>
+    </form>`;
+  // Always recompute from the current rows: after add, remove, restore or the one-tap
+  // fix, the stored reconciliation is stale until the next save.
+  updateReceiptReconciliation();
+}
+
+function readReceiptReviewRows() {
+  if (!activeReceiptReview) return;
+  document.querySelectorAll('#receipt-review-rows .receipt-review-row').forEach(card => {
+    const index = Number(card.dataset.receiptRowIndex);
+    const row = activeReceiptReview.rows[index];
+    if (!row) return;
+    row.include = card.querySelector('[data-receipt-field="include"]')?.checked !== false;
+    row.name = card.querySelector('[data-receipt-field="name"]')?.value || '';
+    row.quantity = Number(card.querySelector('[data-receipt-field="quantity"]')?.value);
+    row.unit = card.querySelector('[data-receipt-field="unit"]')?.value || '';
+    row.price = Number(card.querySelector('[data-receipt-field="price"]')?.value);
+    row.category = card.querySelector('[data-receipt-field="category"]')?.value || 'other';
+  });
+  const store = document.getElementById('receipt-review-store');
+  const date = document.getElementById('receipt-review-date');
+  if (store) activeReceiptReview.store = store.value;
+  if (date) activeReceiptReview.date = date.value;
+}
+
+function calculateReceiptReviewReconciliation() {
+  const rows = (activeReceiptReview?.rows || []).filter(row => row.include !== false);
+  const rowsTotal = Math.round((rows.reduce((sum, row) => sum + (Number(row.price) || 0), 0) + Number.EPSILON) * 100) / 100;
+  const subtotal = hasReceiptNumber(activeReceiptReview?.subtotal) ? Number(activeReceiptReview.subtotal) : null;
+  const itemsPrinted = Number.isInteger(activeReceiptReview?.itemsPrinted) ? activeReceiptReview.itemsPrinted : null;
+  const difference = subtotal === null ? null : Math.round(((subtotal - rowsTotal) + Number.EPSILON) * 100) / 100;
+  return {
+    status: subtotal !== null && Math.abs(difference) < 0.01 && (itemsPrinted === null || itemsPrinted === rows.length) ? 'ok' : 'mismatch',
+    rowsTotal,
+    subtotal,
+    difference,
+    count: rows.length,
+    itemsPrinted,
+    countDifference: itemsPrinted === null ? null : itemsPrinted - rows.length
+  };
+}
+
+function updateReceiptReconciliation(reconciliation = calculateReceiptReviewReconciliation()) {
+  const banner = document.getElementById('receipt-reconciliation');
+  const summary = document.getElementById('receipt-review-summary');
+  if (!banner || !summary) return;
+  const itemLabel = `${reconciliation.count} item${reconciliation.count === 1 ? '' : 's'}`;
+  let message;
+  if (reconciliation.status === 'ok') {
+    message = `${itemLabel} · ${formatReceiptMoney(reconciliation.rowsTotal)} — matches the receipt`;
+  } else if (reconciliation.subtotal !== null && Number.isFinite(Number(reconciliation.subtotal))) {
+    const difference = Number(reconciliation.difference) || 0;
+    const issue = difference >= 0
+      ? `${formatReceiptMoney(Math.abs(difference))} is missing. Check for skipped lines.`
+      : `${formatReceiptMoney(Math.abs(difference))} is over. Check for duplicate or incorrect prices.`;
+    message = `These rows add up to ${formatReceiptMoney(reconciliation.rowsTotal)} but the receipt says ${formatReceiptMoney(reconciliation.subtotal)} — ${issue}`;
+  } else {
+    message = `These rows add up to ${formatReceiptMoney(reconciliation.rowsTotal)}. The receipt subtotal was not detected, so check every line.`;
+  }
+  if (reconciliation.itemsPrinted !== null && reconciliation.countDifference !== 0) {
+    message += ` ${reconciliation.count} rows are included; the receipt says ${reconciliation.itemsPrinted} items.`;
+  }
+  banner.textContent = message;
+  let hintBox = document.getElementById('receipt-merge-hints');
+  if (!hintBox) {
+    hintBox = document.createElement('div');
+    hintBox.id = 'receipt-merge-hints';
+    hintBox.className = 'receipt-merge-hints';
+    banner.insertAdjacentElement('afterend', hintBox);
+  }
+  const hints = reconciliation.status === 'ok' ? [] : findReceiptMergeHints(reconciliation);
+  hintBox.hidden = hints.length === 0;
+  hintBox.innerHTML = hints.map(hint => `
+    <div class="receipt-merge-hint">
+      <span>${escapeHtml(hint.label)} may be on the receipt ${hint.counted} times — the reader counted ${hint.counted} but listed it once.</span>
+      <button type="button" class="btn btn-secondary" data-duplicate-receipt-row="${hint.index}">
+        <i class="material-icons" aria-hidden="true">add</i> Add ${hint.missing === 1 ? 'another' : hint.missing + ' more'} ${escapeHtml(hint.label)}
+      </button>
+    </div>`).join('');
+  banner.classList.toggle('is-match', reconciliation.status === 'ok');
+  banner.classList.toggle('needs-attention', reconciliation.status !== 'ok');
+  summary.textContent = `${itemLabel} included · ${formatReceiptMoney(reconciliation.rowsTotal)} row total`;
+}
+
+function handleReceiptReviewInput() {
+  readReceiptReviewRows();
+  updateReceiptReconciliation();
+}
+
+async function handleReceiptReviewClick(event) {
+  const duplicate = event.target.closest('[data-duplicate-receipt-row]');
+  if (duplicate) {
+    readReceiptReviewRows();
+    const index = Number(duplicate.dataset.duplicateReceiptRow);
+    const source = activeReceiptReview.rows[index];
+    if (!source) return;
+    const copies = Math.max(1, Number(source.modelQuantity) - 1);
+    const added = Array.from({ length: copies }, (_, n) => ({
+      ...source,
+      id: `dup-${Date.now()}-${n}`,
+      modelQuantity: 1,
+      flags: ['added_from_reconciliation'],
+      _isNew: true
+    }));
+    source.modelQuantity = 1;
+    activeReceiptReview.rows.splice(index + 1, 0, ...added);
+    renderReceiptReview();
+    return;
+  }
+  const remove = event.target.closest('[data-remove-receipt-row]');
+  if (remove) {
+    readReceiptReviewRows();
+    activeReceiptReview.rows.splice(Number(remove.dataset.removeReceiptRow), 1);
+    renderReceiptReview();
+    return;
+  }
+  if (event.target.closest('[data-add-receipt-row]')) {
+    readReceiptReviewRows();
+    activeReceiptReview.rows.push({
+      id: `new-${Date.now()}`,
+      printed: '',
+      name: '',
+      category: 'other',
+      quantity: 1,
+      unit: 'each',
+      price: 0,
+      include: true,
+      remembered: false,
+      flags: ['manually_added'],
+      _isNew: true
+    });
+    renderReceiptReview();
+    document.querySelector('#receipt-review-rows .receipt-review-row:last-child [data-receipt-field="name"]')?.focus();
+    return;
+  }
+  const restore = event.target.closest('[data-restore-receipt-line]');
+  if (restore) {
+    readReceiptReviewRows();
+    const line = activeReceiptReview.dropped?.[Number(restore.dataset.restoreReceiptLine)];
+    if (!line) return;
+    activeReceiptReview.rows.push({
+      id: `restored-${Date.now()}`,
+      printed: line.printed || '',
+      name: line.printed || '',
+      category: 'other',
+      quantity: 1,
+      unit: 'each',
+      price: Number(line.price) || 0,
+      include: true,
+      remembered: false,
+      flags: ['restored'],
+      _isNew: true
+    });
+    renderReceiptReview();
+    const restoredCard = document.querySelector('#receipt-review-rows .receipt-review-row:last-child');
+    restoredCard?.scrollIntoView({ block: 'nearest' });
+    return;
+  }
+  const saveButton = event.target.closest('[data-save-receipt]');
+  if (saveButton) {
+    await saveActiveReceiptReview(saveButton, true);
+    return;
+  }
+  const exportButton = event.target.closest('[data-export-current-receipt]');
+  if (exportButton) {
+    const saved = await saveActiveReceiptReview(exportButton, false);
+    if (saved) await exportReceiptCsv(activeReceiptReview.id, exportButton);
+    return;
+  }
+  if (event.target.closest('[data-delete-receipt]')) await deleteActiveReceipt();
+}
+
+async function handleReceiptReviewSubmit(event) {
+  if (event.target.id !== 'receipt-review-form') return;
+  event.preventDefault();
+  const submit = event.submitter || event.target.querySelector('[type="submit"]');
+  const saved = await saveActiveReceiptReview(submit, false);
+  if (!saved) return;
+  setReceiptReviewStatus('Confirming receipt…');
+  try {
+    await receiptRequest(`api/receipts/${encodeURIComponent(activeReceiptReview.id)}/confirm`, { method: 'POST' });
+    document.getElementById('receipt-review-modal')?.classList.remove('show');
+    activeReceiptReview = null;
+    setReceiptPageStatus('Receipt confirmed. Its photo has been deleted.');
+    await loadReceipts();
+  } catch (error) {
+    setReceiptReviewStatus(error.message, true);
+  } finally {
+    if (submit) submit.disabled = false;
+  }
+}
+
+function receiptReviewPayload() {
+  readReceiptReviewRows();
+  const rows = activeReceiptReview.rows.map(row => {
+    const result = {
+      printed: row.printed || row.name,
+      name: row.name.trim(),
+      category: RECEIPT_CATEGORIES.includes(row.category) ? row.category : 'other',
+      quantity: Number(row.quantity),
+      unit: row.unit.trim(),
+      price: Number(row.price),
+      include: row.include !== false
+    };
+    if (!row._isNew) result.id = row.id;
+    return result;
+  });
+  return { store: activeReceiptReview.store.trim(), date: activeReceiptReview.date, rows };
+}
+
+function setReceiptReviewStatus(message, isError = false) {
+  const status = document.getElementById('receipt-review-status');
+  if (!status) return;
+  status.textContent = message;
+  status.classList.toggle('is-error', isError);
+}
+
+async function saveActiveReceiptReview(button, rerender) {
+  if (!activeReceiptReview) return false;
+  const form = document.getElementById('receipt-review-form');
+  if (form && !form.reportValidity()) return false;
+  if (button) button.disabled = true;
+  setReceiptReviewStatus('Saving corrections…');
+  try {
+    const saved = await receiptRequest(`api/receipts/${encodeURIComponent(activeReceiptReview.id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(receiptReviewPayload())
+    });
+    activeReceiptReview = JSON.parse(JSON.stringify(saved));
+    if (rerender) {
+      renderReceiptReview();
+      setReceiptReviewStatus('Changes saved.');
+    }
+    return true;
+  } catch (error) {
+    setReceiptReviewStatus(error.message, true);
+    return false;
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+async function exportReceiptCsv(id, button) {
+  if (button) button.disabled = true;
+  try {
+    const response = await fetch(`api/receipts/${encodeURIComponent(id)}/csv`);
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || 'The CSV could not be exported.');
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `receipt-${id}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    if (activeReceiptReview?.id === id) setReceiptReviewStatus('CSV exported.');
+    else setReceiptPageStatus('CSV exported.');
+  } catch (error) {
+    if (activeReceiptReview?.id === id) setReceiptReviewStatus(error.message, true);
+    else setReceiptPageStatus(error.message, true);
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+async function deleteActiveReceipt() {
+  if (!activeReceiptReview) return;
+  const confirmed = await requestAppConfirmation(
+    'Delete receipt?',
+    'This deletes the receipt and its photo. This cannot be undone.',
+    'Delete receipt'
+  );
+  if (!confirmed) return;
+  setReceiptReviewStatus('Deleting receipt…');
+  try {
+    await receiptRequest(`api/receipts/${encodeURIComponent(activeReceiptReview.id)}`, { method: 'DELETE' });
+    document.getElementById('receipt-review-modal')?.classList.remove('show');
+    activeReceiptReview = null;
+    setReceiptPageStatus('Receipt deleted.');
+    await loadReceipts();
+  } catch (error) {
+    setReceiptReviewStatus(error.message, true);
+  }
+}
+
+async function initializeReceiptReaderSettings() {
+  const form = document.getElementById('receipt-reader-settings-form');
+  const testButton = document.getElementById('test-receipt-reader');
+  if (!form || form.dataset.initialized === 'true') return;
+  form.dataset.initialized = 'true';
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    await saveReceiptReaderSettings(true);
+  });
+  testButton?.addEventListener('click', testReceiptReaderConnection);
+  await loadReceiptReaderSettings();
+}
+
+function setReceiptReaderSettingsStatus(message, state = '') {
+  const status = document.getElementById('receipt-reader-settings-status');
+  if (!status) return;
+  status.textContent = message;
+  status.classList.toggle('is-error', state === 'error');
+  status.classList.toggle('is-success', state === 'success');
+}
+
+async function loadReceiptReaderSettings() {
+  try {
+    const settings = await receiptRequest('api/receipt-settings');
+    const url = document.getElementById('receipt-model-url');
+    const model = document.getElementById('receipt-model-name');
+    if (url) url.value = settings.url || '';
+    if (model) model.value = settings.model || '';
+    setReceiptReaderSettingsStatus('Receipt reader settings loaded.');
+  } catch (error) {
+    setReceiptReaderSettingsStatus(error.message, 'error');
+  }
+}
+
+async function saveReceiptReaderSettings(announce) {
+  const form = document.getElementById('receipt-reader-settings-form');
+  if (!form?.reportValidity()) return null;
+  const submitButtons = form.querySelectorAll('button');
+  submitButtons.forEach(button => { button.disabled = true; });
+  if (announce) setReceiptReaderSettingsStatus('Saving receipt reader…');
+  try {
+    const settings = await receiptRequest('api/receipt-settings', {
+      method: 'PUT',
+      body: JSON.stringify({
+        url: document.getElementById('receipt-model-url').value,
+        model: document.getElementById('receipt-model-name').value
+      })
+    });
+    if (announce) setReceiptReaderSettingsStatus('Receipt reader settings saved.', 'success');
+    return settings;
+  } catch (error) {
+    setReceiptReaderSettingsStatus(error.message, 'error');
+    return null;
+  } finally {
+    submitButtons.forEach(button => { button.disabled = false; });
+  }
+}
+
+async function testReceiptReaderConnection() {
+  const button = document.getElementById('test-receipt-reader');
+  const url = document.getElementById('receipt-model-url')?.value || 'the configured address';
+  const model = document.getElementById('receipt-model-name')?.value || 'the configured model';
+  const saved = await saveReceiptReaderSettings(false);
+  if (!saved) return;
+  if (button) button.disabled = true;
+  setReceiptReaderSettingsStatus(`Connecting to ${url}…`);
+  try {
+    const result = await receiptRequest('api/receipt-settings/test', { method: 'POST' });
+    if (result.present) setReceiptReaderSettingsStatus(`Connected — ${result.model} is installed`, 'success');
+    else setReceiptReaderSettingsStatus(`Connected, but ${result.model || model} is not installed.`, 'error');
+  } catch (error) {
+    setReceiptReaderSettingsStatus(`Can't reach the model at ${url}. ${error.message}`, 'error');
+  } finally {
+    if (button) button.disabled = false;
   }
 }
 
@@ -2221,6 +3170,7 @@ function initializeSettingsPage() {
       loadCalendarManagement();
     }
 
+    await initializeReceiptReaderSettings();
     await initializeScreenTimeSettings();
     await initializeFaceRecognitionSettings();
 
@@ -2705,6 +3655,7 @@ function closeModal(modal) {
   }
   modal.classList.remove('show');
 
+  if (modal.id === 'receipt-crop-modal') clearReceiptCrop();
   if (modal.id === 'face-enrollment-modal') stopFaceEnrollmentCamera();
 
   // A game spends time only while its modal is open. Blank the iframe first so

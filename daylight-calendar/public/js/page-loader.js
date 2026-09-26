@@ -292,6 +292,23 @@ class PageLoader {
           }
           break;
 
+        case 'pantry':
+          if (typeof initializePantryPage === 'function') {
+            console.log("Initializing pantry functionality...");
+            setTimeout(() => {
+              try {
+                initializePantryPage();
+              } catch (error) {
+                console.error("Error initializing pantry:", error);
+              }
+              resolve();
+            }, 100);
+          } else {
+            console.warn("initializePantryPage function not found");
+            resolve();
+          }
+          break;
+
         case 'games':
           console.log("Initializing games functionality...");
           setTimeout(() => {
@@ -777,7 +794,7 @@ class PageLoader {
    * @returns {Promise<void>}
    */
   async preloadAllPages() {
-    const pages = ['calendar', 'chores', 'meals', 'lists', 'games', 'settings'];
+    const pages = ['calendar', 'chores', 'meals', 'lists', 'pantry', 'games', 'settings'];
 
     for (const page of pages) {
       try {
