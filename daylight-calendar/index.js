@@ -45,7 +45,7 @@ async function initializeApp() {
 
   // Configuration
   let config;
-  const localOptionsPath = path.join(__dirname, 'options.json');
+  const localOptionsPath = process.env.DAYLIGHT_OPTIONS_PATH || path.join(__dirname, 'options.json');
   const supervisorOptionsPath = '/data/options.json';
   const isProduction = process.env.SUPERVISOR_TOKEN !== undefined;
   const isIngressMode = isProduction && process.env.INGRESS_PORT !== undefined;
@@ -144,7 +144,10 @@ async function initializeApp() {
   if (config.development_mode) {
     app.use((req, res, next) => {
       console.log(`[DEBUG] ${req.method} ${req.url}`);
-      console.log(`[DEBUG] Headers:`, JSON.stringify(req.headers, null, 2));
+      const safeHeaders = { ...req.headers };
+      if (safeHeaders.authorization) safeHeaders.authorization = '[redacted]';
+      if (safeHeaders['x-daylight-admin']) safeHeaders['x-daylight-admin'] = '[redacted]';
+      console.log(`[DEBUG] Headers:`, JSON.stringify(safeHeaders, null, 2));
       next();
     });
   }
@@ -164,7 +167,7 @@ async function initializeApp() {
     app.use((req, res, next) => {
       res.header('Access-Control-Allow-Origin', '*');
       res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH');
-      res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+      res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Daylight-Admin');
       next();
     });
 
@@ -804,7 +807,8 @@ async function initializeApp() {
     defaultDailyMinutes: 60,
     warnAtMinutes: [5, 1],
     pinHash: null,
-    pinSalt: null
+    pinSalt: null,
+    adminProfileIds: null
   };
   // Games whose sites no longer exist. hextris.io stopped resolving (NXDOMAIN) in
   // September 2026, so its tile opened to a blank frame. Removed from libraries that
@@ -816,6 +820,11 @@ async function initializeApp() {
   ];
   const screenTimeHeartbeatTimeoutSeconds = Math.max(1, Number(process.env.SCREEN_TIME_HEARTBEAT_TIMEOUT_SECONDS) || 90);
   const screenTimePinLockSeconds = Math.max(1, Number(process.env.SCREEN_TIME_PIN_LOCK_SECONDS) || 60);
+  const adminSessionTtlMs = Math.max(1000, Number(process.env.ADMIN_SESSION_TTL_MS) || 5 * 60 * 1000);
+  const adminSessions = new Map();
+  const faceUnlockAttempts = new Map();
+  const FACE_UNLOCK_WINDOW_MS = 60 * 1000;
+  const FACE_UNLOCK_MAX_ATTEMPTS = 20;
 
   function normalizeScreenTime(data = {}) {
     const settings = data.settings && typeof data.settings === 'object' ? data.settings : {};
@@ -833,7 +842,10 @@ async function initializeApp() {
           ? settings.warnAtMinutes.filter(value => Number.isInteger(value) && value > 0)
           : [...DEFAULT_SCREEN_TIME_SETTINGS.warnAtMinutes],
         pinHash: typeof settings.pinHash === 'string' && /^[a-f0-9]{128}$/i.test(settings.pinHash) ? settings.pinHash : null,
-        pinSalt: typeof settings.pinSalt === 'string' && /^[a-f0-9]{32}$/i.test(settings.pinSalt) ? settings.pinSalt : null
+        pinSalt: typeof settings.pinSalt === 'string' && /^[a-f0-9]{32}$/i.test(settings.pinSalt) ? settings.pinSalt : null,
+        adminProfileIds: Array.isArray(settings.adminProfileIds)
+          ? [...new Set(settings.adminProfileIds.filter(id => typeof id === 'string' && id.trim()))]
+          : null
       },
       profiles: Object.fromEntries(Object.entries(profiles)
         .filter(([, value]) => value && isValidDailyMinutes(value.dailyMinutes))
@@ -843,7 +855,8 @@ async function initializeApp() {
       pinFailures: {
         count: Number.isInteger(pinFailures.count) && pinFailures.count > 0 ? pinFailures.count : 0,
         lockedUntil: typeof pinFailures.lockedUntil === 'string' ? pinFailures.lockedUntil : null
-      }
+      },
+      pinResetConsumedAt: typeof data.pinResetConsumedAt === 'string' ? data.pinResetConsumedAt : null
     };
   }
 
@@ -855,14 +868,15 @@ async function initializeApp() {
     return normalizeScreenTime(readJsonFile('screen_time.json', {}));
   }
 
-  function publicScreenTimeSettings(settings) {
+  function publicScreenTimeSettings(settings, adminProfileIds = []) {
     return {
       enabled: settings.enabled,
       requireChoresFirst: settings.requireChoresFirst,
       includeRoutines: settings.includeRoutines,
       defaultDailyMinutes: settings.defaultDailyMinutes,
       warnAtMinutes: settings.warnAtMinutes,
-      pinSet: Boolean(settings.pinHash && settings.pinSalt)
+      pinSet: Boolean(settings.pinHash && settings.pinSalt),
+      adminProfileIds
     };
   }
 
@@ -1059,7 +1073,7 @@ async function initializeApp() {
 
   function validatePin(state, pin, nowMs = Date.now()) {
     if (!state.settings.pinHash || !state.settings.pinSalt) {
-      return { ok: false, status: 403, error: 'Set a parent PIN in Settings first' };
+      return { ok: false, status: 403, error: 'Create a parent PIN to continue' };
     }
     const lockedUntilMs = Date.parse(state.pinFailures.lockedUntil || '');
     if (Number.isFinite(lockedUntilMs) && lockedUntilMs > nowMs) {
@@ -1103,6 +1117,155 @@ async function initializeApp() {
     state.pinFailures = { count, lockedUntil: null };
     return { ok: false, status: 403, error: 'Incorrect parent PIN' };
   }
+
+  async function fetchDefaultAdminProfileIds(users) {
+    if (isStandaloneDev) return users.filter(user => user.is_admin === true).map(user => user.id);
+    const client = getHaWsClient();
+    if (!client) return [];
+    try {
+      const result = await client.sendCommand('config/auth/list');
+      const authUsers = Array.isArray(result) ? result
+        : Array.isArray(result?.users) ? result.users
+          : Array.isArray(result?.storage) ? result.storage : [];
+      const adminUserIds = new Set(authUsers.filter(user => user?.is_owner === true ||
+        (Array.isArray(user?.group_ids) && user.group_ids.includes('system-admin'))).map(user => user.id));
+      return users.filter(person => person.user_id && adminUserIds.has(person.user_id)).map(person => person.id);
+    } catch (error) {
+      console.warn('[WARN] Could not resolve Home Assistant administrators:', error.message);
+      return [];
+    }
+  }
+
+  async function resolveAdminProfileIds(state, users = null) {
+    const profiles = users || await fetchHaUsers();
+    const validIds = new Set(profiles.map(user => user.id));
+    if (Array.isArray(state.settings.adminProfileIds)) {
+      return state.settings.adminProfileIds.filter(id => validIds.has(id));
+    }
+    return fetchDefaultAdminProfileIds(profiles);
+  }
+
+  function createAdminSession(method, profileId = null, nowMs = Date.now()) {
+    const token = randomBytes(32).toString('hex');
+    const expiresAtMs = nowMs + adminSessionTtlMs;
+    adminSessions.set(token, { method, profileId, expiresAtMs });
+    return {
+      token,
+      expiresAt: new Date(expiresAtMs).toISOString(),
+      method,
+      ...(profileId ? { profileId } : {})
+    };
+  }
+
+  function authorizeAdmin(state, req, { pinField = 'pin' } = {}) {
+    const token = req.get('X-Daylight-Admin');
+    const nowMs = Date.now();
+    if (token) {
+      const session = adminSessions.get(token);
+      if (!session || session.expiresAtMs <= nowMs) {
+        if (session) adminSessions.delete(token);
+        return { ok: false, status: 403, error: 'Parent session is not valid' };
+      }
+      session.expiresAtMs = nowMs + adminSessionTtlMs;
+      return {
+        ok: true,
+        method: session.method,
+        profileId: session.profileId,
+        token,
+        expiresAt: new Date(session.expiresAtMs).toISOString()
+      };
+    }
+    return validatePin(state, req.body?.[pinField]);
+  }
+
+  function euclideanFaceDistance(left, right) {
+    let squared = 0;
+    for (let index = 0; index < 128; index += 1) {
+      const difference = left[index] - right[index];
+      squared += difference * difference;
+    }
+    return Math.sqrt(squared);
+  }
+
+  function getServerFaceWinner(descriptor, faceState, allowedProfileIds) {
+    const distances = Object.entries(faceState.profiles)
+      .filter(([profileId, profile]) => allowedProfileIds.has(profileId) && profile.descriptors.length)
+      .map(([profileId, profile]) => ({
+        profileId,
+        distance: Math.min(...profile.descriptors.map(sample => euclideanFaceDistance(descriptor, sample)))
+      }))
+      .sort((left, right) => left.distance - right.distance);
+    const best = distances[0];
+    const runnerUp = distances[1];
+    if (!best || best.distance > faceState.threshold) return null;
+    if (runnerUp && runnerUp.distance - best.distance < 0.08) return null;
+    return best.profileId;
+  }
+
+  function checkFaceUnlockRateLimit(req, nowMs = Date.now()) {
+    const key = req.ip || req.socket?.remoteAddress || 'panel';
+    const recent = (faceUnlockAttempts.get(key) || []).filter(timestamp => nowMs - timestamp < FACE_UNLOCK_WINDOW_MS);
+    if (recent.length >= FACE_UNLOCK_MAX_ATTEMPTS) {
+      faceUnlockAttempts.set(key, recent);
+      return false;
+    }
+    recent.push(nowMs);
+    faceUnlockAttempts.set(key, recent);
+    return true;
+  }
+
+  async function consumeParentPinResetOption() {
+    const state = readScreenTime();
+    if (config.reset_parent_pin !== true) {
+      if (state.pinResetConsumedAt) {
+        state.pinResetConsumedAt = null;
+        writeJsonFile('screen_time.json', state);
+      }
+      return;
+    }
+    if (state.pinResetConsumedAt) {
+      console.warn('[WARN] reset_parent_pin is still true, but this reset was already consumed.');
+      if (isProduction && process.env.SUPERVISOR_TOKEN) {
+        try {
+          const updatedOptions = { ...config, reset_parent_pin: false };
+          await axios.post('http://supervisor/addons/self/options', { options: updatedOptions }, {
+            headers: { Authorization: `Bearer ${process.env.SUPERVISOR_TOKEN}`, 'Content-Type': 'application/json' }
+          });
+          config = updatedOptions;
+          state.pinResetConsumedAt = null;
+          writeJsonFile('screen_time.json', state);
+        } catch (error) {
+          console.warn('[WARN] reset_parent_pin remains enabled; the consumed marker is protecting the new PIN:', error.message);
+        }
+      }
+      return;
+    }
+
+    state.settings.pinHash = null;
+    state.settings.pinSalt = null;
+    state.pinFailures = { count: 0, lockedUntil: null };
+    adminSessions.clear();
+    writeJsonFile('screen_time.json', state);
+    console.warn('[WARN] Parent PIN cleared because reset_parent_pin was enabled.');
+
+    if (isProduction && process.env.SUPERVISOR_TOKEN) {
+      try {
+        const updatedOptions = { ...config, reset_parent_pin: false };
+        await axios.post('http://supervisor/addons/self/options', { options: updatedOptions }, {
+          headers: { Authorization: `Bearer ${process.env.SUPERVISOR_TOKEN}`, 'Content-Type': 'application/json' }
+        });
+        config = updatedOptions;
+        return;
+      } catch (error) {
+        console.warn('[WARN] Could not turn reset_parent_pin back off through Supervisor:', error.message);
+      }
+    }
+
+    state.pinResetConsumedAt = new Date().toISOString();
+    writeJsonFile('screen_time.json', state);
+  }
+
+  await consumeParentPinResetOption();
 
   function validateGameInput(input = {}) {
     const title = typeof input.title === 'string' ? input.title.trim() : '';
@@ -2058,6 +2221,7 @@ async function initializeApp() {
           name: u.name,
           user_id: u.id,
           picture: u.avatar,
+          is_admin: u.is_admin === true,
           // Merge local mapping data
           calendar_entity_id: mappings[u.id]?.calendar_entity_id || null,
           notify_service: mappings[u.id]?.notify_service || null,
@@ -3418,6 +3582,51 @@ async function initializeApp() {
     res.json(result);
   });
 
+  app.post('/api/admin/unlock', async (req, res) => {
+    const result = await withHouseholdStorageLock(async () => {
+      const state = readScreenTime();
+      const pinResult = validatePin(state, req.body.pin);
+      writeJsonFile('screen_time.json', state);
+      if (!pinResult.ok) return pinResult;
+      return { ok: true, session: createAdminSession('pin') };
+    });
+    if (!result.ok) return res.status(result.status).json(result);
+    res.json(result.session);
+  });
+
+  app.post('/api/admin/face-unlock', async (req, res) => {
+    if (!checkFaceUnlockRateLimit(req)) {
+      return res.status(429).json({ error: 'Too many face unlock attempts. Try again shortly.' });
+    }
+    const validation = validateFaceDescriptors(req.body.descriptors);
+    if (validation.error || validation.descriptors.length !== 3) {
+      return res.status(400).json({ error: validation.error || 'Exactly 3 face descriptors are required' });
+    }
+    const users = await fetchHaUsers();
+    const result = await withHouseholdStorageLock(async () => {
+      const screenTime = readScreenTime();
+      const adminProfileIds = new Set(await resolveAdminProfileIds(screenTime, users));
+      const faceState = readFaceProfiles();
+      const validProfileIds = new Set(users.map(user => user.id));
+      const winners = faceState.enabled
+        ? validation.descriptors.map(descriptor => getServerFaceWinner(descriptor, faceState, validProfileIds))
+        : [];
+      const profileId = winners[0];
+      if (!profileId || winners.some(winner => winner !== profileId) || !adminProfileIds.has(profileId)) {
+        return { ok: false };
+      }
+      return { ok: true, session: createAdminSession('face', profileId) };
+    });
+    if (!result.ok) return res.status(403).json({ error: 'Parent face could not be verified' });
+    res.json(result.session);
+  });
+
+  app.post('/api/admin/lock', (req, res) => {
+    const token = req.get('X-Daylight-Admin');
+    const ended = token ? adminSessions.delete(token) : false;
+    res.json({ success: true, ended });
+  });
+
   app.get('/api/face-profiles', async (req, res) => {
     try {
       const users = await fetchHaUsers();
@@ -3462,7 +3671,7 @@ async function initializeApp() {
     }
     const result = await withHouseholdStorageLock(async () => {
       const screenTime = readScreenTime();
-      const pinResult = validatePin(screenTime, req.body.pin);
+      const pinResult = authorizeAdmin(screenTime, req);
       writeJsonFile('screen_time.json', screenTime);
       if (!pinResult.ok) return pinResult;
       const state = readFaceProfiles();
@@ -3487,7 +3696,7 @@ async function initializeApp() {
     if (validation.error) return res.status(400).json({ error: validation.error });
     const result = await withHouseholdStorageLock(async () => {
       const screenTime = readScreenTime();
-      const pinResult = validatePin(screenTime, req.body.pin);
+      const pinResult = authorizeAdmin(screenTime, req);
       writeJsonFile('screen_time.json', screenTime);
       if (!pinResult.ok) return pinResult;
       const state = readFaceProfiles();
@@ -3513,7 +3722,7 @@ async function initializeApp() {
     }
     const result = await withHouseholdStorageLock(async () => {
       const screenTime = readScreenTime();
-      const pinResult = validatePin(screenTime, req.body.pin);
+      const pinResult = authorizeAdmin(screenTime, req);
       writeJsonFile('screen_time.json', screenTime);
       if (!pinResult.ok) return pinResult;
       const state = readFaceProfiles();
@@ -3529,7 +3738,7 @@ async function initializeApp() {
   app.delete('/api/face-profiles', async (req, res) => {
     const result = await withHouseholdStorageLock(async () => {
       const screenTime = readScreenTime();
-      const pinResult = validatePin(screenTime, req.body.pin);
+      const pinResult = authorizeAdmin(screenTime, req);
       writeJsonFile('screen_time.json', screenTime);
       if (!pinResult.ok) return pinResult;
       const state = readFaceProfiles();
@@ -3554,10 +3763,15 @@ async function initializeApp() {
         const nowMs = Date.now();
         const date = getServerLocalDate();
         const enforcement = enforceActiveScreenTimeSession(state, nowMs);
-        if (enforcement.changed) writeJsonFile('screen_time.json', state);
+        const adminProfileIds = await resolveAdminProfileIds(state, users);
+        const explicitAdminIdsChanged = Array.isArray(state.settings.adminProfileIds) &&
+          (adminProfileIds.length !== state.settings.adminProfileIds.length ||
+            adminProfileIds.some((id, index) => id !== state.settings.adminProfileIds[index]));
+        if (explicitAdminIdsChanged) state.settings.adminProfileIds = adminProfileIds;
+        if (enforcement.changed || explicitAdminIdsChanged) writeJsonFile('screen_time.json', state);
         const active = enforcement.session;
         return {
-          settings: publicScreenTimeSettings(state.settings),
+          settings: publicScreenTimeSettings(state.settings, adminProfileIds),
           activeSession: active ? {
             ...active,
             expiresAt: enforcement.expiresAt,
@@ -3606,6 +3820,12 @@ async function initializeApp() {
     }
     const users = await fetchHaUsers();
     const validProfileIds = new Set(users.map(user => user.id));
+    if (req.body.adminProfileIds !== undefined && !Array.isArray(req.body.adminProfileIds)) {
+      return res.status(400).json({ error: 'adminProfileIds must be an array' });
+    }
+    if (Array.isArray(req.body.adminProfileIds) && req.body.adminProfileIds.some(id => typeof id !== 'string')) {
+      return res.status(400).json({ error: 'adminProfileIds must contain profile ids' });
+    }
     for (const [profileId, value] of Object.entries(profileUpdates || {})) {
       if (!validProfileIds.has(profileId)) return res.status(400).json({ error: `Unknown profile: ${profileId}` });
       if (!value || !isValidDailyMinutes(value.dailyMinutes)) {
@@ -3614,12 +3834,10 @@ async function initializeApp() {
     }
     const result = await withHouseholdStorageLock(async () => {
       const state = readScreenTime();
-      if (state.settings.pinHash) {
-        const pinResult = validatePin(state, req.body.pin);
-        if (!pinResult.ok) {
-          writeJsonFile('screen_time.json', state);
-          return pinResult;
-        }
+      const pinResult = authorizeAdmin(state, req);
+      if (!pinResult.ok) {
+        writeJsonFile('screen_time.json', state);
+        return pinResult;
       }
       allowedBooleanKeys.forEach(key => {
         if (req.body[key] !== undefined) state.settings[key] = req.body[key];
@@ -3630,8 +3848,12 @@ async function initializeApp() {
       Object.entries(profileUpdates || {}).forEach(([profileId, value]) => {
         state.profiles[profileId] = { dailyMinutes: value.dailyMinutes };
       });
+      if (Array.isArray(req.body.adminProfileIds)) {
+        state.settings.adminProfileIds = [...new Set(req.body.adminProfileIds.filter(id => validProfileIds.has(id)))];
+      }
+      const adminProfileIds = await resolveAdminProfileIds(state, users);
       writeJsonFile('screen_time.json', state);
-      return { ok: true, settings: publicScreenTimeSettings(state.settings), profiles: state.profiles };
+      return { ok: true, settings: publicScreenTimeSettings(state.settings, adminProfileIds), profiles: state.profiles };
     });
     if (!result.ok) return res.status(result.status).json(result);
     res.json({ settings: result.settings, profiles: result.profiles });
@@ -3644,7 +3866,7 @@ async function initializeApp() {
     const result = await withHouseholdStorageLock(async () => {
       const state = readScreenTime();
       if (state.settings.pinHash) {
-        const pinResult = validatePin(state, req.body.currentPin);
+        const pinResult = authorizeAdmin(state, req, { pinField: 'currentPin' });
         if (!pinResult.ok) {
           writeJsonFile('screen_time.json', state);
           return pinResult;
@@ -3655,6 +3877,7 @@ async function initializeApp() {
       state.settings.pinSalt = salt.toString('hex');
       state.settings.pinHash = hash.toString('hex');
       state.pinFailures = { count: 0, lockedUntil: null };
+      adminSessions.clear();
       writeJsonFile('screen_time.json', state);
       return { ok: true };
     });
@@ -3663,7 +3886,7 @@ async function initializeApp() {
   });
 
   app.post('/api/screen-time/grants', async (req, res) => {
-    const { pin, profileId, minutes, reason } = req.body;
+    const { profileId, minutes, reason } = req.body;
     if (!(await validateProfileIds([profileId]))) return res.status(400).json({ error: 'Unknown profile' });
     if (!Number.isInteger(minutes) || minutes <= 0 || minutes > 1440) {
       return res.status(400).json({ error: 'Minutes must be a positive whole number no greater than 1440' });
@@ -3671,7 +3894,7 @@ async function initializeApp() {
     if (typeof reason !== 'string' || !reason.trim()) return res.status(400).json({ error: 'A reason is required' });
     const result = await withHouseholdStorageLock(async () => {
       const state = readScreenTime();
-      const pinResult = validatePin(state, pin);
+      const pinResult = authorizeAdmin(state, req);
       if (!pinResult.ok) {
         writeJsonFile('screen_time.json', state);
         return pinResult;
@@ -3693,7 +3916,7 @@ async function initializeApp() {
   });
 
   app.post('/api/screen-time/sessions', async (req, res) => {
-    const { profileId, gameId, pin } = req.body;
+    const { profileId, gameId } = req.body;
     const [users, todoResult] = await Promise.all([fetchHaUsers(), fetchTodoItems()]);
     if (!users.some(user => user.id === profileId)) return res.status(400).json({ error: 'Unknown profile' });
     if (todoResult.error) return res.status(500).json({ error: todoResult.error });
@@ -3709,8 +3932,10 @@ async function initializeApp() {
       const blocking = state.settings.enabled
         ? getScreenTimeBlocking(profileId, state.settings, todoResult.items || [], date) : [];
       if (blocking.length) {
-        if (!pin) return { ok: false, status: 403, error: 'Finish assigned chores before playing', blocking };
-        const pinResult = validatePin(state, pin);
+        if (!req.get('X-Daylight-Admin') && !req.body.pin) {
+          return { ok: false, status: 403, error: 'Finish assigned chores before playing', blocking };
+        }
+        const pinResult = authorizeAdmin(state, req);
         if (!pinResult.ok) {
           writeJsonFile('screen_time.json', state);
           return { ...pinResult, blocking };
@@ -3820,7 +4045,7 @@ async function initializeApp() {
   app.delete('/api/games/:id', async (req, res) => {
     const result = await withHouseholdStorageLock(async () => {
       const state = readScreenTime();
-      const pinResult = validatePin(state, req.body.pin);
+      const pinResult = authorizeAdmin(state, req);
       if (!pinResult.ok) {
         writeJsonFile('screen_time.json', state);
         return pinResult;

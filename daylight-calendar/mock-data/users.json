@@ -3,17 +3,20 @@
     {
       "id": "u_morgan",
       "name": "Morgan",
-      "avatar": null
+      "avatar": null,
+      "is_admin": true
     },
     {
       "id": "u_sam",
       "name": "Sam",
-      "avatar": null
+      "avatar": null,
+      "is_admin": true
     },
     {
       "id": "u_riley",
       "name": "Riley",
-      "avatar": null
+      "avatar": null,
+      "is_admin": false
     }
   ]
 }

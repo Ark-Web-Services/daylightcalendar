@@ -57,12 +57,8 @@ let gameHeartbeatInterval = null;
 let gameServerRemainingSeconds = null;
 let gameServerSyncTime = 0;
 let shownGameWarnings = new Set();
-let gamePinAction = null;
-let gamePinValue = '';
 let selectedGrantMinutes = 15;
 let screenTimeSettingsSnapshot = null;
-let settingsPinFlow = null;
-let settingsPinValue = '';
 let faceProfilesSnapshot = null;
 let faceDescriptorSnapshot = null;
 let faceApiScriptPromise = null;
@@ -88,6 +84,15 @@ let schoolMenuDate = moment().format('YYYY-MM-DD');
 let schoolMenuSettingsSchools = [];
 let schoolMenuSettingsSnapshot = null;
 let schoolMenuSelectedSlug = '';
+let schoolMenuScrollObserver = null;
+let adminSession = null;
+let adminSessionTimer = null;
+let parentCheckFlow = null;
+let parentCheckPin = '';
+let parentCheckStream = null;
+let parentCheckTimer = null;
+let parentCheckRunId = 0;
+let parentCheckStreak = { profileId: null, descriptors: [] };
 
 const ADDON_LIVENESS_POLL_MS = 60 * 1000;
 const ADDON_LIVENESS_MAX_BACKOFF_MS = 5 * 60 * 1000;
@@ -641,7 +646,6 @@ function initializeGamesPage() {
   document.getElementById('add-game-time')?.addEventListener('click', () => openGamePinModal('grant'));
   document.getElementById('game-blocking-list')?.addEventListener('click', completeBlockingChoreFromGames);
   document.getElementById('face-match-reject')?.addEventListener('click', rejectPendingFaceSelection);
-  setupGamePinPad();
   loadGamesPageData().then(loadFaceRecognitionForGames);
 }
 
@@ -1825,16 +1829,351 @@ async function loadGroceryList() {
 async function screenTimeRequest(url, options = {}) {
   const response = await fetch(url, {
     ...options,
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }
+    headers: {
+      'Content-Type': 'application/json',
+      ...(adminSession?.token ? { 'X-Daylight-Admin': adminSession.token } : {}),
+      ...(options.headers || {})
+    }
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
+    if (response.status === 403 && data.error === 'Parent session is not valid') clearAdminSession();
     const error = new Error(data.error || 'Screen time could not be updated');
     error.status = response.status;
     error.data = data;
     throw error;
   }
   return data;
+}
+
+function hasActiveAdminSession() {
+  return Boolean(adminSession?.token && Date.parse(adminSession.expiresAt) > Date.now());
+}
+
+function setAdminSession(session) {
+  adminSession = session?.token ? { ...session } : null;
+  renderAdminSessionChip();
+  if (adminSessionTimer) window.clearTimeout(adminSessionTimer);
+  adminSessionTimer = null;
+  if (hasActiveAdminSession()) {
+    adminSessionTimer = window.setTimeout(clearAdminSession, Math.max(0, Date.parse(adminSession.expiresAt) - Date.now()));
+  }
+}
+
+function touchAdminSession() {
+  if (!hasActiveAdminSession()) return;
+  adminSession.expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+  setAdminSession(adminSession);
+}
+
+function clearAdminSession() {
+  adminSession = null;
+  if (adminSessionTimer) window.clearTimeout(adminSessionTimer);
+  adminSessionTimer = null;
+  renderAdminSessionChip();
+}
+
+function renderAdminSessionChip() {
+  const chip = document.getElementById('admin-session-chip');
+  if (!chip) return;
+  chip.hidden = !hasActiveAdminSession();
+}
+
+async function lockAdminSession() {
+  const token = adminSession?.token;
+  clearAdminSession();
+  if (!token) return;
+  try {
+    await fetch('api/admin/lock', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Daylight-Admin': token },
+      body: '{}'
+    });
+  } catch (error) {
+    console.warn('[WARN] Parent session could not be closed on the server:', error);
+  }
+}
+
+async function loadParentCheckContext() {
+  screenTimeSettingsSnapshot = await screenTimeRequest('api/screen-time');
+  return screenTimeSettingsSnapshot;
+}
+
+async function requestAdminAuthorization({ title = 'Parent check', prompt = 'Enter the parent PIN to continue.', optionsHtml = '', onAuthorized }) {
+  if (hasActiveAdminSession()) {
+    try {
+      return await onAuthorized();
+    } catch (error) {
+      if (error.status !== 403 || error.message !== 'Parent session is not valid') {
+        return showAppNotice('Action could not be completed', error.message);
+      }
+      clearAdminSession();
+    }
+  }
+  let context;
+  try {
+    context = await loadParentCheckContext();
+  } catch (error) {
+    return showAppNotice('Parent check unavailable', error.message);
+  }
+  openParentCheckSheet({
+    mode: 'authorize',
+    stage: context.settings.pinSet ? 'current' : 'new',
+    title: context.settings.pinSet ? title : 'Create a parent PIN',
+    prompt,
+    optionsHtml,
+    onAuthorized
+  });
+}
+
+function openParentCheckSheet(flow) {
+  stopParentCheckCamera();
+  parentCheckFlow = { ...flow, newPin: null, settled: false, faceSubmitting: false };
+  parentCheckPin = '';
+  const modal = document.getElementById('parent-check-modal');
+  const options = document.getElementById('parent-check-options');
+  document.getElementById('parent-check-title').textContent = flow.title || 'Parent check';
+  document.getElementById('parent-check-error').textContent = '';
+  options.innerHTML = flow.optionsHtml || '';
+  updateParentCheckPrompt();
+  updateParentCheckDisplay();
+  modal.classList.add('show');
+  if (flow.stage === 'current') void startParentCheckCamera();
+}
+
+function updateParentCheckPrompt() {
+  const message = document.getElementById('parent-check-message');
+  if (!message || !parentCheckFlow) return;
+  if (parentCheckFlow.stage === 'current') message.textContent = parentCheckFlow.prompt || 'Enter the parent PIN to continue.';
+  else if (parentCheckFlow.stage === 'new') message.textContent = 'Choose a new 4–8 digit parent PIN.';
+  else message.textContent = 'Enter the new PIN again.';
+}
+
+function updateParentCheckDisplay() {
+  const display = document.getElementById('parent-check-display');
+  const submit = document.getElementById('parent-check-submit');
+  if (!display || !submit) return;
+  display.textContent = parentCheckPin ? '● '.repeat(parentCheckPin.length).trim() : '○ ○ ○ ○';
+  display.setAttribute('aria-label', parentCheckPin ? `${parentCheckPin.length} PIN digits entered` : 'PIN is empty');
+  submit.disabled = parentCheckPin.length < 4;
+}
+
+function setupParentCheckUi() {
+  const keypad = document.getElementById('parent-check-keypad');
+  if (!keypad || keypad.dataset.bound === 'true') return;
+  keypad.dataset.bound = 'true';
+  keypad.addEventListener('click', event => {
+    const key = event.target.closest('[data-pin-key]')?.dataset.pinKey;
+    const action = event.target.closest('[data-pin-action]')?.dataset.pinAction;
+    if (key && parentCheckPin.length < 8) parentCheckPin += key;
+    if (action === 'clear') parentCheckPin = '';
+    if (action === 'backspace') parentCheckPin = parentCheckPin.slice(0, -1);
+    updateParentCheckDisplay();
+  });
+  document.getElementById('parent-check-submit')?.addEventListener('click', submitParentCheckPin);
+  document.getElementById('parent-check-options')?.addEventListener('click', event => {
+    const option = event.target.closest('[data-grant-minutes]');
+    if (!option) return;
+    selectedGrantMinutes = Number(option.dataset.grantMinutes);
+    option.parentElement.querySelectorAll('[data-grant-minutes]').forEach(button => button.classList.toggle('selected', button === option));
+  });
+  document.getElementById('admin-session-chip')?.addEventListener('click', lockAdminSession);
+  renderAdminSessionChip();
+}
+
+async function submitParentCheckPin() {
+  const flow = parentCheckFlow;
+  if (!flow || flow.settled || parentCheckPin.length < 4) return;
+  const submit = document.getElementById('parent-check-submit');
+  const errorBox = document.getElementById('parent-check-error');
+  submit.disabled = true;
+  errorBox.textContent = '';
+  try {
+    if (flow.stage === 'current') {
+      const session = await screenTimeRequest('api/admin/unlock', {
+        method: 'POST', body: JSON.stringify({ pin: parentCheckPin })
+      });
+      setAdminSession(session);
+      return finishParentCheckAuthorization();
+    }
+    if (flow.stage === 'new') {
+      flow.newPin = parentCheckPin;
+      flow.stage = 'confirm';
+      parentCheckPin = '';
+      updateParentCheckPrompt();
+      updateParentCheckDisplay();
+      return;
+    }
+    if (parentCheckPin !== flow.newPin) {
+      errorBox.textContent = 'Those PINs do not match. Enter the new PIN again.';
+      parentCheckPin = '';
+      updateParentCheckDisplay();
+      return;
+    }
+    await screenTimeRequest('api/screen-time/pin', {
+      method: 'PUT', body: JSON.stringify({ newPin: flow.newPin })
+    });
+    clearAdminSession();
+    const session = await screenTimeRequest('api/admin/unlock', {
+      method: 'POST', body: JSON.stringify({ pin: flow.newPin })
+    });
+    setAdminSession(session);
+    if (flow.mode === 'change') {
+      flow.onAuthorized = async () => {
+        await loadScreenTimeSettings();
+        await loadFaceRecognitionSettings();
+        const status = document.getElementById('screen-time-settings-status');
+        if (status) {
+          status.textContent = 'Parent PIN saved.';
+          status.classList.add('is-success');
+        }
+      };
+    }
+    return finishParentCheckAuthorization();
+  } catch (error) {
+    errorBox.textContent = error.status === 429 && error.data?.retryAfterSeconds
+      ? `${error.message} ${error.data.retryAfterSeconds}s remaining.` : error.message;
+    parentCheckPin = '';
+    updateParentCheckDisplay();
+  } finally {
+    if (parentCheckFlow && parentCheckPin.length >= 4) submit.disabled = false;
+  }
+}
+
+async function finishParentCheckAuthorization({ faceProfileId = null } = {}) {
+  const flow = parentCheckFlow;
+  if (!flow || flow.settled) return;
+  flow.settled = true;
+  if (faceProfileId) {
+    const profile = screenTimeSettingsSnapshot?.profiles.find(candidate => candidate.id === faceProfileId);
+    document.getElementById('parent-check-face-status').textContent = `Welcome, ${profile?.name || 'parent'}`;
+    await new Promise(resolve => window.setTimeout(resolve, 700));
+  }
+  const action = flow.onAuthorized;
+  closeModal(document.getElementById('parent-check-modal'));
+  if (typeof action === 'function') {
+    try {
+      await action();
+    } catch (error) {
+      await showAppNotice('Action could not be completed', error.message);
+    }
+  }
+}
+
+async function openParentPinChange() {
+  await requestAdminAuthorization({
+    title: 'Change parent PIN',
+    prompt: 'Confirm you are a parent to change the PIN.',
+    onAuthorized: async () => openParentCheckSheet({
+      mode: 'change',
+      stage: 'new',
+      title: 'Change parent PIN',
+      prompt: '',
+      onAuthorized: null
+    })
+  });
+}
+
+async function startParentCheckCamera() {
+  const facePanel = document.getElementById('parent-check-face');
+  const status = document.getElementById('parent-check-face-status');
+  try {
+    faceDescriptorSnapshot = await faceProfileRequest('api/face-profiles/descriptors');
+    const adminIds = new Set(screenTimeSettingsSnapshot?.settings.adminProfileIds || []);
+    const enrolledAdminIds = [...adminIds].filter(id => faceDescriptorSnapshot.enabled && faceDescriptorSnapshot.profiles?.[id]?.descriptors?.length);
+    if (!enrolledAdminIds.length || !parentCheckFlow || parentCheckFlow.stage !== 'current') return;
+    setParentCheckFaceVisible(true);
+    status.textContent = 'Looking for a parent…';
+    await loadFaceModels();
+    if (!parentCheckFlow || parentCheckFlow.stage !== 'current') return;
+    buildFaceMatcher(window.faceapi);
+    const runId = ++parentCheckRunId;
+    const video = document.getElementById('parent-check-video');
+    parentCheckStream = await openPreferredFaceCamera(video, faceDescriptorSnapshot.deviceId);
+    parentCheckStreak = { profileId: null, descriptors: [] };
+    scheduleParentCheckFrame(runId, 400);
+  } catch (error) {
+    if (parentCheckFlow) {
+      setParentCheckFaceVisible(true);
+      status.textContent = 'Camera unavailable — use the PIN.';
+    }
+  }
+}
+
+function setParentCheckFaceVisible(visible) {
+  const facePanel = document.getElementById('parent-check-face');
+  if (!facePanel) return;
+  facePanel.hidden = !visible;
+  facePanel.closest('.parent-check-content')?.classList.toggle('has-face', visible);
+}
+
+function scheduleParentCheckFrame(runId, delay = 450) {
+  if (parentCheckTimer) window.clearTimeout(parentCheckTimer);
+  parentCheckTimer = window.setTimeout(() => runParentCheckFrame(runId), delay);
+}
+
+async function runParentCheckFrame(runId) {
+  const flow = parentCheckFlow;
+  if (runId !== parentCheckRunId || !parentCheckStream || !flow || flow.settled) return;
+  try {
+    const video = document.getElementById('parent-check-video');
+    if (video.readyState >= 2 && !flow.faceSubmitting) {
+      const detections = await window.faceapi.detectAllFaces(
+        video,
+        new window.faceapi.TinyFaceDetectorOptions({ inputSize: 160, scoreThreshold: FACE_DETECT_MIN_SCORE })
+      ).withFaceLandmarks(true).withFaceDescriptors();
+      if (runId !== parentCheckRunId || !parentCheckFlow || parentCheckFlow.settled) return;
+      const detection = detections.length === 1 && detections[0].detection.score >= FACE_DETECT_MIN_SCORE ? detections[0] : null;
+      const winner = detection ? getUnambiguousFaceWinner(detection.descriptor) : null;
+      const adminIds = new Set(screenTimeSettingsSnapshot?.settings.adminProfileIds || []);
+      if (!winner || !adminIds.has(winner)) {
+        parentCheckStreak = { profileId: null, descriptors: [] };
+      } else if (parentCheckStreak.profileId === winner) {
+        parentCheckStreak.descriptors.push(Array.from(detection.descriptor));
+      } else {
+        parentCheckStreak = { profileId: winner, descriptors: [Array.from(detection.descriptor)] };
+      }
+      if (parentCheckStreak.descriptors.length >= 3) {
+        flow.faceSubmitting = true;
+        document.getElementById('parent-check-face-status').textContent = 'Verifying parent…';
+        try {
+          const session = await screenTimeRequest('api/admin/face-unlock', {
+            method: 'POST', body: JSON.stringify({ descriptors: parentCheckStreak.descriptors.slice(-3) })
+          });
+          if (runId !== parentCheckRunId || !parentCheckFlow || parentCheckFlow.settled) return;
+          setAdminSession(session);
+          return finishParentCheckAuthorization({ faceProfileId: session.profileId });
+        } catch (error) {
+          if (error.status === 429) {
+            document.getElementById('parent-check-face-status').textContent = 'Face checks paused — use the PIN.';
+            stopParentCheckCamera({ preservePanel: true });
+            return;
+          }
+          parentCheckStreak = { profileId: null, descriptors: [] };
+          flow.faceSubmitting = false;
+          document.getElementById('parent-check-face-status').textContent = 'Looking for a parent…';
+        }
+      }
+    }
+  } catch (error) {
+    document.getElementById('parent-check-face-status').textContent = 'Camera unavailable — use the PIN.';
+  }
+  scheduleParentCheckFrame(runId);
+}
+
+function stopParentCheckCamera({ preservePanel = false } = {}) {
+  parentCheckRunId += 1;
+  if (parentCheckTimer) window.clearTimeout(parentCheckTimer);
+  parentCheckTimer = null;
+  stopMediaStream(parentCheckStream);
+  parentCheckStream = null;
+  const video = document.getElementById('parent-check-video');
+  if (video?.srcObject) {
+    stopMediaStream(video.srcObject);
+    video.srcObject = null;
+  }
+  parentCheckStreak = { profileId: null, descriptors: [] };
+  if (!preservePanel) setParentCheckFaceVisible(false);
 }
 
 async function loadGamesPageData({ resumeActive = true } = {}) {
@@ -1967,10 +2306,15 @@ async function completeBlockingChoreFromGames(event) {
 async function faceProfileRequest(url, options = {}) {
   const response = await fetch(url, {
     ...options,
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }
+    headers: {
+      'Content-Type': 'application/json',
+      ...(adminSession?.token ? { 'X-Daylight-Admin': adminSession.token } : {}),
+      ...(options.headers || {})
+    }
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
+    if (response.status === 403 && data.error === 'Parent session is not valid') clearAdminSession();
     const error = new Error(data.error || 'Face recognition could not be updated');
     error.status = response.status;
     error.data = data;
@@ -2319,16 +2663,18 @@ async function handleAddGame(event) {
   }
 }
 
-async function startGameSession(gameId, pin = pendingGameOverridePin) {
+async function startGameSession(gameId) {
   const game = gameLibrary.find(candidate => candidate.id === gameId);
   const profile = screenTimeSnapshot?.profiles.find(candidate => candidate.id === selectedGameProfileId);
   if (!game || !profile) return;
   const status = document.getElementById('games-page-status');
+  const usedParentOverride = Boolean(pendingGameOverridePin);
   try {
     const session = await screenTimeRequest('api/screen-time/sessions', {
       method: 'POST',
-      body: JSON.stringify({ profileId: profile.id, gameId: game.id, ...(pin ? { pin } : {}) })
+      body: JSON.stringify({ profileId: profile.id, gameId: game.id })
     });
+    if (usedParentOverride) touchAdminSession();
     pendingGameOverridePin = null;
     screenTimeSnapshot.activeSession = session;
     openRunningGame(session, game, profile);
@@ -2340,7 +2686,7 @@ async function startGameSession(gameId, pin = pendingGameOverridePin) {
     pendingGameOverridePin = null;
     if (status) status.textContent = error.message;
     renderGamesPage();
-    if (pin && error.status === 403) openGamePinModal('override', { error: error.message });
+    if (error.status === 403 && profile.blocking?.length) openGamePinModal('override', { error: error.message });
   }
 }
 
@@ -2443,97 +2789,44 @@ async function stopActiveGameSession(reason = 'closed') {
   await loadGamesPageData({ resumeActive: false });
 }
 
-function setupGamePinPad() {
-  const keypad = document.getElementById('game-pin-keypad');
-  if (!keypad || keypad.dataset.bound === 'true') return;
-  keypad.dataset.bound = 'true';
-  keypad.addEventListener('click', event => {
-    const key = event.target.closest('[data-pin-key]')?.dataset.pinKey;
-    const action = event.target.closest('[data-pin-action]')?.dataset.pinAction;
-    if (key && gamePinValue.length < 8) gamePinValue += key;
-    if (action === 'clear') gamePinValue = '';
-    if (action === 'backspace') gamePinValue = gamePinValue.slice(0, -1);
-    updateGamePinDisplay();
-  });
-  document.getElementById('game-pin-submit')?.addEventListener('click', submitGamePin);
-  document.getElementById('game-grant-options')?.addEventListener('click', event => {
-    const button = event.target.closest('[data-grant-minutes]');
-    if (!button) return;
-    selectedGrantMinutes = Number(button.dataset.grantMinutes);
-    document.querySelectorAll('[data-grant-minutes]').forEach(option => option.classList.toggle('selected', option === button));
-  });
-}
-
 function openGamePinModal(action, details = {}) {
-  const modal = document.getElementById('game-pin-modal');
-  if (!modal) return;
-  if (!screenTimeSnapshot?.settings.pinSet) {
-    document.getElementById('games-page-status').textContent = 'An adult needs to set a parent PIN in Settings first.';
-    document.querySelector('.tab-item[data-tab-target="settings-content"]')?.click();
-    return;
-  }
-  gamePinAction = { action, ...details };
-  gamePinValue = '';
-  document.getElementById('game-pin-title').textContent = action === 'grant' ? 'Add playtime' : action === 'remove' ? 'Remove game' : 'Parent override';
-  document.getElementById('game-pin-message').textContent = action === 'grant' ? 'Choose minutes, then enter the parent PIN.' : 'Enter the parent PIN to continue.';
-  document.getElementById('game-grant-options').hidden = action !== 'grant';
-  document.getElementById('game-pin-error').textContent = details.error || '';
-  updateGamePinDisplay();
-  modal.classList.add('show');
-  stopFaceRecognitionCamera({ clearBanner: true });
-}
-
-function updateGamePinDisplay() {
-  const display = document.getElementById('game-pin-display');
-  const submit = document.getElementById('game-pin-submit');
-  if (!display || !submit) return;
-  display.textContent = gamePinValue ? '● '.repeat(gamePinValue.length).trim() : '○ ○ ○ ○';
-  display.setAttribute('aria-label', gamePinValue ? `${gamePinValue.length} PIN digits entered` : 'PIN is empty');
-  submit.disabled = gamePinValue.length < 4;
-}
-
-async function submitGamePin() {
-  const submit = document.getElementById('game-pin-submit');
-  const errorBox = document.getElementById('game-pin-error');
-  submit.disabled = true;
-  errorBox.textContent = '';
-  try {
-    if (gamePinAction.action === 'override') {
-      await screenTimeRequest('api/screen-time/settings', { method: 'PUT', body: JSON.stringify({ pin: gamePinValue }) });
-      pendingGameOverridePin = gamePinValue;
-      closeModal(document.getElementById('game-pin-modal'));
-      renderGamesPage();
-    } else if (gamePinAction.action === 'remove') {
-      await screenTimeRequest(`api/games/${encodeURIComponent(gamePinAction.gameId)}`, {
-        method: 'DELETE', body: JSON.stringify({ pin: gamePinValue })
-      });
-      closeModal(document.getElementById('game-pin-modal'));
-      await loadGamesPageData({ resumeActive: false });
-    } else if (gamePinAction.action === 'grant') {
-      await screenTimeRequest('api/screen-time/grants', {
-        method: 'POST',
-        body: JSON.stringify({ pin: gamePinValue, profileId: selectedGameProfileId, minutes: selectedGrantMinutes, reason: 'Parent added game time' })
-      });
-      const gameId = activeGame?.id;
-      closeModal(document.getElementById('game-pin-modal'));
-      await loadGamesPageData({ resumeActive: false });
-      const resumed = screenTimeSnapshot.activeSession;
-      const profile = screenTimeSnapshot.profiles.find(candidate => candidate.id === selectedGameProfileId);
-      if (resumed && gameId && profile) {
-        openRunningGame(resumed, activeGame, profile);
-      } else {
-        activeGameSession = null;
-        if (gameId) await startGameSession(gameId);
+  const title = action === 'grant' ? 'Add playtime' : action === 'remove' ? 'Remove game' : 'Parent override';
+  const optionsHtml = action === 'grant' ? `<div class="game-grant-options">
+    <span>Add:</span>
+    ${[5, 10, 15, 30].map(minutes => `<button type="button" data-grant-minutes="${minutes}" class="${minutes === selectedGrantMinutes ? 'selected' : ''}">${minutes} min</button>`).join('')}
+  </div>` : '';
+  void requestAdminAuthorization({
+    title,
+    prompt: details.error || (action === 'grant' ? 'Choose minutes, then verify parent access.' : 'Verify parent access to continue.'),
+    optionsHtml,
+    onAuthorized: async () => {
+      if (action === 'override') {
+        pendingGameOverridePin = true;
+        renderGamesPage();
+      } else if (action === 'remove') {
+        await screenTimeRequest(`api/games/${encodeURIComponent(details.gameId)}`, {
+          method: 'DELETE', body: '{}'
+        });
+        touchAdminSession();
+        await loadGamesPageData({ resumeActive: false });
+      } else if (action === 'grant') {
+        await screenTimeRequest('api/screen-time/grants', {
+          method: 'POST',
+          body: JSON.stringify({ profileId: selectedGameProfileId, minutes: selectedGrantMinutes, reason: 'Parent added game time' })
+        });
+        touchAdminSession();
+        const gameId = activeGame?.id;
+        await loadGamesPageData({ resumeActive: false });
+        const resumed = screenTimeSnapshot.activeSession;
+        const profile = screenTimeSnapshot.profiles.find(candidate => candidate.id === selectedGameProfileId);
+        if (resumed && gameId && profile) openRunningGame(resumed, activeGame, profile);
+        else {
+          activeGameSession = null;
+          if (gameId) await startGameSession(gameId);
+        }
       }
     }
-  } catch (error) {
-    errorBox.textContent = error.status === 429 && error.data?.retryAfterSeconds
-      ? `${error.message} ${error.data.retryAfterSeconds}s remaining.` : error.message;
-    gamePinValue = '';
-    updateGamePinDisplay();
-  } finally {
-    if (gamePinValue.length >= 4) submit.disabled = false;
-  }
+  });
 }
 
 async function initializeScreenTimeSettings() {
@@ -2542,11 +2835,13 @@ async function initializeScreenTimeSettings() {
   form.dataset.bound = 'true';
   form.addEventListener('submit', event => {
     event.preventDefault();
-    if (screenTimeSettingsSnapshot?.settings.pinSet) openSettingsPinFlow('save');
-    else saveScreenTimeSettings();
+    void requestAdminAuthorization({
+      title: 'Save screen time',
+      prompt: 'Verify parent access to save these settings.',
+      onAuthorized: saveScreenTimeSettings
+    });
   });
-  document.getElementById('screen-time-set-pin')?.addEventListener('click', () => openSettingsPinFlow('setPin'));
-  setupSettingsPinPad();
+  document.getElementById('screen-time-set-pin')?.addEventListener('click', openParentPinChange);
   await loadScreenTimeSettings();
 }
 
@@ -2561,6 +2856,18 @@ async function loadScreenTimeSettings() {
     document.getElementById('screen-time-default-minutes').value = settings.defaultDailyMinutes;
     document.getElementById('screen-time-pin-state').textContent = settings.pinSet ? 'PIN protected' : 'PIN not set';
     document.getElementById('screen-time-set-pin').innerHTML = `<i class="material-icons" aria-hidden="true">pin</i> ${settings.pinSet ? 'Change PIN' : 'Set PIN'}`;
+    const parentProfiles = document.getElementById('screen-time-admin-profiles');
+    if (parentProfiles) {
+      const adminIds = new Set(settings.adminProfileIds || []);
+      parentProfiles.innerHTML = screenTimeSettingsSnapshot.profiles.length
+        ? screenTimeSettingsSnapshot.profiles.map(profile => `
+          <label class="parent-profile-chip" style="--profile-color:${escapeHtml(getValidCalendarColor(profile.color))}">
+            <input type="checkbox" value="${escapeHtml(profile.id)}" data-admin-profile${adminIds.has(profile.id) ? ' checked' : ''}>
+            <span class="profile-avatar">${escapeHtml(getProfileInitials(profile.name))}</span>
+            <span>${escapeHtml(profile.name || 'Unnamed')}</span>
+          </label>`).join('')
+        : '<p class="setting-description">Add household profiles before choosing parents.</p>';
+    }
     const profiles = document.getElementById('screen-time-profile-settings');
     profiles.innerHTML = screenTimeSettingsSnapshot.profiles.length
       ? screenTimeSettingsSnapshot.profiles.map(profile => `
@@ -2571,7 +2878,7 @@ async function loadScreenTimeSettings() {
           <span>min/day</span>
         </label>`).join('')
       : '<p class="setting-description">Add household profiles before setting individual limits.</p>';
-    status.textContent = settings.pinSet ? '' : 'Set a PIN before using parent overrides, adding time, or removing games.';
+    status.textContent = settings.pinSet ? '' : 'Your first parent action will ask you to create a PIN.';
     status.classList.remove('is-error', 'is-success');
   } catch (error) {
     status.textContent = error.message;
@@ -2579,22 +2886,22 @@ async function loadScreenTimeSettings() {
   }
 }
 
-function collectScreenTimeSettings(pin) {
+function collectScreenTimeSettings() {
   const profiles = {};
   document.querySelectorAll('[data-screen-time-profile]').forEach(input => {
     profiles[input.dataset.screenTimeProfile] = { dailyMinutes: Number(input.value) };
   });
   return {
-    ...(pin ? { pin } : {}),
     enabled: document.getElementById('screen-time-enabled').checked,
     requireChoresFirst: document.getElementById('screen-time-require-chores').checked,
     includeRoutines: document.getElementById('screen-time-include-routines').checked,
     defaultDailyMinutes: Number(document.getElementById('screen-time-default-minutes').value),
-    profiles
+    profiles,
+    adminProfileIds: [...document.querySelectorAll('[data-admin-profile]:checked')].map(input => input.value)
   };
 }
 
-async function saveScreenTimeSettings(pin = null) {
+async function saveScreenTimeSettings() {
   const status = document.getElementById('screen-time-settings-status');
   const submit = document.querySelector('#screen-time-settings-form [type="submit"]');
   submit.disabled = true;
@@ -2602,22 +2909,15 @@ async function saveScreenTimeSettings(pin = null) {
   status.classList.remove('is-error', 'is-success');
   try {
     await screenTimeRequest('api/screen-time/settings', {
-      method: 'PUT', body: JSON.stringify(collectScreenTimeSettings(pin))
+      method: 'PUT', body: JSON.stringify(collectScreenTimeSettings())
     });
-    closeModal(document.getElementById('settings-pin-modal'));
+    touchAdminSession();
     await loadScreenTimeSettings();
     status.textContent = 'Screen time settings saved.';
     status.classList.add('is-success');
   } catch (error) {
-    if (pin) {
-      document.getElementById('settings-pin-error').textContent = error.status === 429 && error.data?.retryAfterSeconds
-        ? `${error.message} ${error.data.retryAfterSeconds}s remaining.` : error.message;
-      settingsPinValue = '';
-      updateSettingsPinDisplay();
-    } else {
-      status.textContent = error.message;
-      status.classList.add('is-error');
-    }
+    status.textContent = error.message;
+    status.classList.add('is-error');
   } finally {
     submit.disabled = false;
   }
@@ -2683,7 +2983,7 @@ async function loadFaceRecognitionSettings() {
     const deleteAll = document.getElementById('delete-all-face-data');
     if (deleteAll) deleteAll.disabled = !anyEnrolled;
     setFaceSettingsStatus(screenTimeSettingsSnapshot?.settings.pinSet
-      ? '' : 'Set a parent PIN before enabling recognition or changing face data.');
+      ? '' : 'Your first parent action will ask you to create a PIN.');
   } catch (error) {
     setFaceSettingsStatus(error.message, true);
   }
@@ -2736,9 +3036,8 @@ async function populateFaceCameraOptions({ requestPermission = false } = {}) {
   }
 }
 
-function collectFaceSettings(pin) {
+function collectFaceSettings() {
   return {
-    pin,
     enabled: document.getElementById('face-recognition-enabled').checked,
     deviceId: document.getElementById('face-camera-device').value || null,
     threshold: Number(document.getElementById('face-match-threshold').value)
@@ -2746,67 +3045,55 @@ function collectFaceSettings(pin) {
 }
 
 function requestFacePinAction(type, details = {}) {
-  if (!screenTimeSettingsSnapshot?.settings.pinSet) {
-    setFaceSettingsStatus('Set a parent PIN first, then try this action again.', true);
-    openSettingsPinFlow('setPin');
-    return;
-  }
-  openSettingsPinFlow(type, details);
+  const titles = {
+    faceSettings: 'Save face settings',
+    faceEnroll: 'Enroll face',
+    faceDelete: 'Delete face data',
+    faceDeleteAll: 'Delete all face data'
+  };
+  void requestAdminAuthorization({
+    title: titles[type] || 'Parent check',
+    prompt: type === 'faceEnroll' ? 'Verify parent access before the camera opens.' : 'Verify parent access to continue.',
+    onAuthorized: async () => submitFaceProtectedAction(type, details)
+  });
 }
 
-async function submitFaceProtectedAction(pin) {
-  const flow = settingsPinFlow;
-  const submit = document.getElementById('settings-pin-submit');
-  const errorBox = document.getElementById('settings-pin-error');
-  submit.disabled = true;
+async function submitFaceProtectedAction(type, details = {}) {
   try {
-    if (flow.type === 'faceSettings') {
+    if (type === 'faceSettings') {
       await faceProfileRequest('api/face-profiles/settings', {
-        method: 'PUT', body: JSON.stringify(collectFaceSettings(pin))
+        method: 'PUT', body: JSON.stringify(collectFaceSettings())
       });
-      closeModal(document.getElementById('settings-pin-modal'));
-      settingsPinValue = '';
-      settingsPinFlow = null;
+      touchAdminSession();
       await loadFaceRecognitionSettings();
       setFaceSettingsStatus('Face recognition settings saved.', false, true);
-    } else if (flow.type === 'faceEnroll') {
+    } else if (type === 'faceEnroll') {
       await faceProfileRequest('api/face-profiles/settings', {
-        method: 'PUT', body: JSON.stringify({ pin })
+        method: 'PUT', body: '{}'
       });
-      closeModal(document.getElementById('settings-pin-modal'));
-      settingsPinValue = '';
-      settingsPinFlow = null;
-      await startFaceEnrollment(flow.profileId, pin);
-    } else if (flow.type === 'faceDelete') {
-      await faceProfileRequest(`api/face-profiles/${encodeURIComponent(flow.profileId)}`, {
-        method: 'DELETE', body: JSON.stringify({ pin })
+      touchAdminSession();
+      await startFaceEnrollment(details.profileId);
+    } else if (type === 'faceDelete') {
+      await faceProfileRequest(`api/face-profiles/${encodeURIComponent(details.profileId)}`, {
+        method: 'DELETE', body: '{}'
       });
-      closeModal(document.getElementById('settings-pin-modal'));
-      settingsPinValue = '';
-      settingsPinFlow = null;
+      touchAdminSession();
       await loadFaceRecognitionSettings();
       setFaceSettingsStatus('Face data deleted.', false, true);
-    } else if (flow.type === 'faceDeleteAll') {
+    } else if (type === 'faceDeleteAll') {
       await faceProfileRequest('api/face-profiles', {
-        method: 'DELETE', body: JSON.stringify({ pin })
+        method: 'DELETE', body: '{}'
       });
-      closeModal(document.getElementById('settings-pin-modal'));
-      settingsPinValue = '';
-      settingsPinFlow = null;
+      touchAdminSession();
       await loadFaceRecognitionSettings();
       setFaceSettingsStatus('All face data deleted.', false, true);
     }
   } catch (error) {
-    errorBox.textContent = error.status === 429 && error.data?.retryAfterSeconds
-      ? `${error.message} ${error.data.retryAfterSeconds}s remaining.` : error.message;
-    settingsPinValue = '';
-    updateSettingsPinDisplay();
-  } finally {
-    if (settingsPinValue.length >= 4) submit.disabled = false;
+    setFaceSettingsStatus(error.message, true);
   }
 }
 
-async function startFaceEnrollment(profileId, pin) {
+async function startFaceEnrollment(profileId) {
   const profile = faceProfilesSnapshot?.profiles.find(candidate => candidate.profileId === profileId);
   if (!profile) return;
   stopFaceEnrollmentCamera();
@@ -2820,7 +3107,7 @@ async function startFaceEnrollment(profileId, pin) {
   errorBox.textContent = '';
   modal.classList.add('show');
   const runId = ++faceEnrollmentRunId;
-  faceEnrollmentState = { profileId, pin, descriptors: [] };
+  faceEnrollmentState = { profileId, descriptors: [] };
   try {
     await loadFaceModels();
     if (runId !== faceEnrollmentRunId || !modal.classList.contains('show') || document.hidden) return;
@@ -2886,8 +3173,9 @@ async function saveFaceEnrollment(runId) {
   try {
     await faceProfileRequest(`api/face-profiles/${encodeURIComponent(state.profileId)}`, {
       method: 'POST',
-      body: JSON.stringify({ pin: state.pin, descriptors: state.descriptors })
+      body: JSON.stringify({ descriptors: state.descriptors })
     });
+    touchAdminSession();
     closeModal(document.getElementById('face-enrollment-modal'));
     await loadFaceRecognitionSettings();
     setFaceSettingsStatus('Face enrollment saved. Only numeric face vectors were stored.', false, true);
@@ -2910,111 +3198,6 @@ function stopFaceEnrollmentCamera({ preserveState = false } = {}) {
     video.srcObject = null;
   }
   if (!preserveState) faceEnrollmentState = null;
-}
-
-function setupSettingsPinPad() {
-  const keypad = document.getElementById('settings-pin-keypad');
-  if (!keypad || keypad.dataset.bound === 'true') return;
-  keypad.dataset.bound = 'true';
-  keypad.addEventListener('click', event => {
-    const key = event.target.closest('[data-pin-key]')?.dataset.pinKey;
-    const action = event.target.closest('[data-pin-action]')?.dataset.pinAction;
-    if (key && settingsPinValue.length < 8) settingsPinValue += key;
-    if (action === 'clear') settingsPinValue = '';
-    if (action === 'backspace') settingsPinValue = settingsPinValue.slice(0, -1);
-    updateSettingsPinDisplay();
-  });
-  document.getElementById('settings-pin-submit')?.addEventListener('click', submitSettingsPin);
-}
-
-function openSettingsPinFlow(type, details = {}) {
-  const pinSet = Boolean(screenTimeSettingsSnapshot?.settings.pinSet);
-  const titles = {
-    save: 'Save screen time',
-    faceSettings: 'Save face settings',
-    faceEnroll: 'Enroll face',
-    faceDelete: 'Delete face data',
-    faceDeleteAll: 'Delete all face data'
-  };
-  const prompts = {
-    faceSettings: 'Enter the parent PIN to save face recognition settings.',
-    faceEnroll: 'Enter the parent PIN before the camera opens.',
-    faceDelete: 'Enter the parent PIN to delete this profile’s face data.',
-    faceDeleteAll: 'Enter the parent PIN to delete every stored face vector.'
-  };
-  settingsPinFlow = {
-    type,
-    stage: type === 'save' || pinSet ? 'current' : 'new',
-    currentPin: null,
-    newPin: null,
-    prompt: prompts[type] || null,
-    ...details
-  };
-  settingsPinValue = '';
-  document.getElementById('settings-pin-title').textContent = titles[type] || (pinSet ? 'Change parent PIN' : 'Set parent PIN');
-  document.getElementById('settings-pin-error').textContent = '';
-  updateSettingsPinPrompt();
-  updateSettingsPinDisplay();
-  document.getElementById('settings-pin-modal').classList.add('show');
-}
-
-function updateSettingsPinPrompt() {
-  const prompt = document.getElementById('settings-pin-message');
-  if (!settingsPinFlow || !prompt) return;
-  prompt.textContent = settingsPinFlow.stage === 'current' ? (settingsPinFlow.prompt || 'Enter the current parent PIN.')
-    : settingsPinFlow.stage === 'new' ? 'Choose a new 4–8 digit PIN.'
-      : 'Enter the new PIN again.';
-}
-
-function updateSettingsPinDisplay() {
-  const display = document.getElementById('settings-pin-display');
-  const submit = document.getElementById('settings-pin-submit');
-  if (!display || !submit) return;
-  display.textContent = settingsPinValue ? '● '.repeat(settingsPinValue.length).trim() : '○ ○ ○ ○';
-  display.setAttribute('aria-label', settingsPinValue ? `${settingsPinValue.length} PIN digits entered` : 'PIN is empty');
-  submit.disabled = settingsPinValue.length < 4;
-}
-
-async function submitSettingsPin() {
-  if (!settingsPinFlow || settingsPinValue.length < 4) return;
-  const errorBox = document.getElementById('settings-pin-error');
-  errorBox.textContent = '';
-  if (settingsPinFlow.type === 'save') return saveScreenTimeSettings(settingsPinValue);
-  if (settingsPinFlow.type.startsWith('face')) return submitFaceProtectedAction(settingsPinValue);
-  if (settingsPinFlow.stage === 'current') {
-    settingsPinFlow.currentPin = settingsPinValue;
-    settingsPinFlow.stage = 'new';
-  } else if (settingsPinFlow.stage === 'new') {
-    settingsPinFlow.newPin = settingsPinValue;
-    settingsPinFlow.stage = 'confirm';
-  } else if (settingsPinValue !== settingsPinFlow.newPin) {
-    errorBox.textContent = 'Those PINs do not match. Enter the new PIN again.';
-  } else {
-    const submit = document.getElementById('settings-pin-submit');
-    submit.disabled = true;
-    try {
-      await screenTimeRequest('api/screen-time/pin', {
-        method: 'PUT',
-        body: JSON.stringify({ currentPin: settingsPinFlow.currentPin, newPin: settingsPinFlow.newPin })
-      });
-      closeModal(document.getElementById('settings-pin-modal'));
-      await loadScreenTimeSettings();
-      await loadFaceRecognitionSettings();
-      const status = document.getElementById('screen-time-settings-status');
-      status.textContent = 'Parent PIN saved.';
-      status.classList.add('is-success');
-      return;
-    } catch (error) {
-      errorBox.textContent = error.status === 429 && error.data?.retryAfterSeconds
-        ? `${error.message} ${error.data.retryAfterSeconds}s remaining.` : error.message;
-      settingsPinFlow.stage = screenTimeSettingsSnapshot.settings.pinSet ? 'current' : 'new';
-      settingsPinFlow.currentPin = null;
-      settingsPinFlow.newPin = null;
-    }
-  }
-  settingsPinValue = '';
-  updateSettingsPinPrompt();
-  updateSettingsPinDisplay();
 }
 
 function initializeSettingsPage() {
@@ -3229,6 +3412,7 @@ function handleCameraPageChange(target) {
 
 function handleCameraVisibilityChange() {
   if (document.hidden) {
+    stopParentCheckCamera();
     stopFaceRecognitionCamera({ clearBanner: true });
     const enrollmentModal = document.getElementById('face-enrollment-modal');
     if (enrollmentModal?.classList.contains('show')) closeModal(enrollmentModal);
@@ -3261,40 +3445,50 @@ function initializeSidebar() {
   const tabItems = document.querySelectorAll('.tab-item');
   const tabContents = document.querySelectorAll('.tab-content');
 
-  tabItems.forEach(item => {
-    item.addEventListener('click', () => {
-      const target = item.dataset.tabTarget;
-      handleCameraPageChange(target);
+  const activateTab = item => {
+    const target = item.dataset.tabTarget;
+    handleCameraPageChange(target);
+    tabItems.forEach(tab => tab.classList.remove('active-tab'));
+    tabContents.forEach(content => {
+      content.classList.remove('active-content');
+      content.style.display = 'none';
+    });
+    item.classList.add('active-tab');
+    const contentFrame = document.getElementById(target);
+    if (!contentFrame) return;
+    contentFrame.classList.add('active-content');
+    contentFrame.style.display = 'block';
 
-      // Remove active classes
-      tabItems.forEach(tab => tab.classList.remove('active-tab'));
-      tabContents.forEach(content => {
-        content.classList.remove('active-content');
-        content.style.display = 'none';
-      });
-
-      // Add active classes
-      item.classList.add('active-tab');
-      const contentFrame = document.getElementById(target);
-      if (contentFrame) {
-        contentFrame.classList.add('active-content');
-        contentFrame.style.display = 'block';
-
-        // Refresh availability and size after returning from calendar settings
-        if (target === 'calendar-content') {
-          setTimeout(async () => {
-            const hasCalendars = await refreshCalendarAvailability();
-            if (!hasCalendars) return;
-
-            if (calendar) {
-              scheduleCalendarSizeUpdate();
-              calendar.refetchEvents();
-            } else {
-              setupCalendar();
-            }
-          }, 50);
+    if (target === 'calendar-content') {
+      setTimeout(async () => {
+        const hasCalendars = await refreshCalendarAvailability();
+        if (!hasCalendars) return;
+        if (calendar) {
+          scheduleCalendarSizeUpdate();
+          calendar.refetchEvents();
+        } else {
+          setupCalendar();
         }
+      }, 50);
+    }
+  };
+
+  tabItems.forEach(item => {
+    item.addEventListener('click', async event => {
+      event.preventDefault();
+      if (item.dataset.tabTarget === 'settings-content') {
+        await requestAdminAuthorization({
+          title: 'Open Settings',
+          prompt: 'Parent access is required for Settings.',
+          onAuthorized: async () => {
+            activateTab(item);
+            if (document.getElementById('screen-time-settings-form')) await loadScreenTimeSettings();
+            if (document.getElementById('face-recognition-settings-form')) await loadFaceRecognitionSettings();
+          }
+        });
+        return;
       }
+      activateTab(item);
     });
   });
 }
@@ -3314,6 +3508,7 @@ function initializeGlobalUI() {
   // Setup modal management
   setupModals();
   setupAppDialog();
+  setupParentCheckUi();
 
   // These listeners live on the stable document, so Turbo frame swaps cannot
   // orphan them or create duplicate handlers when Settings is reopened.
@@ -3664,6 +3859,11 @@ function closeModal(modal) {
 
   if (modal.id === 'receipt-crop-modal') clearReceiptCrop();
   if (modal.id === 'face-enrollment-modal') stopFaceEnrollmentCamera();
+  if (modal.id === 'parent-check-modal') {
+    stopParentCheckCamera();
+    parentCheckFlow = null;
+    parentCheckPin = '';
+  }
 
   // A game spends time only while its modal is open. Blank the iframe first so
   // audio stops immediately, then end the server session idempotently.
@@ -5161,12 +5361,27 @@ function renderSchoolMenuSchoolOptions(filter = '', { scrollSelected = false } =
 
   if (scrollSelected) {
     const selected = list.querySelector('[aria-pressed="true"]');
-    if (selected) {
-      const listBounds = list.getBoundingClientRect();
-      const selectedBounds = selected.getBoundingClientRect();
-      list.scrollTop = Math.max(0, list.scrollTop + selectedBounds.top - listBounds.top - ((list.clientHeight - selectedBounds.height) / 2));
-    }
+    if (selected) centerSchoolMenuSelectionWhenLaidOut(list, selected);
   }
+}
+
+function centerSchoolMenuSelectionWhenLaidOut(list, selected) {
+  schoolMenuScrollObserver?.disconnect();
+  schoolMenuScrollObserver = null;
+  const center = () => {
+    if (!list.isConnected || !selected.isConnected || list.clientHeight <= 0 || selected.offsetHeight <= 0) return false;
+    list.scrollTop = Math.max(0, selected.offsetTop - ((list.clientHeight - selected.offsetHeight) / 2));
+    return true;
+  };
+  window.requestAnimationFrame(() => {
+    if (center() || typeof ResizeObserver !== 'function') return;
+    schoolMenuScrollObserver = new ResizeObserver(() => {
+      if (!center()) return;
+      schoolMenuScrollObserver?.disconnect();
+      schoolMenuScrollObserver = null;
+    });
+    schoolMenuScrollObserver.observe(list);
+  });
 }
 
 async function loadSchoolMenuSchools() {

@@ -26,6 +26,11 @@
         <span>Daylight</span>
         <i class="material-icons">chevron_left</i>
       </div>
+      <button type="button" id="admin-session-chip" class="admin-session-chip" hidden>
+        <i class="material-icons" aria-hidden="true">lock_open</i>
+        <span>Parent unlocked</span>
+        <strong>Lock</strong>
+      </button>
       <div class="sidebar-divider"></div>
       <div class="sidebar-tabs">
         <div class="tab-item active-tab" data-tab-target="calendar-content">
@@ -370,39 +375,41 @@
     </div>
   </div>
 
+  <div id="parent-check-modal" class="modal parent-check-modal" role="dialog" aria-modal="true" aria-labelledby="parent-check-title">
+    <div class="modal-content pin-modal-content parent-check-content">
+      <div class="modal-header">
+        <h3 id="parent-check-title">Parent check</h3>
+        <button type="button" class="modal-close" aria-label="Close parent check">&times;</button>
+      </div>
+      <div class="modal-body pin-modal-body">
+        <p id="parent-check-message">Enter the parent PIN to continue.</p>
+        <div class="parent-check-layout">
+          <div id="parent-check-face" class="parent-check-face" hidden>
+            <video id="parent-check-video" width="320" height="240" autoplay muted playsinline></video>
+            <p id="parent-check-face-status" aria-live="polite">Looking for a parent…</p>
+          </div>
+          <div class="parent-check-pin-column">
+            <div id="parent-check-options"></div>
+            <div id="parent-check-display" class="pin-display" aria-label="PIN is empty">○ ○ ○ ○</div>
+            <div id="parent-check-error" class="inline-form-error" role="alert"></div>
+            <div id="parent-check-keypad" class="pin-keypad" aria-label="PIN keypad">
+              <button type="button" data-pin-key="1">1</button><button type="button" data-pin-key="2">2</button><button type="button" data-pin-key="3">3</button>
+              <button type="button" data-pin-key="4">4</button><button type="button" data-pin-key="5">5</button><button type="button" data-pin-key="6">6</button>
+              <button type="button" data-pin-key="7">7</button><button type="button" data-pin-key="8">8</button><button type="button" data-pin-key="9">9</button>
+              <button type="button" data-pin-action="clear" aria-label="Clear PIN">Clear</button><button type="button" data-pin-key="0">0</button><button type="button" data-pin-action="backspace" aria-label="Delete last digit"><i class="material-icons" aria-hidden="true">backspace</i></button>
+            </div>
+            <button type="button" id="parent-check-submit" class="btn btn-primary pin-submit" disabled>Continue</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Scripts -->
   <!-- Moment.js for date/time formatting -->
   <script src="https://cdn.jsdelivr.net/npm/moment@2.29.4/moment.min.js"></script>
   <!-- Turbo Hotwire for SPA-like navigation -->
   <script src="https://cdn.jsdelivr.net/npm/@hotwired/turbo@7.3.0/dist/turbo.es2017-umd.js"></script>
-  <script>
-    // Simple tab switching with Turbo frames
-    document.addEventListener('DOMContentLoaded', function() {
-      const tabItems = document.querySelectorAll('.tab-item');
-      const tabContents = document.querySelectorAll('.tab-content');
-
-      tabItems.forEach(item => {
-        item.addEventListener('click', () => {
-          const target = item.dataset.tabTarget;
-
-          // Remove active classes
-          tabItems.forEach(tab => tab.classList.remove('active-tab'));
-          tabContents.forEach(content => {
-            content.classList.remove('active-content');
-            content.style.display = 'none';
-          });
-
-          // Add active classes
-          item.classList.add('active-tab');
-          const contentFrame = document.getElementById(target);
-          if (contentFrame) {
-            contentFrame.classList.add('active-content');
-            contentFrame.style.display = 'block';
-          }
-        });
-      });
-    });
-  </script>
   <script src="js/sidebar-styles.js"></script>
   <script src="js/sidebar-fix.js"></script>
   <script src="js/calendar-styles.js"></script>

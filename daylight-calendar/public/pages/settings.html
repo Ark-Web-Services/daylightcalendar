@@ -203,6 +203,11 @@
               <span><strong>Include routines</strong><small>Today’s assigned routines join the chore gate.</small></span>
             </label>
           </div>
+          <div class="screen-time-parents">
+            <h4 class="screen-time-profile-heading">Parents</h4>
+            <p class="setting-description">Parents can unlock Settings and approve protected actions with their enrolled face.</p>
+            <div id="screen-time-admin-profiles" class="parent-profile-chips" aria-live="polite">Loading people…</div>
+          </div>
           <div class="form-group screen-time-default-field">
             <label for="screen-time-default-minutes">Default daily minutes</label>
             <input type="number" id="screen-time-default-minutes" min="0" max="1440" step="1" required>
@@ -212,6 +217,7 @@
             <div id="screen-time-profile-settings" class="screen-time-profile-settings" aria-live="polite">Loading people…</div>
           </div>
           <div id="screen-time-settings-status" class="screen-time-settings-status" aria-live="polite"></div>
+          <p class="setting-description parent-pin-recovery">Forgot the PIN? An enrolled parent face can change it, or turn on <code>reset_parent_pin</code> in the add-on configuration.</p>
           <div class="form-actions screen-time-settings-actions">
             <button type="button" id="screen-time-set-pin" class="btn btn-secondary"><i class="material-icons" aria-hidden="true">pin</i> Set PIN</button>
             <button type="submit" class="btn btn-primary"><i class="material-icons" aria-hidden="true">save</i> Save screen time</button>
@@ -355,27 +361,6 @@
         <button id="add-user-btn" class="btn btn-primary" style="margin-top: 15px;">
           <i class="material-icons">person_add</i> Add Profile
         </button>
-      </div>
-    </div>
-  </div>
-
-  <div id="settings-pin-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-pin-title">
-    <div class="modal-content pin-modal-content">
-      <div class="modal-header">
-        <h3 id="settings-pin-title">Parent PIN</h3>
-        <button class="modal-close" type="button" aria-label="Close">&times;</button>
-      </div>
-      <div class="modal-body pin-modal-body">
-        <p id="settings-pin-message">Enter the parent PIN.</p>
-        <div id="settings-pin-display" class="pin-display" aria-label="PIN is empty">○ ○ ○ ○</div>
-        <div id="settings-pin-error" class="inline-form-error" role="alert"></div>
-        <div id="settings-pin-keypad" class="pin-keypad" aria-label="PIN keypad">
-          <button type="button" data-pin-key="1">1</button><button type="button" data-pin-key="2">2</button><button type="button" data-pin-key="3">3</button>
-          <button type="button" data-pin-key="4">4</button><button type="button" data-pin-key="5">5</button><button type="button" data-pin-key="6">6</button>
-          <button type="button" data-pin-key="7">7</button><button type="button" data-pin-key="8">8</button><button type="button" data-pin-key="9">9</button>
-          <button type="button" data-pin-action="clear" aria-label="Clear PIN">Clear</button><button type="button" data-pin-key="0">0</button><button type="button" data-pin-action="backspace" aria-label="Delete last digit"><i class="material-icons" aria-hidden="true">backspace</i></button>
-        </div>
-        <button type="button" id="settings-pin-submit" class="btn btn-primary pin-submit" disabled>Continue</button>
       </div>
     </div>
   </div>

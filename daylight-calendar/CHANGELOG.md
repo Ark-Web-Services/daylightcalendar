@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.1.9.34] - 2026-09-30
+
+Parent access, with Face ID-style unlock.
+
+Settings and every parent-only action (adding playtime, overrides, removing games, face data) now
+go through one parent check. If no parent PIN exists yet, the first parent action asks you to
+create one right there and then carries on — no more "set a PIN in Settings first". Parents are
+chosen in Settings (by default, the Home Assistant administrators).
+
+If face recognition is on and a parent's face is enrolled, the parent check shows the camera and
+unlocks by itself when it sees that parent — like Face ID — with the keypad always available. The
+face match is checked by the add-on, not just the browser, and only against enrolled parents; a
+child or a stranger never unlocks it. An unlock lasts five minutes from the last parent action;
+"Parent unlocked · Lock" in the sidebar ends it early.
+
+Forgot the PIN? A parent's face can set a new one. Otherwise turn on the add-on option
+`reset_parent_pin` in Home Assistant and restart: the PIN is cleared once and the option turns
+itself back off.
+
+The school list in Settings now opens scrolled to your school.
+
 ## [1.1.9.33] - 2026-09-29
 
 School menus. A "School menu" button on the Calendar opens today's breakfast and lunch — entrees

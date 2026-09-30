@@ -5232,6 +5232,7 @@ button.meal-slot.has-meal:focus-visible {
 .game-time-up p { margin: 0; }
 
 .pin-modal-content { max-width: 420px; }
+.parent-check-content { max-height: calc(100vh - (2 * var(--md-space-4))); overflow-y: auto; }
 .pin-modal-body {
   display: flex;
   align-items: center;
@@ -5240,6 +5241,30 @@ button.meal-slot.has-meal:focus-visible {
 }
 
 .pin-modal-body > p { margin: 0; text-align: center; }
+.parent-check-layout,
+.parent-check-pin-column { display: contents; }
+.parent-check-face {
+  width: min(100%, 240px);
+  overflow: hidden;
+  border-radius: var(--md-shape-large);
+  background: var(--md-surface-variant);
+}
+.parent-check-face[hidden] { display: none; }
+.parent-check-face video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  transform: scaleX(-1);
+}
+.parent-check-face p {
+  min-height: 44px;
+  margin: 0;
+  padding: var(--md-space-2);
+  color: var(--md-on-surface-variant);
+  text-align: center;
+}
+#parent-check-options:empty { display: none; }
 .pin-display {
   min-height: 48px;
   color: var(--md-on-surface);
@@ -5274,6 +5299,32 @@ button.meal-slot.has-meal:focus-visible {
   color: var(--md-error);
   font-size: 0.875rem;
   text-align: center;
+}
+
+@media (orientation: landscape) and (max-height: 900px) {
+  .parent-check-content.has-face {
+    width: min(90%, 720px);
+    max-width: 720px;
+    overflow: visible;
+  }
+
+  .parent-check-content.has-face .pin-modal-body { align-items: stretch; }
+  .parent-check-content.has-face .parent-check-layout {
+    display: grid;
+    grid-template-columns: minmax(240px, 1fr) minmax(312px, 1fr);
+    align-items: center;
+    gap: var(--md-space-4);
+  }
+  .parent-check-content.has-face .parent-check-pin-column {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    flex-direction: column;
+    gap: var(--md-space-3);
+  }
+  .parent-check-content.has-face .parent-check-face { width: 100%; }
+  .parent-check-content.has-face .parent-check-face video { min-height: 160px; }
+  .parent-check-content.has-face .pin-keypad button { min-height: 48px; }
 }
 
 .game-grant-options {
@@ -5349,10 +5400,69 @@ button.meal-slot.has-meal:focus-visible {
 
 .screen-time-profile-setting input { width: 88px !important; min-height: 44px; }
 .screen-time-profile-name { overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.parent-profile-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--md-space-2);
+}
+#settings-content .parent-profile-chip {
+  display: inline-flex !important;
+  min-height: 48px;
+  align-items: center;
+  gap: var(--md-space-2);
+  margin: 0;
+  padding: var(--md-space-1) var(--md-space-3) var(--md-space-1) var(--md-space-1);
+  border: 1px solid var(--md-outline);
+  border-radius: var(--md-shape-xlarge);
+  background: var(--md-surface-2);
+  color: var(--md-on-surface);
+  cursor: pointer;
+}
+.parent-profile-chip:has(input:checked) {
+  border-color: var(--profile-color, var(--md-primary));
+  background: var(--md-primary-container);
+  color: var(--md-on-primary-container);
+}
+.parent-profile-chip input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+.parent-profile-chip:focus-within { outline: 3px solid var(--md-primary); outline-offset: 2px; }
+.parent-pin-recovery { margin-bottom: 0; }
+.parent-pin-recovery code { color: inherit; }
 .screen-time-settings-status { min-height: 1.5em; margin-top: var(--md-space-2); color: var(--md-on-surface-variant); }
 .screen-time-settings-status.is-error { color: var(--md-error); }
 .screen-time-settings-status.is-success { color: var(--md-success); }
 .screen-time-settings-actions { justify-content: space-between; }
+
+.admin-session-chip {
+  display: inline-flex;
+  width: calc(100% - (2 * var(--md-space-2)));
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: var(--md-space-1);
+  margin: 0 var(--md-space-2) var(--md-space-2);
+  padding: 0 var(--md-space-3);
+  border: 1px solid var(--md-outline);
+  border-radius: var(--md-shape-xlarge);
+  background: var(--md-surface-2);
+  color: var(--md-on-surface);
+  box-shadow: var(--md-shadow-2);
+  font: inherit;
+  cursor: pointer;
+}
+.admin-session-chip[hidden] { display: none; }
+.admin-session-chip strong { color: var(--md-primary); }
+#app.sidebar-collapsed .admin-session-chip {
+  width: 44px;
+  margin-inline: auto;
+  padding: 0;
+}
+#app.sidebar-collapsed .admin-session-chip span,
+#app.sidebar-collapsed .admin-session-chip strong { display: none; }
 
 .game-profile-statuses {
   display: flex;
@@ -6227,6 +6337,8 @@ button.receipt-status-chip { min-height: 44px; cursor: pointer; }
   font: inherit;
 }
 .school-menu-school-list {
+  /* Positioned so option offsetTop is measured from the list (centring the saved school). */
+  position: relative;
   display: grid;
   height: 176px;
   margin-top: var(--md-space-2);
