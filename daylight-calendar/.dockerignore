@@ -1,0 +1,8 @@
+# Local runtime state and secrets. data/ holds real account credentials in development and
+# .env.local an HA token; neither may ever be baked into an image. (HA builds from git, where
+# both are already ignored, but a local `docker build` would otherwise copy them in.)
+data/
+.env*
+node_modules/
+**/.DS_Store
+.git/
