@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.1.9.32] - 2026-09-29
+
+Security hardening of the add-on image.
+
+The image was built on Alpine 3.15, which stopped receiving security updates in November 2023,
+with Node 16. It now builds on Home Assistant's current 3.23 base with Node 24 — the version
+Daylight is developed and tested on. The image also shipped Chromium, an X server and a window
+manager, and the add-on requested `privileged: SYS_ADMIN` plus framebuffer, GPU, TTY and input
+devices, all for an on-device kiosk mode whose option no longer exists (the wall panel is a
+browser on the host). All of that is gone: the add-on now asks for no special privileges or
+devices, and installs production dependencies only (`npm ci --omit=dev`) — the webpack tooling and
+the build of an unused `dist/bundle.js` are no longer in the image. It is now 154 MB.
+
+The service's finish script was an execline script containing bash `if` blocks, which execline
+cannot parse, so it never halted the add-on after a crash; it now follows the current Home Assistant
+template for s6-overlay v3. A `.dockerignore` keeps local runtime data and `.env` files (which can
+hold real credentials) out of any locally built image.
+
+Verified by building and running the image with its real s6-overlay v3 init: the service starts in
+about six seconds, every endpoint answers, no Chromium/X/webpack is present, and with a Supervisor
+token set all state is written to `/data` (nothing to `/app/data`).
+
+
 ## [1.1.9.31] - 2026-09-25
 
 Taps on the Settings page could land on invisible parts of closed dialogs. Settings forces its

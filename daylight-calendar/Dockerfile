@@ -1,20 +1,10 @@
-ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base:3.15
+ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base:3.23
 FROM ${BUILD_FROM}
 
 # Install required packages
-RUN apk add --no-cache \
-    nodejs \
-    npm \
-    git \
-    python3 \
-    py3-pip \
-    wget \
-    curl \
-    xorg-server \
-    xf86-video-fbdev \
-    ttf-freefont \
-    openbox \
-    chromium
+# Node only. Chromium, an X server and a window manager were installed for an on-device
+# kiosk mode whose option no longer exists; the wall panel is Edge on the Windows host.
+RUN apk add --no-cache nodejs npm
 
 # Copy S6 overlay and other rootfs items
 COPY rootfs /
@@ -28,13 +18,14 @@ WORKDIR /app
 
 # Copy package.json and package-lock.json (if it exists)
 # Only copy these first to leverage Docker layer caching for npm install
-COPY package.json package-lock.json* ./
+COPY package.json package-lock.json ./
 # Ensure options.json is also available in /app, as index.js reads it from __dirname
 COPY options.json ./
 
 # Install Node.js dependencies
 # This installs dependencies based on package.json in /app
-RUN npm install
+# Production dependencies only; dev tooling (webpack etc.) no longer ships.
+RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 
 # Copy the rest of the application source code into /app
 # This will copy index.js, public/, etc.
@@ -42,7 +33,6 @@ COPY . .
 
 # Build the client-side assets (Webpack)
 # This uses the package.json scripts from /app/package.json
-RUN npm run build
 
 # /app now contains the fully built application and its dependencies.
 # The S6 init system will start, and its services should run from /app.
