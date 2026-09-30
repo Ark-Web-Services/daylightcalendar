@@ -5921,3 +5921,399 @@ button.receipt-status-chip { min-height: 44px; cursor: pointer; }
 .modal:not(.show) * {
   pointer-events: none !important;
 }
+
+/* School menus: a compact calendar entry point, glanceable meal cards, and a
+   settings workflow that remains comfortable on the wall touchscreen. */
+.calendar-school-menu-button,
+.school-menu-day-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  border: 0;
+  border-radius: var(--md-shape-small);
+  background: var(--md-primary-container);
+  color: var(--md-on-primary-container);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.calendar-school-menu-button {
+  flex: 0 0 auto;
+  min-width: 44px;
+  gap: var(--md-space-1);
+  padding: 0 var(--md-space-3);
+  white-space: nowrap;
+}
+
+.calendar-school-menu-button[hidden] { display: none; }
+.calendar-school-menu-button:active,
+.school-menu-day-button:active { background: var(--md-secondary-container); }
+.calendar-school-menu-button:focus-visible,
+.school-menu-day-button:focus-visible,
+.school-menu-settings-grid input:focus-visible,
+.school-menu-school-option:focus-visible,
+.school-menu-type input:focus-visible {
+  outline: 3px solid var(--md-primary);
+  outline-offset: 2px;
+}
+
+.school-menu-modal-content {
+  display: flex;
+  width: min(1120px, calc(100vw - var(--md-space-6)));
+  max-width: 1120px;
+  height: min(820px, calc(100dvh - var(--md-space-6)));
+  max-height: calc(100dvh - var(--md-space-6));
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.school-menu-modal-header { flex: 0 0 auto; }
+.school-menu-modal-header > div { min-width: 0; }
+.school-menu-modal-header p {
+  margin: var(--md-space-1) 0 0;
+  overflow: hidden;
+  color: var(--md-on-surface-variant);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.school-menu-date-controls {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: var(--md-space-3);
+  padding: var(--md-space-2) var(--md-space-4);
+  border-bottom: 1px solid var(--md-outline-variant);
+}
+
+.school-menu-date-controls strong {
+  overflow: hidden;
+  color: var(--md-on-surface);
+  font-size: clamp(1.05rem, 2vw, 1.3rem);
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.school-menu-day-button { width: 44px; padding: 0; }
+.school-menu-modal-body {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+  flex-direction: column;
+  gap: var(--md-space-2);
+  overflow: hidden;
+}
+
+.school-menu-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  flex: 1 1 0;
+  min-height: 0;
+  gap: var(--md-space-3);
+}
+
+.school-menu-card {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  padding: var(--md-space-3);
+  border-radius: var(--md-shape-medium);
+  background: var(--md-surface-1);
+  box-shadow: var(--md-shadow-1);
+}
+
+.school-menu-card h3 {
+  margin: 0 0 var(--md-space-2);
+  color: var(--md-on-surface);
+  font-size: clamp(1.2rem, 2.4vw, 1.65rem);
+}
+
+.school-menu-entrees {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--md-space-2);
+}
+
+.school-menu-entree {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--md-space-2);
+  color: var(--md-on-surface);
+  font-size: clamp(0.85rem, 1.4vw, 1.05rem);
+  line-height: 1.2;
+}
+
+.school-menu-entree img {
+  width: 54px;
+  height: 54px;
+  flex: 0 0 54px;
+  border-radius: var(--md-shape-small);
+  object-fit: cover;
+  background: var(--md-surface-variant);
+}
+
+.school-menu-entree strong,
+.school-menu-sides span { overflow-wrap: anywhere; }
+.school-menu-choice-count {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--md-on-surface-variant);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.school-menu-sides {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--md-space-2) var(--md-space-3);
+  margin-top: var(--md-space-3);
+  padding-top: var(--md-space-2);
+  border-top: 1px solid var(--md-outline-variant);
+}
+
+.school-menu-sides p {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  margin: 0;
+  color: var(--md-on-surface-variant);
+  font-size: 0.8rem;
+  line-height: 1.25;
+}
+
+.school-menu-sides strong { color: var(--md-on-surface); font-size: 0.85rem; }
+.school-menu-more,
+.school-menu-choice-count { color: var(--md-on-surface-variant); }
+.school-menu-more { font-weight: 700; }
+.school-menu-freshness {
+  flex: 0 0 auto;
+  margin: 0;
+  color: var(--md-on-surface-variant);
+  font-size: 0.8rem;
+  text-align: center;
+}
+.school-menu-freshness.is-stale { color: var(--md-error); }
+
+.school-menu-loading,
+.school-menu-error,
+.school-menu-closed {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: 0;
+  gap: var(--md-space-3);
+  color: var(--md-on-surface-variant);
+  text-align: center;
+}
+
+.school-menu-error,
+.school-menu-closed { flex-direction: column; }
+.school-menu-error .material-icons,
+.school-menu-closed .material-icons { color: var(--md-primary); font-size: 2.5rem; }
+.school-menu-error strong,
+.school-menu-closed strong { display: block; color: var(--md-on-surface); font-size: 1.2rem; }
+.school-menu-error span,
+.school-menu-closed span { display: block; margin-top: var(--md-space-1); }
+
+.meals-school-menu {
+  flex: 0 0 auto;
+  margin-bottom: var(--md-space-2);
+  padding: var(--md-space-2) var(--md-space-3);
+  border-radius: var(--md-shape-medium);
+  background: var(--md-surface-1);
+}
+.meals-school-menu[hidden] { display: none; }
+.meals-school-menu-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  min-width: 0;
+  gap: var(--md-space-3);
+  margin-bottom: var(--md-space-1);
+}
+.meals-school-menu-heading h2 { margin: 0; color: var(--md-on-surface); font-size: 1rem; }
+.meals-school-menu-heading span {
+  color: var(--md-on-surface-variant);
+  font-size: 0.75rem;
+  text-align: right;
+}
+.school-menu-grid.is-compact {
+  flex: 0 0 auto;
+  gap: var(--md-space-2);
+}
+.school-menu-card.is-compact {
+  display: grid;
+  grid-template-columns: minmax(86px, 0.35fr) minmax(0, 1fr);
+  grid-template-rows: repeat(2, minmax(0, auto));
+  align-items: center;
+  gap: var(--md-space-2);
+  padding: var(--md-space-2);
+  border-radius: var(--md-shape-small);
+  background: var(--md-surface-2);
+  box-shadow: none;
+}
+.school-menu-card.is-compact h3 {
+  display: -webkit-box;
+  grid-row: 1 / span 2;
+  align-self: start;
+  margin: 0;
+  overflow: hidden;
+  font-size: 0.9rem;
+  overflow-wrap: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.school-menu-card.is-compact .school-menu-entrees {
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+  line-height: 1.25;
+  overflow-wrap: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+.school-menu-card.is-compact .school-menu-entree { display: inline; font-size: 0.8rem; }
+.school-menu-card.is-compact .school-menu-entree strong { overflow-wrap: normal; word-break: normal; }
+.school-menu-card.is-compact .school-menu-entree:not(:last-of-type)::after { content: ' · '; color: var(--md-outline); }
+.school-menu-card.is-compact .school-menu-choice-count { display: inline; min-height: 0; margin-left: var(--md-space-1); }
+.school-menu-compact-extras {
+  grid-column: 2;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--md-on-surface-variant);
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.school-menu-closed.is-compact { flex-direction: row; justify-content: flex-start; text-align: left; }
+.school-menu-closed.is-compact .material-icons { font-size: 1.5rem; }
+.school-menu-closed.is-compact strong { font-size: 0.9rem; }
+.school-menu-closed.is-compact span { font-size: 0.75rem; }
+.school-menu-inline-error { margin: 0; color: var(--md-error); font-size: 0.8rem; }
+
+.school-menu-enable {
+  display: flex !important;
+  align-items: center;
+  min-height: 52px;
+  gap: var(--md-space-3);
+  margin-bottom: var(--md-space-4) !important;
+}
+.school-menu-enable input { width: 24px; height: 24px; flex: 0 0 24px; }
+.school-menu-enable span { display: grid; gap: 2px; }
+.school-menu-enable small { color: var(--md-on-surface-variant); font-weight: 400; }
+.school-menu-settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--md-space-4); }
+.school-menu-settings-grid > .form-group { min-width: 0; }
+.school-menu-settings-grid input,
+.school-menu-type input[type="text"] {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: var(--md-space-2) var(--md-space-3);
+  border: 1px solid var(--md-outline);
+  border-radius: var(--md-shape-small);
+  background: var(--md-surface);
+  color: var(--md-on-surface);
+  font: inherit;
+}
+.school-menu-school-list {
+  display: grid;
+  height: 176px;
+  margin-top: var(--md-space-2);
+  padding: var(--md-space-1);
+  box-sizing: border-box;
+  align-content: start;
+  gap: var(--md-space-1);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--md-outline);
+  border-radius: var(--md-shape-small);
+  background: var(--md-surface);
+  scrollbar-color: var(--md-outline) var(--md-surface-2);
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+.school-menu-school-option {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 44px;
+  padding: var(--md-space-2) var(--md-space-3);
+  border: 0;
+  border-radius: var(--md-shape-small);
+  background: transparent;
+  color: var(--md-on-surface);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.school-menu-school-option[aria-pressed="true"] {
+  background: var(--md-primary-container);
+  color: var(--md-on-primary-container);
+  font-weight: 700;
+}
+.school-menu-school-option:active { background: var(--md-secondary-container); }
+.school-menu-school-empty {
+  margin: 0;
+  padding: var(--md-space-3);
+  color: var(--md-on-surface-variant);
+}
+.school-menu-district-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--md-space-2); }
+.school-menu-types-fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+.school-menu-types-fieldset legend { margin-bottom: var(--md-space-2); color: var(--md-on-surface); font-weight: 700; }
+.school-menu-types { display: grid; gap: var(--md-space-2); }
+.school-menu-type {
+  display: grid !important;
+  grid-template-columns: 24px minmax(0, 0.6fr) minmax(0, 1fr);
+  align-items: center;
+  min-width: 0;
+  min-height: 52px;
+  gap: var(--md-space-3);
+  margin: 0 !important;
+  padding: var(--md-space-2);
+  border-radius: var(--md-shape-small);
+  background: var(--md-surface-2);
+}
+.school-menu-type > span { min-width: 0; overflow-wrap: anywhere; }
+.school-menu-type input[type="checkbox"] { width: 24px; height: 24px; }
+.school-menu-settings-preview { margin: var(--md-space-3) 0 var(--md-space-1); color: var(--md-on-surface); font-weight: 700; }
+.school-menu-settings-status { min-height: 24px; color: var(--md-on-surface-variant); }
+
+@media (max-width: 1100px) {
+  .calendar-school-menu-button span { display: none; }
+  .calendar-school-menu-button { width: 44px; min-width: 44px; flex-basis: 44px; padding: 0; }
+  #calendar-content .calendar-topbar { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .school-menu-grid.is-compact { grid-template-columns: minmax(0, 1fr); gap: var(--md-space-1); }
+  .school-menu-card.is-compact {
+    grid-template-rows: minmax(0, auto);
+    padding: var(--md-space-1) var(--md-space-2);
+  }
+  .school-menu-card.is-compact h3 {
+    grid-row: 1;
+    align-self: center;
+    -webkit-line-clamp: 1;
+  }
+  .school-menu-compact-extras { display: none; }
+  .school-menu-entree img { width: 44px; height: 44px; flex-basis: 44px; }
+}
+
+@media (max-width: 760px) {
+  .school-menu-modal-content { width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 0; }
+  .school-menu-modal-header,
+  .school-menu-modal-body { padding: var(--md-space-2); }
+  .school-menu-entrees { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .school-menu-sides { grid-template-columns: minmax(0, 1fr); }
+  .school-menu-settings-grid { grid-template-columns: minmax(0, 1fr); }
+  .school-menu-type { grid-template-columns: 24px minmax(0, 0.6fr) minmax(0, 1fr); }
+}

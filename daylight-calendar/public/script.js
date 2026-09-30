@@ -84,6 +84,10 @@ let loadedAddonVersion = null;
 let addonLivenessFailures = 0;
 let addonRestartDetected = false;
 let addonReloadPendingReason = null;
+let schoolMenuDate = moment().format('YYYY-MM-DD');
+let schoolMenuSettingsSchools = [];
+let schoolMenuSettingsSnapshot = null;
+let schoolMenuSelectedSlug = '';
 
 const ADDON_LIVENESS_POLL_MS = 60 * 1000;
 const ADDON_LIVENESS_MAX_BACKOFF_MS = 5 * 60 * 1000;
@@ -283,6 +287,7 @@ function initializeCalendarPage() {
     if (hasCalendars) {
       setupCalendar();
     }
+    await initializeSchoolMenuCalendar();
     console.log('[INFO] Calendar page initialized');
   }, 100);
 }
@@ -602,6 +607,7 @@ function initializeMealsPage() {
       };
     }
 
+    initializeSchoolMenuMeals();
     fetchAndDisplayMeals();
   }, 100);
 }
@@ -3170,6 +3176,7 @@ function initializeSettingsPage() {
       loadCalendarManagement();
     }
 
+    await initializeSchoolMenuSettings();
     await initializeReceiptReaderSettings();
     await initializeScreenTimeSettings();
     await initializeFaceRecognitionSettings();
@@ -4954,6 +4961,320 @@ async function redeemPendingReward() {
   } catch (error) {
     document.getElementById('reward-redeem-message').textContent = error.message;
   } finally { button.disabled = false; }
+}
+
+function safeSchoolMenuImageUrl(value) {
+  try {
+    const url = new URL(String(value || ''));
+    return url.protocol === 'https:' ? url.href : '';
+  } catch (error) {
+    return '';
+  }
+}
+
+function formatSchoolMenuDate(date, includeToday = true) {
+  const day = moment(date, 'YYYY-MM-DD', true);
+  if (!day.isValid()) return 'School menu';
+  if (includeToday && day.isSame(moment(), 'day')) return `Today · ${day.format('dddd, MMMM D')}`;
+  return day.format('dddd, MMMM D');
+}
+
+function formatSchoolMenuFreshness(data) {
+  if (data.stale) return 'Offline — showing saved menu';
+  const fetched = moment(data.fetchedAt);
+  return fetched.isValid() ? `Updated ${fetched.format('h:mm A')}` : 'Menu updated';
+}
+
+function summarizeSchoolMenuItems(items, limit) {
+  const visible = items.slice(0, limit).map(item => escapeHtml(item.name)).join(', ');
+  const remaining = Math.max(0, items.length - limit);
+  return `${visible}${remaining ? ` <span class="school-menu-more">+${remaining} more</span>` : ''}`;
+}
+
+function renderSchoolMenuCard(menu, compact = false) {
+  const sections = Array.isArray(menu.sections) ? menu.sections : [];
+  const entree = sections.find(section => /entr[eé]e/i.test(section.title)) || sections[0];
+  const otherSections = sections.filter(section => section !== entree);
+  const entreeItems = entree && Array.isArray(entree.items) ? entree.items : [];
+  const visibleEntrees = entreeItems.slice(0, compact ? 3 : 6);
+
+  return `<article class="school-menu-card${compact ? ' is-compact' : ''}">
+    <h3>${escapeHtml(menu.label)}</h3>
+    ${entreeItems.length ? `<div class="school-menu-entrees">
+      ${visibleEntrees.map((item, index) => {
+        const imageUrl = !compact && index < 3 ? safeSchoolMenuImageUrl(item.imageUrl) : '';
+        return `<div class="school-menu-entree">
+          ${imageUrl ? `<img src="${escapeHtml(imageUrl)}" loading="lazy" alt="${escapeHtml(item.name)}">` : ''}
+          <strong>${escapeHtml(item.name)}</strong>
+        </div>`;
+      }).join('')}
+      ${entreeItems.length > visibleEntrees.length ? `<span class="school-menu-choice-count">+${entreeItems.length - visibleEntrees.length} more choices</span>` : ''}
+    </div>` : '<p class="school-menu-empty">No items listed.</p>'}
+    ${compact
+      ? (otherSections.length ? `<p class="school-menu-compact-extras">Plus ${otherSections.slice(0, 2).map(section => escapeHtml(section.title)).join(', ')}${otherSections.length > 2 ? ` +${otherSections.length - 2} more sections` : ''}</p>` : '')
+      : `<div class="school-menu-sides">${otherSections.map(section => `<p><strong>${escapeHtml(section.title)}</strong><span>${summarizeSchoolMenuItems(section.items || [], 2)}</span></p>`).join('')}</div>`}
+  </article>`;
+}
+
+function renderSchoolMenuView(data, { compact = false } = {}) {
+  const freshness = escapeHtml(formatSchoolMenuFreshness(data));
+  if (!data.isSchoolDay) {
+    const nextDate = data.nextSchoolDate;
+    const nextLabel = nextDate ? moment(nextDate, 'YYYY-MM-DD', true).format('dddd') : '';
+    return `<div class="school-menu-closed${compact ? ' is-compact' : ''}">
+      <i class="material-icons" aria-hidden="true">event_busy</i>
+      <div><strong>No school menu today${nextLabel ? ` — next menu is ${escapeHtml(nextLabel)}` : ''}</strong>
+      <span>${freshness}</span></div>
+      ${!compact && nextDate ? `<button type="button" class="btn btn-primary" data-school-menu-jump="${escapeHtml(nextDate)}">Show ${escapeHtml(nextLabel)}</button>` : ''}
+    </div>`;
+  }
+
+  return `<div class="school-menu-grid${compact ? ' is-compact' : ''}">
+    ${(data.menus || []).map(menu => renderSchoolMenuCard(menu, compact)).join('')}
+  </div>
+  ${compact ? '' : `<p class="school-menu-freshness${data.stale ? ' is-stale' : ''}">${freshness}</p>`}`;
+}
+
+function attachSchoolMenuImageFallbacks(container) {
+  container?.querySelectorAll('.school-menu-entree img').forEach(image => {
+    image.addEventListener('error', () => image.remove(), { once: true });
+  });
+}
+
+async function fetchSchoolMenu(date) {
+  const response = await fetch(`api/school-menu?date=${encodeURIComponent(date)}`);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || 'The school menu could not be loaded.');
+  return data;
+}
+
+async function loadSchoolMenuModal() {
+  const body = document.getElementById('school-menu-modal-body');
+  const label = document.getElementById('school-menu-date-label');
+  if (!body || !label) return;
+  label.textContent = formatSchoolMenuDate(schoolMenuDate);
+  body.innerHTML = '<div class="school-menu-loading"><i class="material-icons spin" aria-hidden="true">refresh</i> Loading school menu…</div>';
+  try {
+    const data = await fetchSchoolMenu(schoolMenuDate);
+    document.getElementById('school-menu-school-name').textContent = data.schoolName || '';
+    body.innerHTML = renderSchoolMenuView(data);
+    attachSchoolMenuImageFallbacks(body);
+  } catch (error) {
+    body.innerHTML = `<div class="school-menu-error"><i class="material-icons" aria-hidden="true">cloud_off</i><strong>Menu unavailable</strong><span>${escapeHtml(error.message)}</span><button type="button" class="btn btn-secondary" data-school-menu-retry>Try again</button></div>`;
+  }
+}
+
+async function initializeSchoolMenuCalendar() {
+  const button = document.getElementById('school-menu-button');
+  const modal = document.getElementById('school-menu-modal');
+  if (!button || !modal || button.dataset.initialized === 'true') return;
+  button.dataset.initialized = 'true';
+  try {
+    const response = await fetch('api/school-menu/settings');
+    const settings = await response.json();
+    button.hidden = !response.ok || settings.enabled !== true;
+  } catch (error) {
+    button.hidden = true;
+    return;
+  }
+
+  button.addEventListener('click', () => {
+    schoolMenuDate = moment().format('YYYY-MM-DD');
+    modal.classList.add('show');
+    loadSchoolMenuModal();
+  });
+  modal.querySelector('.school-menu-date-controls')?.addEventListener('click', event => {
+    const offset = Number(event.target.closest('[data-school-menu-day]')?.dataset.schoolMenuDay);
+    if (!Number.isInteger(offset)) return;
+    schoolMenuDate = moment(schoolMenuDate, 'YYYY-MM-DD', true).add(offset, 'day').format('YYYY-MM-DD');
+    loadSchoolMenuModal();
+  });
+  modal.querySelector('.school-menu-modal-body')?.addEventListener('click', event => {
+    const jump = event.target.closest('[data-school-menu-jump]')?.dataset.schoolMenuJump;
+    if (jump) {
+      schoolMenuDate = jump;
+      loadSchoolMenuModal();
+    } else if (event.target.closest('[data-school-menu-retry]')) {
+      loadSchoolMenuModal();
+    }
+  });
+}
+
+async function initializeSchoolMenuMeals() {
+  const section = document.getElementById('meals-school-menu');
+  const body = document.getElementById('meals-school-menu-body');
+  const status = document.getElementById('meals-school-menu-status');
+  if (!section || !body || section.dataset.initialized === 'true') return;
+  section.dataset.initialized = 'true';
+  try {
+    const settingsResponse = await fetch('api/school-menu/settings');
+    const settings = await settingsResponse.json();
+    if (!settingsResponse.ok || settings.enabled !== true) return;
+    section.hidden = false;
+    body.innerHTML = '<div class="school-menu-loading"><i class="material-icons spin" aria-hidden="true">refresh</i> Loading…</div>';
+    const data = await fetchSchoolMenu(moment().format('YYYY-MM-DD'));
+    status.textContent = `${data.schoolName} · ${formatSchoolMenuFreshness(data)}`;
+    body.innerHTML = renderSchoolMenuView(data, { compact: true });
+  } catch (error) {
+    section.hidden = false;
+    status.textContent = 'Menu unavailable';
+    body.innerHTML = `<p class="school-menu-inline-error">${escapeHtml(error.message)}</p>`;
+  }
+}
+
+function updateSchoolMenuSettingsPreview() {
+  const preview = document.getElementById('school-menu-settings-preview');
+  const school = schoolMenuSettingsSchools.find(item => item.slug === schoolMenuSelectedSlug);
+  const labels = [...document.querySelectorAll('#school-menu-types input[type="checkbox"]:checked')]
+    .map(input => input.closest('.school-menu-type')?.querySelector('input[type="text"]')?.value.trim() || input.dataset.menuName)
+    .filter(Boolean);
+  if (preview) preview.textContent = school
+    ? `${school.name} · ${labels.length ? labels.join(' and ') : 'Choose at least one menu'}`
+    : 'Choose a school to preview this setup.';
+}
+
+function renderSchoolMenuTypes(school, selectedMenus = []) {
+  const container = document.getElementById('school-menu-types');
+  if (!container) return;
+  const selected = new Map(selectedMenus.map(menu => [menu.slug, menu.label]));
+  const types = school && Array.isArray(school.active_menu_types) ? school.active_menu_types : [];
+  container.innerHTML = types.length ? types.map(menu => {
+    const checked = selected.has(menu.slug);
+    return `<label class="school-menu-type">
+      <input type="checkbox" value="${escapeHtml(menu.slug)}" data-menu-name="${escapeHtml(menu.name)}"${checked ? ' checked' : ''}>
+      <span>${escapeHtml(menu.name)}</span>
+      <input type="text" maxlength="80" value="${escapeHtml(selected.get(menu.slug) || '')}" placeholder="Custom label (optional)" aria-label="Custom label for ${escapeHtml(menu.name)}">
+    </label>`;
+  }).join('') : '<span class="setting-description">This school has no active menus listed.</span>';
+  container.querySelectorAll('input').forEach(input => input.addEventListener('input', updateSchoolMenuSettingsPreview));
+  updateSchoolMenuSettingsPreview();
+}
+
+function renderSchoolMenuSchoolOptions(filter = '', { scrollSelected = false } = {}) {
+  const list = document.getElementById('school-menu-school');
+  if (!list) return;
+  const query = filter.trim().toLocaleLowerCase('en-US');
+  const visible = schoolMenuSettingsSchools.filter(school => !query || school.name.toLocaleLowerCase('en-US').includes(query));
+  list.innerHTML = visible.length
+    ? visible.map(school => `<button type="button" class="school-menu-school-option" data-school-menu-school="${escapeHtml(school.slug)}" aria-pressed="${school.slug === schoolMenuSelectedSlug}">${escapeHtml(school.name)}</button>`).join('')
+    : '<p class="school-menu-school-empty">No matching schools.</p>';
+
+  if (scrollSelected) {
+    const selected = list.querySelector('[aria-pressed="true"]');
+    if (selected) {
+      const listBounds = list.getBoundingClientRect();
+      const selectedBounds = selected.getBoundingClientRect();
+      list.scrollTop = Math.max(0, list.scrollTop + selectedBounds.top - listBounds.top - ((list.clientHeight - selectedBounds.height) / 2));
+    }
+  }
+}
+
+async function loadSchoolMenuSchools() {
+  const district = document.getElementById('school-menu-district')?.value.trim().toLowerCase();
+  const status = document.getElementById('school-menu-settings-status');
+  const button = document.getElementById('school-menu-load-schools');
+  if (!/^[a-z0-9-]+$/.test(district || '')) {
+    if (status) status.textContent = 'Use only lowercase letters, numbers, and hyphens for the district.';
+    return;
+  }
+  if (button) button.disabled = true;
+  if (status) status.textContent = 'Loading schools…';
+  try {
+    const response = await fetch(`api/school-menu/schools?district=${encodeURIComponent(district)}`);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'Schools could not be loaded.');
+    schoolMenuSettingsSchools = Array.isArray(data) ? data.sort((a, b) => a.name.localeCompare(b.name)) : [];
+    if (!schoolMenuSettingsSchools.some(school => school.slug === schoolMenuSelectedSlug)) {
+      schoolMenuSelectedSlug = schoolMenuSettingsSchools[0]?.slug || '';
+    }
+    const search = document.getElementById('school-menu-school-search');
+    if (search) search.value = '';
+    renderSchoolMenuSchoolOptions('', { scrollSelected: true });
+    const school = schoolMenuSettingsSchools.find(item => item.slug === schoolMenuSelectedSlug);
+    renderSchoolMenuTypes(school, schoolMenuSettingsSnapshot?.menus || []);
+    if (status) status.textContent = `${schoolMenuSettingsSchools.length} schools found.`;
+  } catch (error) {
+    if (status) status.textContent = error.message;
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+async function initializeSchoolMenuSettings() {
+  const form = document.getElementById('school-menu-settings-form');
+  if (!form || form.dataset.initialized === 'true') return;
+  form.dataset.initialized = 'true';
+  const status = document.getElementById('school-menu-settings-status');
+  try {
+    const response = await fetch('api/school-menu/settings');
+    const settings = await response.json();
+    if (!response.ok) throw new Error(settings.error || 'School menu settings could not be loaded.');
+    schoolMenuSettingsSnapshot = settings;
+    schoolMenuSelectedSlug = settings.schoolSlug;
+    document.getElementById('school-menu-enabled').checked = settings.enabled;
+    document.getElementById('school-menu-district').value = settings.district;
+    await loadSchoolMenuSchools();
+  } catch (error) {
+    if (status) status.textContent = error.message;
+  }
+
+  document.getElementById('school-menu-load-schools')?.addEventListener('click', loadSchoolMenuSchools);
+  document.getElementById('school-menu-school-search')?.addEventListener('input', event => renderSchoolMenuSchoolOptions(event.target.value));
+  document.getElementById('school-menu-school')?.addEventListener('click', event => {
+    const option = event.target.closest('[data-school-menu-school]');
+    if (!option) return;
+    schoolMenuSelectedSlug = option.dataset.schoolMenuSchool;
+    option.parentElement.querySelectorAll('[data-school-menu-school]').forEach(button => {
+      button.setAttribute('aria-pressed', String(button === option));
+    });
+    const school = schoolMenuSettingsSchools.find(item => item.slug === schoolMenuSelectedSlug);
+    renderSchoolMenuTypes(school, schoolMenuSettingsSnapshot?.schoolSlug === schoolMenuSelectedSlug ? schoolMenuSettingsSnapshot.menus : []);
+  });
+
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const submit = form.querySelector('[type="submit"]');
+    const school = schoolMenuSettingsSchools.find(item => item.slug === schoolMenuSelectedSlug);
+    const menus = [...document.querySelectorAll('#school-menu-types input[type="checkbox"]:checked')].map(input => ({
+      slug: input.value,
+      label: input.closest('.school-menu-type')?.querySelector('input[type="text"]')?.value.trim() || input.dataset.menuName
+    }));
+    if (!school || !menus.length) {
+      if (status) status.textContent = 'Choose a school and at least one menu type.';
+      return;
+    }
+    if (submit) submit.disabled = true;
+    if (status) status.textContent = 'Saving…';
+    try {
+      const response = await fetch('api/school-menu/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          enabled: document.getElementById('school-menu-enabled').checked,
+          district: document.getElementById('school-menu-district').value.trim().toLowerCase(),
+          schoolSlug: school.slug,
+          schoolName: school.name,
+          menus
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Settings could not be saved.');
+      schoolMenuSettingsSnapshot = data;
+      if (status) status.textContent = 'School menu settings saved.';
+      const calendarButton = document.getElementById('school-menu-button');
+      if (calendarButton) calendarButton.hidden = !data.enabled;
+      const mealsSection = document.getElementById('meals-school-menu');
+      if (mealsSection) {
+        mealsSection.hidden = !data.enabled;
+        mealsSection.dataset.initialized = '';
+        if (data.enabled) initializeSchoolMenuMeals();
+      }
+    } catch (error) {
+      if (status) status.textContent = error.message;
+    } finally {
+      if (submit) submit.disabled = false;
+    }
+  });
 }
 
 async function fetchAndDisplayMeals() {

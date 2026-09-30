@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.1.9.33] - 2026-09-29
+
+School menus. A "School menu" button on the Calendar opens today's breakfast and lunch — entrees
+first, with photos — and steps day by day; weekends and holidays say when the next menu is. Meals
+shows the same menu as a compact strip above the week.
+
+It works with any school district that publishes menus on Nutrislice: Settings has a district
+field, a searchable school list and a choice of which menus to show, and defaults to Pineville ES
+(Charlotte-Mecklenburg Schools), Breakfast and Lunch. Menus are cached by week, so the panel asks
+Nutrislice at most once per week per menu, and if Nutrislice is unreachable the panel keeps
+showing the last menu it saved and says it is offline.
+
 ## [1.1.9.32] - 2026-09-29
 
 Security hardening of the add-on image.

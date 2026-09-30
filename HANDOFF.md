@@ -170,8 +170,12 @@ login. Delete or stub that file before local dev if you don't want that.
     finished); Tesseract -> Qwen3 1.7B/0.6B got 12/38 and 10/38, because Tesseract pairs prices with
     the wrong names where the paper curls. Ollama itself costs 27 MB idle; raw llama.cpp would only
     save disk (Ollama bundles ~2.7 GB of GPU libraries this laptop cannot use).
-  - Runs from scheduled task `Ollama-Serve` (at logon +30 s, below-normal priority, restarts on
-    failure) with user env `OLLAMA_HOST=0.0.0.0:11434`.
+  - Runs from scheduled task `Ollama-Serve` with user env `OLLAMA_HOST=0.0.0.0:11434`. The task runs
+    `C:\HAOS\ollama-serve.ps1`, a restart loop that logs to `C:\HAOS\ollama-serve.log` (rotated at
+    5 MB). Triggers: at logon +30 s **and every 5 minutes** (`MultipleInstances IgnoreNew`, so a
+    healthy loop just absorbs the tick). Added 2026-09-29 because `ollama serve` once **exited
+    cleanly (code 0)** and the old restart-on-failure setting never brought it back — receipts
+    silently stopped working for four days.
   - **Private link to the HA VM**: Hyper-V internal switch `HA-Link`, laptop `10.77.77.1/24`, HA VM
     `eth1` static `10.77.77.2/24` with **no gateway** (eth0 stays primary; HA's LAN/internet traffic
     is unchanged). This exists because the Default Switch re-subnets on every reboot, and because
@@ -186,6 +190,17 @@ login. Delete or stub that file before local dev if you don't want that.
     Verified end to end: HA -> model -> answer in 12 s.
   - Not yet reboot-tested. Every piece is persistent by design (switch, static IPs, firewall rules,
     env var, logon-triggered task), but it has not been proven through a restart.
+
+### Network limit: the HA VM cannot see the LAN's multicast (found 2026-09-29)
+
+The laptop is on **Wi-Fi only** (both Ethernet ports — onboard I219-LM and the DELL S2340T
+monitor's — are unplugged), so the VM sits on the NAT'd Default Switch. Outbound unicast to LAN IPs
+works; **mDNS/SSDP discovery and IPv6 link-local do not**. Consequences: HomePods/Apple TVs cannot
+be added (the `apple_tv` flow by IP returns `no_devices_found` even though the HomePod answers on
+192.168.1.167:7000 from the LAN), and Matter/Thread devices cannot be commissioned. Fix: plug an
+Ethernet cable into either port, create a Hyper-V **External** switch on that wired NIC (host keeps
+Wi-Fi for management — no loss of SSH), and give the VM a second NIC on it. Do **not** build an
+external switch on the Wi-Fi adapter remotely: if it fails the host drops off the network.
 
 ## 4. Remaining work
 
@@ -234,16 +249,18 @@ of it is deployed.** See §7.
 - **Not built yet:** pantry stock (step 2) and meals <-> pantry (step 3). Review rows are tall cards
   on phones; a compact layout for long receipts is a worthwhile follow-up.
 
-### Pending decision: image hardening (blocked by the permission classifier, not attempted again)
-
-The add-on image is still `ghcr.io/home-assistant/*-base:3.15` (Alpine 3.15, EOL Nov 2023, Node
-16), runs `npm install` (dev deps ship) and a dead `npm run build`, installs Chromium + Xorg +
-Openbox, and `config.yaml` grants `privileged: SYS_ADMIN` plus framebuffer/GPU/TTY/input devices —
-all only for an on-device `kiosk_mode` whose option no longer exists. Proposed: base 3.23, `nodejs
-npm` only, `npm ci --omit=dev`, drop the build step and the kiosk stack/privileges, add a
-`.dockerignore` (local builds would otherwise copy `data/` — real Apple credentials — and
-`.env.local` — an HA token). Needs the user's go-ahead; verify with a local `docker build` first.
-`ws` has already been moved to runtime dependencies, so `--omit=dev` is safe once applied.
+- **Image hardening (1.1.9.31-.32, user-approved).** Base `*-base:3.23` (Alpine 3.23, Node 24),
+  `nodejs npm` only, `npm ci --omit=dev --ignore-scripts`, no build step, no Chromium/Xorg/Openbox,
+  no `privileged`, no devices, `init: false` (s6-overlay v3). The old execline `finish` script could
+  not parse its own bash `if` blocks, so a crashed Node never halted the add-on — rewritten on the
+  current HA template. `.dockerignore` is **force-added** (the repo's `.gitignore` ignores it) and
+  keeps `data/` (real Apple credentials) and `.env*` (an HA token) out of local builds. Verified
+  live: HA reports privileged `[]`, devices `[]`, full_access false, security rating 7; `/data`
+  survived the base swap (games, lists, recipes intact). `npm audit --omit=dev`: 0.
+- **School menu (Nutrislice), 1.1.9.33.** Generic for any Nutrislice district; defaults to CMS /
+  Pineville ES, Breakfast + Lunch. `scripts/school-menu-service.js` caches per week under DATA_DIR
+  and serves the last good copy (`stale: true`) when Nutrislice is unreachable. Calendar top-bar
+  button -> modal; compact strip on Meals; Settings card with a school picker.
 
 ### Still open, from the teardown's ranked recommendations
 
@@ -264,16 +281,14 @@ npm` only, `npm ci --omit=dev`, drop the build step and the kiosk stack/privileg
 - Nothing has been seen on the **real panel**. Its resolution is still unknown; the layout is
   fluid and verified at 1920x1080, 1280x800, 1024x768 and 1080x1920, but that is not the same as
   confirmed on the device.
-- The calendar's default week view is `dayGridWeek` (Skylight-style chip columns). A sparse week
-  looks quite empty. If the household wants time-of-day detail, `timeGridDay` is the Day view;
-  consider whether Day should be the default instead.
+- The default week view is `timeGridWeek` with hourly slots (the owner asked for the hour axis
+  back after a `dayGridWeek` experiment). Constraint #7 in §2 keeps it that way.
 - Also never seen rendering, from the previous session: the calendar management section, the
   sync-log box appearance, theme-button responsiveness after re-entering Settings, and the event
   detail dialog.
-- **Week-view event contrast** looked poor — pale blue blocks with near-white text. Never
-  measured. Likely the first thing a user notices from across a room.
-- `repository.yaml` / GitHub reports **84 Dependabot vulnerabilities** (3 critical, 36 high).
-  Pre-existing, from a Node 16 / Alpine 3.15-era dependency tree. Not triaged.
+- Week-view event contrast is measured by the harness on every run (>= 4.5:1; currently ~13.6:1).
+- `npm audit --omit=dev` reports **0** vulnerabilities in what ships (2026-09-25). Dev-only tooling
+  (webpack etc.) still carries advisories; it no longer reaches the image.
 - The add-on stores app-specific passwords **unencrypted** on disk.
 - gitleaks findings in `.gitleaks-report.json` are **false positives** — two `curl-auth-header`
   hits in a historical `debug.html` that were the literals `YOUR_LONG_LIVED_TOKEN` and
@@ -307,25 +322,17 @@ npm` only, `npm ci --omit=dev`, drop the build step and the kiosk stack/privileg
 
 ## 7. Deployment status — READ THIS FIRST
 
-**`main` is at 1.1.9.17. The add-on on the wall panel is still running 1.1.9.12.**
+**The owner has given standing authorisation to deploy every release** ("update it, always update
+it, always"). Every commit on `main` is expected to be live on the panel shortly after.
 
-Five releases (1.1.9.13, .14, .15, .16, .17) are committed and pushed but **not deployed**. The
-Supervisor `/store/addons/<slug>/update` call was blocked by a permission gate during the
-session, so it was never run.
-
-`/store/reload` has already been called, so the Supervisor sees the new version —
-`/addons/<slug>/info` reported `version_latest: 1.1.9.13` at the time and will report .17 after
-another reload. To finish:
+Deploy (Supervisor API over the HA websocket, `supervisor/api`):
 
 ```
-/store/reload                              (websocket, supervisor/api)
-/store/addons/01a45dd4_daylight_calendar/update
-/addons/01a45dd4_daylight_calendar/info    (confirm version flipped)
+/store/reload
+/store/addons/01a45dd4_daylight_calendar/update     (may answer unknown_error and still succeed)
+/addons/01a45dd4_daylight_calendar/info             (confirm version flipped)
 ```
 
-Or simply press **Update** on the add-on in the HA UI.
-
-**Deploy one version at a time if you can, and let the user look at it.** §6 of the original
-handoff is right that their feedback has found a real bug every time, and 1.1.9.13-.17 is a
-large amount of unseen UI to land in one jump. 1.1.9.13 in particular is a genuine bug fix —
-it repairs routing controls that currently 404 on save in the deployed build.
+The wall panel reloads itself when `addon_version` changes, so no one has to touch it.
+Verify after each deploy: every `/api/*` route used by the release answers 200 through ingress,
+and data under `/data` is intact.

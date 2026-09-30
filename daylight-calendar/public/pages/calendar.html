@@ -8,6 +8,10 @@
   </div>
   <h1 id="calendar-view-title" class="calendar-view-title" aria-live="polite">Loading…</h1>
   <div class="calendar-topbar-end">
+    <button type="button" id="school-menu-button" class="calendar-school-menu-button" hidden>
+      <i class="material-icons" aria-hidden="true">restaurant_menu</i>
+      <span>School menu</span>
+    </button>
     <div class="calendar-view-switcher" aria-label="Calendar view">
       <button type="button" data-calendar-view="timeGridDay" aria-pressed="false">Day</button>
       <button type="button" data-calendar-view="timeGridWeek" aria-pressed="true">Week</button>
@@ -29,6 +33,24 @@
 <main>
   <div id="calendar"></div>
 </main>
+
+<div id="school-menu-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="school-menu-title">
+  <div class="modal-content school-menu-modal-content">
+    <div class="modal-header school-menu-modal-header">
+      <div>
+        <h3 id="school-menu-title">School menu</h3>
+        <p id="school-menu-school-name"></p>
+      </div>
+      <button type="button" class="modal-close" aria-label="Close school menu">&times;</button>
+    </div>
+    <div class="school-menu-date-controls">
+      <button type="button" class="school-menu-day-button" data-school-menu-day="-1" aria-label="Previous day"><i class="material-icons" aria-hidden="true">chevron_left</i></button>
+      <strong id="school-menu-date-label">Today</strong>
+      <button type="button" class="school-menu-day-button" data-school-menu-day="1" aria-label="Next day"><i class="material-icons" aria-hidden="true">chevron_right</i></button>
+    </div>
+    <div id="school-menu-modal-body" class="modal-body school-menu-modal-body" aria-live="polite"></div>
+  </div>
+</div>
 
 <!-- Event details. Tapping an event previously only wrote to the console. -->
 <div id="event-detail-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="event-detail-title">

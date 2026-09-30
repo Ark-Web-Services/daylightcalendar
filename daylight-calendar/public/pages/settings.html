@@ -112,6 +112,42 @@
     </div>
 
     <div class="settings-section">
+      <h2>School menu</h2>
+      <div class="settings-card" id="school-menu-settings-card">
+        <form id="school-menu-settings-form">
+          <label class="school-menu-enable" for="school-menu-enabled">
+            <input type="checkbox" id="school-menu-enabled">
+            <span><strong>Show school menus</strong><small>Add today’s breakfast and lunch to Calendar and Meals.</small></span>
+          </label>
+          <div class="school-menu-settings-grid">
+            <div class="form-group">
+              <label for="school-menu-district">Nutrislice district subdomain</label>
+              <div class="school-menu-district-row">
+                <input id="school-menu-district" type="text" inputmode="url" pattern="[a-z0-9-]+" maxlength="80" required>
+                <button type="button" id="school-menu-load-schools" class="btn btn-secondary">Find schools</button>
+              </div>
+              <p class="setting-description">The part before <strong>.api.nutrislice.com</strong>, such as <strong>cms</strong>.</p>
+            </div>
+            <div class="form-group">
+              <label for="school-menu-school-search">Search schools</label>
+              <input id="school-menu-school-search" type="search" placeholder="Start typing a school name" aria-controls="school-menu-school">
+              <div id="school-menu-school" class="school-menu-school-list" role="group" aria-label="Choose a school"></div>
+            </div>
+          </div>
+          <fieldset class="school-menu-types-fieldset">
+            <legend>Menus to show</legend>
+            <div id="school-menu-types" class="school-menu-types"><span class="setting-description">Choose a school to see its menus.</span></div>
+          </fieldset>
+          <p id="school-menu-settings-preview" class="school-menu-settings-preview"></p>
+          <div id="school-menu-settings-status" class="school-menu-settings-status" role="status" aria-live="polite"></div>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary"><i class="material-icons" aria-hidden="true">save</i> Save school menu</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="settings-section">
       <h2>Receipt reader</h2>
       <div class="settings-card" id="receipt-reader-settings-card">
         <h3>Local vision model</h3>

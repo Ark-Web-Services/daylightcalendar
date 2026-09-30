@@ -19,6 +19,10 @@ const {
   createReceiptService,
   decodeJpegBase64
 } = require('./scripts/receipt-service');
+const {
+  SchoolMenuError,
+  createSchoolMenuService
+} = require('./scripts/school-menu-service');
 
 // Main initialization function to handle async imports
 async function initializeApp() {
@@ -582,6 +586,50 @@ async function initializeApp() {
     axios,
     getLocalDate: () => getServerLocalDate(),
     modelTimeoutMs: receiptModelTimeoutMs
+  });
+
+  const schoolMenuService = createSchoolMenuService({
+    readJsonFile,
+    writeJsonFile,
+    withHouseholdStorageLock,
+    fetch,
+    getLocalDate: () => getServerLocalDate()
+  });
+
+  function sendSchoolMenuError(res, error) {
+    const status = error instanceof SchoolMenuError ? error.status : 502;
+    if (status >= 500) console.error('[ERROR] School menu API:', error.message);
+    return res.status(status).json({
+      error: status >= 500 ? 'The school menu could not be loaded right now.' : error.message
+    });
+  }
+
+  app.get('/api/school-menu/settings', (req, res) => {
+    res.json(schoolMenuService.getSettings());
+  });
+
+  app.put('/api/school-menu/settings', async (req, res) => {
+    try {
+      res.json(await schoolMenuService.saveSettings(req.body));
+    } catch (error) {
+      sendSchoolMenuError(res, error);
+    }
+  });
+
+  app.get('/api/school-menu/schools', async (req, res) => {
+    try {
+      res.json(await schoolMenuService.getSchools(req.query.district));
+    } catch (error) {
+      sendSchoolMenuError(res, error);
+    }
+  });
+
+  app.get('/api/school-menu', async (req, res) => {
+    try {
+      res.json(await schoolMenuService.getMenu(req.query.date));
+    } catch (error) {
+      sendSchoolMenuError(res, error);
+    }
   });
 
   function sendReceiptError(res, error) {
