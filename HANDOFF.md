@@ -188,8 +188,12 @@ login. Delete or stub that file before local dev if you don't want that.
   - **In HA**: Ollama integration at `http://10.77.77.1:11434`, AI Task entity
     `ai_task.receipt_reader_local` (num_ctx 8192, keep_alive 120 s so RAM is freed after use).
     Verified end to end: HA -> model -> answer in 12 s.
-  - Not yet reboot-tested. Every piece is persistent by design (switch, static IPs, firewall rules,
-    env var, logon-triggered task), but it has not been proven through a restart.
+  - **Reboot-tested 2026-09-30** (after the voice add-ons, Edge policies and watchdog landed): host
+    back in ~1 min with auto-logon; portproxy re-pointed at the VM's new NAT address (172.26.x ->
+    172.24.x, as expected); HA-Link 10.77.77.1/.2 intact; Ollama listening and reached by HA 70 s
+    after boot; kiosk Edge up with the new policies; add-on 200. `Ollama-Serve` showing
+    `0x800710E0` afterwards is the 5-minute trigger being refused because the loop is already
+    running (`IgnoreNew`) — expected, not a failure.
 
 ### Home Assistant changes made 2026-09-29/30
 

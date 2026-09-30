@@ -193,12 +193,18 @@ function createSchoolMenuService({
     }
   }
 
-  async function cachedRequest(namespace, key, url, ttlMs) {
+  async function cachedRequest(namespace, key, url, ttlMs, { cacheOnly = false } = {}) {
     const requestKey = `${namespace}:${key}`;
     const cached = readCache()[namespace][key];
     const cachedAt = Date.parse(cached && cached.fetchedAt);
     if (cached && Number.isFinite(cachedAt) && now() - cachedAt < ttlMs) {
       return { data: cached.data, fetchedAt: cached.fetchedAt, stale: false, source: 'cache' };
+    }
+    if (cacheOnly) {
+      if (cached && cached.data) {
+        return { data: cached.data, fetchedAt: cached.fetchedAt, stale: true, source: 'stale-cache' };
+      }
+      throw new SchoolMenuError('No cached school menu is available for that date.', 503);
     }
 
     if (inFlight.has(requestKey)) return inFlight.get(requestKey);
@@ -253,10 +259,10 @@ function createSchoolMenuService({
     })).filter(school => school.slug);
   }
 
-  async function getWeek(settings, menuSlug, dateString) {
+  async function getWeek(settings, menuSlug, dateString, options = {}) {
     const start = weekStart(dateString);
     const key = [settings.district, settings.schoolSlug, menuSlug, start].join('|');
-    return cachedRequest('weeks', key, weekUrl(settings, menuSlug, start), cacheTtlMs);
+    return cachedRequest('weeks', key, weekUrl(settings, menuSlug, start), cacheTtlMs, options);
   }
 
   function buildMenus(settings, resultsBySlug, dateString) {
@@ -293,7 +299,7 @@ function createSchoolMenuService({
     return fallback ? { ...fallback, stale: true } : null;
   }
 
-  async function getMenu(dateValue) {
+  async function getMenu(dateValue, { cacheOnly = false } = {}) {
     const date = dateValue || getLocalDate();
     parseIsoDate(date);
     const settings = getSettings();
@@ -301,7 +307,7 @@ function createSchoolMenuService({
 
     try {
       await Promise.all(settings.menus.map(async menu => {
-        resultsBySlug.set(menu.slug, [await getWeek(settings, menu.slug, date)]);
+        resultsBySlug.set(menu.slug, [await getWeek(settings, menu.slug, date, { cacheOnly })]);
       }));
 
       let menus = buildMenus(settings, resultsBySlug, date);
@@ -313,7 +319,7 @@ function createSchoolMenuService({
         const needsNextWeek = addDays(date, 10) > addDays(initialStart, 6);
         if (needsNextWeek) {
           await Promise.all(settings.menus.map(async menu => {
-            const source = await getWeek(settings, menu.slug, addDays(date, 7));
+            const source = await getWeek(settings, menu.slug, addDays(date, 7), { cacheOnly });
             resultsBySlug.get(menu.slug).push(source);
           }));
         }
@@ -343,7 +349,10 @@ function createSchoolMenuService({
       await rememberResponse(date, response);
       return response;
     } catch (error) {
-      const fallback = staleResponseFallback(date);
+      const cache = readCache();
+      const fallback = cacheOnly
+        ? (cache.responses[date] ? { ...cache.responses[date], stale: true } : null)
+        : staleResponseFallback(date);
       if (fallback) {
         console.warn(`[school-menu] Menu fetch failed; using last saved response: ${error.message}`);
         return fallback;
@@ -352,7 +361,11 @@ function createSchoolMenuService({
     }
   }
 
-  return { getSettings, saveSettings, getSchools, getMenu };
+  function getCachedMenu(dateValue) {
+    return getMenu(dateValue, { cacheOnly: true });
+  }
+
+  return { getSettings, saveSettings, getSchools, getMenu, getCachedMenu };
 }
 
 module.exports = {

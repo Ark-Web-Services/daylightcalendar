@@ -6509,3 +6509,78 @@ button.receipt-status-chip { min-height: 44px; cursor: pointer; }
   overflow-x: auto;
 }
 .announcement-settings-status { min-height: 24px; color: var(--md-on-surface-variant); }
+
+/* Assistant memory is Settings-only, so its list may grow with the page while each row stays
+   finger-friendly and readable in every theme. */
+.assistant-memory-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--md-space-3);
+}
+.assistant-memory-count {
+  flex: 0 0 auto;
+  padding: var(--md-space-1) var(--md-space-2);
+  border-radius: var(--md-shape-large);
+  background: var(--md-secondary-container);
+  color: var(--md-on-secondary-container);
+  font-weight: 700;
+}
+.assistant-memory-list { display: grid; gap: var(--md-space-2); }
+.assistant-memory-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--md-space-3);
+  padding: var(--md-space-3);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: var(--md-shape-medium);
+  background: var(--md-surface-2);
+}
+.assistant-memory-copy { min-width: 0; }
+.assistant-memory-copy p {
+  margin: 0;
+  color: var(--md-on-surface);
+  overflow-wrap: anywhere;
+}
+.assistant-memory-meta,
+.assistant-memory-people {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--md-space-2);
+}
+.assistant-memory-meta {
+  margin-top: var(--md-space-2);
+  color: var(--md-on-surface-variant);
+  font-size: 0.8rem;
+}
+.assistant-memory-person {
+  padding: var(--md-space-1) var(--md-space-2);
+  border-radius: var(--md-shape-large);
+  background: var(--md-primary-container);
+  color: var(--md-on-primary-container);
+  font-weight: 700;
+}
+.assistant-memory-delete { min-height: 44px; }
+.assistant-memory-empty { margin: 0; color: var(--md-on-surface-variant); }
+.assistant-memory-status { min-height: 24px; color: var(--md-on-surface-variant); }
+.assistant-memory-connect {
+  margin-top: var(--md-space-4);
+  padding-top: var(--md-space-3);
+  border-top: 1px solid var(--md-outline-variant);
+  color: var(--md-on-surface);
+}
+.assistant-memory-connect p { margin: var(--md-space-2) 0 0; overflow-wrap: anywhere; }
+.assistant-memory-connect code {
+  color: var(--md-on-surface);
+  background: var(--md-surface-3);
+  border-radius: var(--md-shape-small);
+  padding: var(--md-space-1);
+}
+@media (max-width: 760px) {
+  .assistant-memory-heading { display: grid; }
+  .assistant-memory-count { justify-self: start; }
+  .assistant-memory-item { grid-template-columns: minmax(0, 1fr); }
+  .assistant-memory-delete { justify-self: stretch; }
+}

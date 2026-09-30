@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.1.9.36] - 2026-09-30
+
+Daylight can now be the family's context for Home Assistant's AI assistant. It runs a Model
+Context Protocol server — the standard way Home Assistant hands tools to whichever AI
+conversation agent you choose — so when someone asks Assist (or Siri, through the Home Assistant
+app) "what's for lunch at school tomorrow?", "is Riley done with chores?" or "add milk to the
+grocery list", the assistant can look it up in Daylight instead of guessing.
+
+Twelve tools: household, calendar, chores and stars, school menu, meal plan, lists, adding to a
+list, screen time, remembering, recalling and forgetting household facts, and announcing on the
+panel. The server only answers Home Assistant itself (the Supervisor network) and the add-on's
+own host; requests from the rest of the network are refused. Tool arguments are never logged.
+
+Settings has a new "Things Daylight remembers" card listing every fact the assistant has saved,
+with delete (parent check required), and the address to give Home Assistant: Settings → Devices &
+services → Add integration → Model Context Protocol → `http://01a45dd4-daylight-calendar:8099/mcp/sse`.
+
 ## [1.1.9.35] - 2026-09-30
 
 Announcements. Home Assistant automations can now put a message on the wall panel and say it out

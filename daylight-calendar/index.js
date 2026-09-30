@@ -27,6 +27,7 @@ const {
   AnnouncementError,
   createAnnouncementService
 } = require('./scripts/announcement-service');
+const { mountMcpServer } = require('./scripts/mcp-server');
 
 // Main initialization function to handle async imports
 async function initializeApp() {
@@ -128,6 +129,36 @@ async function initializeApp() {
     path: isIngressMode ? '/socket.io' : undefined
   });
 
+  // Mount MCP before JSON/static middleware so the SDK can consume its request stream itself and
+  // keep legacy SSE responses open. Every callback resolves against the same in-process readers
+  // and serialized write paths used by the panel APIs below.
+  mountMcpServer({
+    app,
+    isStandaloneDev,
+    version: addonVersion,
+    dependencies: {
+      getUsers: () => fetchHaUsers(),
+      getAdminProfileIds: users => resolveAdminProfileIds(readScreenTime(), users),
+      getLocalDate: () => getServerLocalDate(),
+      getSchoolSettings: () => schoolMenuService.getSettings(),
+      // The normal path: cached weeks answer instantly, and an uncached week (e.g. next week asked
+      // on a Friday) is fetched once and cached like any panel request.
+      getSchoolMenu: date => schoolMenuService.getMenu(date),
+      getCalendarEvents: range => fetchCalendarData(range, { quiet: true }),
+      getChores: () => getMergedChores(),
+      getRoutines: date => getRoutineTodayPayload(date),
+      getStarBalance: profileId => derivedBalance(readStarsLedger(), profileId),
+      getMealPlan: () => readMealPlan(),
+      getLists: () => readLists(),
+      addListItems: (listName, items) => addItemsToNamedList(listName, items),
+      getScreenTime: () => getScreenTimePayload(),
+      remember: memory => rememberHouseholdFact(memory),
+      getMemories: () => readHouseholdMemories(),
+      forget: memoryId => forgetHouseholdMemory(memoryId),
+      announce: input => announcementService.announce(input, 'assistant')
+    }
+  });
+
   const standardJsonParser = express.json();
   const receiptUploadJsonParser = express.json({ limit: '17mb' });
   app.use((req, res, next) => {
@@ -156,17 +187,8 @@ async function initializeApp() {
     });
   }
 
-  // Serve static files
-  app.use(express.static(path.join(__dirname, 'public')));
-
   // Special handling for ingress mode
   if (isIngressMode) {
-    // Make webfonts accessible through the ingress path
-    app.use('/webfonts', express.static(path.join(__dirname, 'public/webfonts')));
-
-    // Also serve webfonts on the base path for fallback
-    app.use('/api/hassio_ingress/webfonts', express.static(path.join(__dirname, 'public/webfonts')));
-
     // Add CORS headers for all responses in ingress mode
     app.use((req, res, next) => {
       res.header('Access-Control-Allow-Origin', '*');
@@ -242,6 +264,7 @@ async function initializeApp() {
 
     // Method to use
     const method = fetchOptions.method || 'GET';
+    const quiet = fetchOptions.quiet === true;
     const token = process.env.SUPERVISOR_TOKEN || process.env.HASS_TOKEN || '';
 
     // Request body
@@ -277,7 +300,7 @@ async function initializeApp() {
         validateStatus: status => status < 500 // Resolve even on 4xx to handle auth errors manually
       };
 
-      console.log(`[INFO] Trying HA API: ${method} ${url} (Legacy Header: ${useLegacyHeader})`);
+      if (!quiet) console.log(`[INFO] Trying HA API: ${method} ${url} (Legacy Header: ${useLegacyHeader})`);
 
       try {
         const response = await axios(axiosConfig);
@@ -309,20 +332,20 @@ async function initializeApp() {
         // Check if we should try legacy header on this same URL
         if (error.isAuthError && isProduction) {
           try {
-            console.log(`[INFO] Auth failed with Bearer token, retrying with X-Supervisor-Token on ${baseUrl}`);
+            if (!quiet) console.log(`[INFO] Auth failed with Bearer token, retrying with X-Supervisor-Token on ${baseUrl}`);
             return await attemptRequest(baseUrl, true);
           } catch (legacyError) {
             lastError = legacyError;
           }
         }
         // Continue to next URL
-        console.warn(`[WARN] Failed to connect to ${baseUrl}${apiPath}: ${error.message}`);
+        if (!quiet) console.warn(`[WARN] Failed to connect to ${baseUrl}${apiPath}: ${error.message}`);
       }
     }
 
     // If we get here, all attempts failed
-    console.error(`[ERROR] All HA API attempts failed for ${apiPath}`);
-    if (lastError && lastError.response) {
+    if (!quiet) console.error(`[ERROR] All HA API attempts failed for ${apiPath}`);
+    if (!quiet && lastError && lastError.response) {
       console.error(`[ERROR] Final Status: ${lastError.response.status}`);
       console.error(`[ERROR] Final Response:`, lastError.response.data);
     }
@@ -580,6 +603,44 @@ async function initializeApp() {
   function writeJsonFile(fileName, value) {
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
     fs.writeFileSync(path.join(DATA_DIR, fileName), JSON.stringify(value, null, 2));
+  }
+
+  const MAX_HOUSEHOLD_MEMORIES = 500;
+
+  function readHouseholdMemories() {
+    const memories = readJsonFile('household_memory.json', []);
+    return Array.isArray(memories) ? memories.filter(memory =>
+      memory && typeof memory.id === 'string' && typeof memory.text === 'string') : [];
+  }
+
+  function rememberHouseholdFact({ text, people = [], source = 'assistant' }) {
+    return withHouseholdStorageLock(async () => {
+      const memories = readHouseholdMemories();
+      if (memories.length >= MAX_HOUSEHOLD_MEMORIES) {
+        throw new Error('Household memory is full (500 entries). Delete a memory before adding another.');
+      }
+      const memory = {
+        id: randomUUID(),
+        text,
+        people: [...new Set(people)],
+        createdAt: new Date().toISOString(),
+        source: source === 'panel' ? 'panel' : 'assistant'
+      };
+      memories.push(memory);
+      writeJsonFile('household_memory.json', memories);
+      return memory;
+    });
+  }
+
+  function forgetHouseholdMemory(memoryId) {
+    return withHouseholdStorageLock(async () => {
+      const memories = readHouseholdMemories();
+      const index = memories.findIndex(memory => memory.id === memoryId);
+      if (index < 0) return false;
+      memories.splice(index, 1);
+      writeJsonFile('household_memory.json', memories);
+      return true;
+    });
   }
 
   const receiptModelTimeoutMs = Number.isFinite(Number(process.env.RECEIPT_MODEL_TIMEOUT_MS))
@@ -1464,6 +1525,17 @@ async function initializeApp() {
     });
   }
 
+  async function getMergedChores() {
+    const result = await fetchTodoItems();
+    if (result.error) throw new Error(result.error);
+    const { metaByUid } = await processChoreCompletions(result.items || []);
+    const settings = readChoreSettings();
+    return (result.items || []).map(item => ({
+      ...item,
+      ...normalizeChoreMeta(metaByUid[item.uid], settings)
+    }));
+  }
+
   // Meal planning is local add-on state, so it must live in DATA_DIR rather than
   // the application image. Keep malformed files from preventing the calendar
   // from starting; an empty plan is always a safe fallback.
@@ -1549,6 +1621,33 @@ async function initializeApp() {
     // original failure to the request that caused it.
     listWriteQueue = write.catch(() => undefined);
     return write;
+  }
+
+  function addItemsToNamedList(listName, itemTexts) {
+    const normalizedName = String(listName || '').trim().toLocaleLowerCase('en-US');
+    return withListWrite(lists => {
+      const list = lists.find(candidate =>
+        String(candidate.name || '').trim().toLocaleLowerCase('en-US') === normalizedName);
+      if (!list) return null;
+      if (!Array.isArray(list.items)) list.items = [];
+      const addedAt = new Date().toISOString();
+      const startPosition = list.items.length;
+      const added = itemTexts.map((text, index) => ({
+        id: makeItemId(),
+        text,
+        quantity: '',
+        checked: false,
+        checkedBy: null,
+        checkedAt: null,
+        position: startPosition + index,
+        addedAt
+      })).map(item => {
+        list.items.push(item);
+        return item.text;
+      });
+      list.updatedAt = addedAt;
+      return { listName: list.name, added };
+    });
   }
 
   // Make a fresh installation useful before its first write.
@@ -1714,7 +1813,7 @@ async function initializeApp() {
     return mappings;
   }
 
-  async function fetchCalendarData(range = getCalendarRange()) {
+  async function fetchCalendarData(range = getCalendarRange(), { quiet = false } = {}) {
     const calendarRange = getCalendarRange(range.start, range.end);
     let haEvents = [];
     let caldavEvents = [];
@@ -1724,18 +1823,18 @@ async function initializeApp() {
       try {
         const mockPath = path.join(__dirname, 'mock-data', 'calendar.json');
         const mockData = JSON.parse(fs.readFileSync(mockPath, 'utf8'));
-        console.log(`[MOCK] Loaded ${mockData.events.length} mock HA calendar events`);
+        if (!quiet) console.log(`[MOCK] Loaded ${mockData.events.length} mock HA calendar events`);
         haEvents = mockData.events;
       } catch (e) {
-        console.warn('[MOCK] Could not load mock calendar data:', e.message);
+        if (!quiet) console.warn('[MOCK] Could not load mock calendar data:', e.message);
       }
 
       // Try to fetch REAL CalDAV events first
       try {
-        caldavEvents = await caldavService.fetchAllEvents(calendarRange);
-        console.log(`[INFO] (Standalone) Fetched ${caldavEvents.length} Real CalDAV events`);
+        caldavEvents = await caldavService.fetchAllEvents(calendarRange, { quiet });
+        if (!quiet) console.log(`[INFO] (Standalone) Fetched ${caldavEvents.length} Real CalDAV events`);
       } catch (error) {
-        console.error('[ERROR] Error fetching Real CalDAV events in standalone mode:', error.message);
+        if (!quiet) console.error('[ERROR] Error fetching Real CalDAV events in standalone mode:', error.message);
         // Fallback to mock events ONLY if real fetch fails completely and we have no accounts?
         // Actually, let's just log it. If the user wants real CalDAV, they need to connect.
       }
@@ -1748,26 +1847,26 @@ async function initializeApp() {
         const endTime = encodeURIComponent(calendarRange.end.toISOString());
         const apiPath = `/calendars/${config.calendar_entity_id}?start=${startTime}&end=${endTime}`;
 
-        console.log("[INFO] Fetching calendar data from: " + hassApiUrl + apiPath);
-        const data = await callHaApi(apiPath);
+        if (!quiet) console.log("[INFO] Fetching calendar data from: " + hassApiUrl + apiPath);
+        const data = await callHaApi(apiPath, { quiet });
         haEvents = (data || []).map(e => ({
           ...e,
           source: 'ha',
           calendar_entity_id: config.calendar_entity_id
         }));
-        console.log('[INFO] Successfully fetched HA calendar data.');
+        if (!quiet) console.log('[INFO] Successfully fetched HA calendar data.');
       } catch (error) {
-        console.error('[ERROR] Error fetching HA calendar data:', error.message);
+        if (!quiet) console.error('[ERROR] Error fetching HA calendar data:', error.message);
       }
     }
 
     // Fetch CalDAV events
     if (!isStandaloneDev) {
       try {
-        caldavEvents = await caldavService.fetchAllEvents(calendarRange);
-        console.log(`[INFO] Fetched ${caldavEvents.length} CalDAV events`);
+        caldavEvents = await caldavService.fetchAllEvents(calendarRange, { quiet });
+        if (!quiet) console.log(`[INFO] Fetched ${caldavEvents.length} CalDAV events`);
       } catch (error) {
-        console.error('[ERROR] Error fetching CalDAV events:', error.message);
+        if (!quiet) console.error('[ERROR] Error fetching CalDAV events:', error.message);
       }
     }
 
@@ -1783,7 +1882,7 @@ async function initializeApp() {
       const haUsers = await fetchHaUsers();
       validUserIds = haUsers.map(u => u.id);
     } catch (err) {
-      console.error('[ERROR] Could not fetch valid HA users for event mapping:', err.message);
+      if (!quiet) console.error('[ERROR] Could not fetch valid HA users for event mapping:', err.message);
     }
 
     // Attach destination identity while retaining userId for older frontend consumers.
@@ -2421,6 +2520,64 @@ async function initializeApp() {
   });
 
   // ROUTES SECTION
+
+  app.get('/api/assistant-memory', async (req, res) => {
+    try {
+      const users = await fetchHaUsers();
+      const byId = new Map(users.map(user => [user.id, user]));
+      const memories = readHouseholdMemories().slice().sort((left, right) =>
+        Date.parse(right.createdAt) - Date.parse(left.createdAt)).map(memory => ({
+          id: memory.id,
+          text: memory.text,
+          createdAt: memory.createdAt,
+          source: memory.source,
+          people: (memory.people || []).map(profileId => byId.get(profileId)).filter(Boolean)
+            .map(profile => ({ name: profile.name, color: profile.color }))
+        }));
+      res.json({ memories, count: memories.length, limit: MAX_HOUSEHOLD_MEMORIES });
+    } catch (error) {
+      res.status(500).json({ error: 'Assistant memory could not be loaded.' });
+    }
+  });
+
+  app.delete('/api/assistant-memory/:id', async (req, res) => {
+    const result = await withHouseholdStorageLock(async () => {
+      const screenTime = readScreenTime();
+      const auth = authorizeAdmin(screenTime, req);
+      writeJsonFile('screen_time.json', screenTime);
+      if (!auth.ok) return auth;
+      const memories = readHouseholdMemories();
+      const index = memories.findIndex(memory => memory.id === req.params.id);
+      if (index < 0) return { ok: false, status: 404, error: 'Memory not found' };
+      memories.splice(index, 1);
+      writeJsonFile('household_memory.json', memories);
+      return { ok: true };
+    });
+    if (!result.ok) return res.status(result.status).json({ error: result.error });
+    res.json({ success: true });
+  });
+
+  app.delete('/api/assistant-memory', async (req, res) => {
+    const result = await withHouseholdStorageLock(async () => {
+      const screenTime = readScreenTime();
+      const auth = authorizeAdmin(screenTime, req);
+      writeJsonFile('screen_time.json', screenTime);
+      if (!auth.ok) return auth;
+      const deleted = readHouseholdMemories().length;
+      writeJsonFile('household_memory.json', []);
+      return { ok: true, deleted };
+    });
+    if (!result.ok) return res.status(result.status).json({ error: result.error });
+    res.json({ success: true, deleted: result.deleted });
+  });
+
+  // Static content comes after MCP and its REST companion routes. In particular, SSE must never
+  // pass through static handling or a body parser that has already consumed its request stream.
+  app.use(express.static(path.join(__dirname, 'public')));
+  if (isIngressMode) {
+    app.use('/webfonts', express.static(path.join(__dirname, 'public/webfonts')));
+    app.use('/api/hassio_ingress/webfonts', express.static(path.join(__dirname, 'public/webfonts')));
+  }
 
   // API: Get HA Calendars
   app.get('/api/ha/calendars', async (req, res) => {
@@ -3874,50 +4031,53 @@ async function initializeApp() {
   // Screen time is an append-only usage ledger. Every mutation shares the
   // household lock so simultaneous taps cannot create two active players or
   // replace a grant/session written by another display.
+  async function getScreenTimePayload() {
+    const [users, todoResult] = await Promise.all([fetchHaUsers(), fetchTodoItems()]);
+    if (todoResult.error) throw new Error(todoResult.error);
+    return withHouseholdStorageLock(async () => {
+      const state = readScreenTime();
+      const nowMs = Date.now();
+      const date = getServerLocalDate();
+      const enforcement = enforceActiveScreenTimeSession(state, nowMs);
+      const adminProfileIds = await resolveAdminProfileIds(state, users);
+      const explicitAdminIdsChanged = Array.isArray(state.settings.adminProfileIds) &&
+        (adminProfileIds.length !== state.settings.adminProfileIds.length ||
+          adminProfileIds.some((id, index) => id !== state.settings.adminProfileIds[index]));
+      if (explicitAdminIdsChanged) state.settings.adminProfileIds = adminProfileIds;
+      if (enforcement.changed || explicitAdminIdsChanged) writeJsonFile('screen_time.json', state);
+      const active = enforcement.session;
+      return {
+        settings: publicScreenTimeSettings(state.settings, adminProfileIds),
+        activeSession: active ? {
+          ...active,
+          expiresAt: enforcement.expiresAt,
+          remainingSeconds: active.metered === false ? null :
+            screenTimeTotals(state, active.profileId, date, nowMs).remainingSeconds
+        } : null,
+        profiles: users.map(user => {
+          const totals = screenTimeTotals(state, user.id, date, nowMs);
+          const blocking = state.settings.enabled
+            ? getScreenTimeBlocking(user.id, state.settings, todoResult.items || [], date) : [];
+          return {
+            id: user.id,
+            name: user.name,
+            color: user.color,
+            dailyMinutes: totals.dailyMinutes,
+            usedMinutes: totals.usedMinutes,
+            grantedMinutes: totals.grantedMinutes,
+            remainingMinutes: totals.remainingMinutes,
+            blocking,
+            canStart: !active && (!state.settings.enabled ||
+              (totals.remainingSeconds > 0 && blocking.length === 0))
+          };
+        })
+      };
+    });
+  }
+
   app.get('/api/screen-time', async (req, res) => {
     try {
-      const [users, todoResult] = await Promise.all([fetchHaUsers(), fetchTodoItems()]);
-      if (todoResult.error) return res.status(500).json({ error: todoResult.error });
-      const payload = await withHouseholdStorageLock(async () => {
-        const state = readScreenTime();
-        const nowMs = Date.now();
-        const date = getServerLocalDate();
-        const enforcement = enforceActiveScreenTimeSession(state, nowMs);
-        const adminProfileIds = await resolveAdminProfileIds(state, users);
-        const explicitAdminIdsChanged = Array.isArray(state.settings.adminProfileIds) &&
-          (adminProfileIds.length !== state.settings.adminProfileIds.length ||
-            adminProfileIds.some((id, index) => id !== state.settings.adminProfileIds[index]));
-        if (explicitAdminIdsChanged) state.settings.adminProfileIds = adminProfileIds;
-        if (enforcement.changed || explicitAdminIdsChanged) writeJsonFile('screen_time.json', state);
-        const active = enforcement.session;
-        return {
-          settings: publicScreenTimeSettings(state.settings, adminProfileIds),
-          activeSession: active ? {
-            ...active,
-            expiresAt: enforcement.expiresAt,
-            remainingSeconds: active.metered === false ? null :
-              screenTimeTotals(state, active.profileId, date, nowMs).remainingSeconds
-          } : null,
-          profiles: users.map(user => {
-            const totals = screenTimeTotals(state, user.id, date, nowMs);
-            const blocking = state.settings.enabled
-              ? getScreenTimeBlocking(user.id, state.settings, todoResult.items || [], date) : [];
-            return {
-              id: user.id,
-              name: user.name,
-              color: user.color,
-              dailyMinutes: totals.dailyMinutes,
-              usedMinutes: totals.usedMinutes,
-              grantedMinutes: totals.grantedMinutes,
-              remainingMinutes: totals.remainingMinutes,
-              blocking,
-              canStart: !active && (!state.settings.enabled ||
-                (totals.remainingSeconds > 0 && blocking.length === 0))
-            };
-          })
-        };
-      });
-      res.json(payload);
+      res.json(await getScreenTimePayload());
     } catch (error) {
       console.error('[ERROR] Failed to read screen time:', error);
       res.status(500).json({ error: error.message });

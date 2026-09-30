@@ -193,6 +193,31 @@
     </div>
 
     <div class="settings-section">
+      <h2>Assistant memory</h2>
+      <div class="settings-card" id="assistant-memory-settings-card">
+        <div class="assistant-memory-heading">
+          <div>
+            <h3>Things Daylight remembers</h3>
+            <p class="setting-description">Facts saved by Home Assistant’s AI assistant stay on this add-on and can be removed here.</p>
+          </div>
+          <span id="assistant-memory-count" class="assistant-memory-count">Loading…</span>
+        </div>
+        <div id="assistant-memory-list" class="assistant-memory-list" aria-live="polite">Loading memories…</div>
+        <div id="assistant-memory-status" class="assistant-memory-status" role="status" aria-live="polite"></div>
+        <div class="form-actions">
+          <button type="button" id="delete-all-assistant-memory" class="btn btn-danger" disabled>
+            <i class="material-icons" aria-hidden="true">delete_forever</i> Delete all memories
+          </button>
+        </div>
+        <div class="assistant-memory-connect">
+          <h3>How to connect Home Assistant</h3>
+          <p><strong>SSE URL:</strong> <code>http://01a45dd4-daylight-calendar:8099/mcp/sse</code></p>
+          <p>Settings → Devices &amp; services → Add integration → Model Context Protocol</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-section">
       <h2>Receipt reader</h2>
       <div class="settings-card" id="receipt-reader-settings-card">
         <h3>Local vision model</h3>

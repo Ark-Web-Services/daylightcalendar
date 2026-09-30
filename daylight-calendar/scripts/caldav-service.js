@@ -270,7 +270,7 @@ function resolveRange(range) {
     return { start, end };
 }
 
-async function fetchAllEvents(range) {
+async function fetchAllEvents(range, { quiet = false } = {}) {
     const accounts = loadAccounts();
     const accountIds = Object.keys(accounts);
 
@@ -309,7 +309,7 @@ async function fetchAllEvents(range) {
                     } catch (expandErr) {
                         // Not every CalDAV server implements expand; fall back to the
                         // unexpanded query rather than losing the calendar entirely.
-                        console.warn(`[CalDAV] expand unsupported for ${cal.displayName}, falling back: ${expandErr.message}`);
+                        if (!quiet) console.warn(`[CalDAV] expand unsupported for ${cal.displayName}, falling back: ${expandErr.message}`);
                         calObjects = await client.fetchCalendarObjects({ calendar: cal, timeRange });
                     }
 
@@ -320,15 +320,15 @@ async function fetchAllEvents(range) {
                         }
                     }
                 } catch (calErr) {
-                    console.error(`[CalDAV] Error fetching events from calendar ${cal.displayName}:`, calErr.message);
+                    if (!quiet) console.error(`[CalDAV] Error fetching events from calendar ${cal.displayName}:`, calErr.message);
                 }
             }
         } catch (accErr) {
-            console.error(`[CalDAV] Error fetching events for account ${account.appleId}:`, accErr);
+            if (!quiet) console.error(`[CalDAV] Error fetching events for account ${account.appleId}:`, accErr);
         }
     }
 
-    console.log(`[CalDAV] Fetched ${allEvents.length} events from ${accountIds.length} account(s) between ${start.toISOString()} and ${end.toISOString()}`);
+    if (!quiet) console.log(`[CalDAV] Fetched ${allEvents.length} events from ${accountIds.length} account(s) between ${start.toISOString()} and ${end.toISOString()}`);
     return allEvents;
 }
 

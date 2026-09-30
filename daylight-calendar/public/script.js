@@ -378,6 +378,89 @@ async function sendTestAnnouncement() {
   }
 }
 
+async function initializeAssistantMemorySettings() {
+  const list = document.getElementById('assistant-memory-list');
+  if (!list || list.dataset.bound === 'true') return;
+  list.dataset.bound = 'true';
+  list.addEventListener('click', event => {
+    const button = event.target.closest('[data-delete-assistant-memory]');
+    if (!button) return;
+    void deleteAssistantMemory(button.dataset.deleteAssistantMemory, button.dataset.memoryPreview || 'this memory');
+  });
+  document.getElementById('delete-all-assistant-memory')?.addEventListener('click', () => {
+    void deleteAllAssistantMemory();
+  });
+  await loadAssistantMemories();
+}
+
+async function loadAssistantMemories() {
+  const list = document.getElementById('assistant-memory-list');
+  const count = document.getElementById('assistant-memory-count');
+  const deleteAll = document.getElementById('delete-all-assistant-memory');
+  const status = document.getElementById('assistant-memory-status');
+  if (!list || !count || !deleteAll || !status) return;
+  try {
+    const response = await fetch('api/assistant-memory', { cache: 'no-store' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'Assistant memory could not be loaded.');
+    count.textContent = `${data.count} of ${data.limit}`;
+    deleteAll.disabled = data.count === 0;
+    list.innerHTML = data.memories.length ? data.memories.map(memory => {
+      const people = (memory.people || []).map(person =>
+        `<span class="assistant-memory-person">${escapeHtml(person.name || 'Unnamed')}</span>`).join('');
+      const preview = memory.text.length > 60 ? `${memory.text.slice(0, 57)}…` : memory.text;
+      return `<article class="assistant-memory-item">
+        <div class="assistant-memory-copy">
+          <p>${escapeHtml(memory.text)}</p>
+          <div class="assistant-memory-meta">
+            <time datetime="${escapeHtml(memory.createdAt)}">${escapeHtml(String(memory.createdAt || '').slice(0, 10))}</time>
+            ${people ? `<span class="assistant-memory-people">${people}</span>` : ''}
+          </div>
+        </div>
+        <button type="button" class="btn btn-danger assistant-memory-delete" data-delete-assistant-memory="${escapeHtml(memory.id)}" data-memory-preview="${escapeHtml(preview)}" aria-label="Delete memory: ${escapeHtml(preview)}">
+          <i class="material-icons" aria-hidden="true">delete</i><span>Delete</span>
+        </button>
+      </article>`;
+    }).join('') : '<p class="assistant-memory-empty">Nothing has been remembered yet.</p>';
+    status.textContent = '';
+  } catch (error) {
+    list.innerHTML = '<p class="assistant-memory-empty">Memories are unavailable.</p>';
+    count.textContent = 'Unavailable';
+    deleteAll.disabled = true;
+    status.textContent = error.message;
+  }
+}
+
+async function deleteAssistantMemory(memoryId, preview) {
+  const confirmed = await requestAppConfirmation('Delete memory?', `Forget “${preview}”?`, 'Delete');
+  if (!confirmed) return;
+  await requestAdminAuthorization({
+    title: 'Delete assistant memory',
+    prompt: 'Verify parent access to forget this household fact.',
+    onAuthorized: async () => {
+      await screenTimeRequest(`api/assistant-memory/${encodeURIComponent(memoryId)}`, { method: 'DELETE', body: '{}' });
+      touchAdminSession();
+      await loadAssistantMemories();
+      document.getElementById('assistant-memory-status').textContent = 'Memory deleted.';
+    }
+  });
+}
+
+async function deleteAllAssistantMemory() {
+  const confirmed = await requestAppConfirmation('Delete all memories?', 'This removes every fact saved by the assistant and cannot be undone.', 'Delete all');
+  if (!confirmed) return;
+  await requestAdminAuthorization({
+    title: 'Delete all assistant memory',
+    prompt: 'Verify parent access to delete every saved household fact.',
+    onAuthorized: async () => {
+      const result = await screenTimeRequest('api/assistant-memory', { method: 'DELETE', body: '{}' });
+      touchAdminSession();
+      await loadAssistantMemories();
+      document.getElementById('assistant-memory-status').textContent = `${result.deleted} memories deleted.`;
+    }
+  });
+}
+
 function startAddonLivenessMonitor(addonVersion) {
   loadedAddonVersion = addonVersion || null;
   scheduleAddonLivenessCheck(ADDON_LIVENESS_POLL_MS);
@@ -3590,6 +3673,7 @@ function initializeSettingsPage() {
 
     await initializeSchoolMenuSettings();
     await initializeAnnouncementSettings();
+    await initializeAssistantMemorySettings();
     await initializeReceiptReaderSettings();
     await initializeScreenTimeSettings();
     await initializeFaceRecognitionSettings();
