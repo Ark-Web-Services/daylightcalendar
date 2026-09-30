@@ -112,6 +112,7 @@ let displaySettings = {
 // Initial setup
 document.addEventListener('DOMContentLoaded', function () {
   console.log('[INFO] DOM Content Loaded');
+  initializeAnnouncements();
 
   // Load configuration first
   fetch('api/config')
@@ -148,6 +149,234 @@ document.addEventListener('DOMContentLoaded', function () {
       setupTurboFrameListeners();
     });
 });
+
+// Announcements (Home Assistant's `daylight_announce` event, or POST api/announcements) arrive over
+// socket.io. One card shows the current announcement; later ones queue behind it. Speech prefers the
+// server's Home Assistant voice clip and falls back to the browser's own voice.
+const ANNOUNCEMENT_AUDIO_WAIT_MS = 8000;
+const announcementQueue = [];
+const announcementAudio = new Map(); // id -> { state: 'pending' | 'ready' | 'none', url }
+let announcementSocket = null;
+let announcementDismissTimer = null;
+let announcementAudioWaitTimer = null;
+let announcementSpokenId = null;
+let announcementPlayer = null;
+let announcementAudioContext = null;
+let announcementChimeEndsAt = 0;
+
+function initializeAnnouncements() {
+  document.getElementById('announcement-dismiss')?.addEventListener('click', dismissAnnouncement);
+  if (typeof window.io !== 'function') {
+    console.warn('[WARN] socket.io client is missing; announcements are disabled');
+    return;
+  }
+  // Relative to the page, so it works under Home Assistant ingress and on the kiosk's own origin.
+  const basePath = window.location.pathname.replace(/[^/]*$/, '');
+  announcementSocket = window.io({ path: `${basePath}socket.io` });
+  announcementSocket.on('announcement', receiveAnnouncement);
+  announcementSocket.on('announcement-audio', receiveAnnouncementAudio);
+}
+
+function receiveAnnouncement(announcement) {
+  if (!announcement?.id || announcementQueue.some(item => item.id === announcement.id)) return;
+  if (announcement.speak && !announcementAudio.has(announcement.id)) {
+    announcementAudio.set(announcement.id, { state: 'pending', url: null });
+  }
+  announcementQueue.push(announcement);
+  wakeScreen();
+  if (announcementQueue.length === 1) showCurrentAnnouncement();
+  else renderAnnouncementCount();
+}
+
+function receiveAnnouncementAudio({ id, audioUrl } = {}) {
+  if (!id) return;
+  announcementAudio.set(id, audioUrl ? { state: 'ready', url: audioUrl } : { state: 'none', url: null });
+  if (announcementQueue[0]?.id === id) speakCurrentAnnouncement();
+}
+
+function renderAnnouncementCount() {
+  const count = document.getElementById('announcement-count');
+  if (count) count.textContent = announcementQueue.length > 1 ? `1 of ${announcementQueue.length}` : '';
+}
+
+function showCurrentAnnouncement() {
+  const card = document.getElementById('announcement-card');
+  const current = announcementQueue[0];
+  clearTimeout(announcementDismissTimer);
+  clearTimeout(announcementAudioWaitTimer);
+  if (!card) return;
+  if (!current) {
+    card.hidden = true;
+    return;
+  }
+  document.getElementById('announcement-icon').textContent = current.icon || 'campaign';
+  document.getElementById('announcement-title').textContent = current.title || '';
+  document.getElementById('announcement-message').textContent = current.message;
+  card.classList.toggle('is-urgent', current.priority === 'urgent');
+  card.hidden = false;
+  renderAnnouncementCount();
+  if (current.priority !== 'urgent') {
+    announcementDismissTimer = setTimeout(dismissAnnouncement, (current.durationSeconds || 45) * 1000);
+  }
+  playAnnouncementChime();
+  if (!current.speak) return;
+  speakCurrentAnnouncement();
+  announcementAudioWaitTimer = setTimeout(() => {
+    if (announcementAudio.get(current.id)?.state !== 'pending') return;
+    announcementAudio.set(current.id, { state: 'none', url: null });
+    speakCurrentAnnouncement();
+  }, ANNOUNCEMENT_AUDIO_WAIT_MS);
+}
+
+function speakCurrentAnnouncement() {
+  const current = announcementQueue[0];
+  if (!current?.speak || announcementSpokenId === current.id) return;
+  const chimeRemaining = announcementChimeEndsAt - Date.now();
+  if (chimeRemaining > 0) {
+    setTimeout(speakCurrentAnnouncement, chimeRemaining);
+    return;
+  }
+  const audio = announcementAudio.get(current.id);
+  if (!audio || audio.state === 'pending') return;
+  announcementSpokenId = current.id;
+  clearTimeout(announcementAudioWaitTimer);
+  if (audio.state !== 'ready') {
+    speakWithBrowserVoice(current);
+    return;
+  }
+  announcementPlayer = announcementPlayer || new Audio();
+  announcementPlayer.src = audio.url;
+  announcementPlayer.play().catch(error => {
+    console.warn('[WARN] Announcement audio was blocked; using the browser voice:', error.message);
+    speakWithBrowserVoice(current);
+  });
+}
+
+function speakWithBrowserVoice(announcement) {
+  try {
+    if (!('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(new SpeechSynthesisUtterance(
+      announcement.title ? `${announcement.title}. ${announcement.message}` : announcement.message
+    ));
+  } catch (error) {
+    console.warn('[WARN] Browser voice is unavailable:', error.message);
+  }
+}
+
+// A short two-note chime generated in Web Audio, so no sound file ships with the add-on.
+function playAnnouncementChime() {
+  try {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+    announcementAudioContext = announcementAudioContext || new AudioContextClass();
+    const context = announcementAudioContext;
+    if (context.state === 'suspended') context.resume().catch(() => {});
+    const start = context.currentTime + 0.02;
+    [[880, 0], [1320, 0.18]].forEach(([frequency, offset]) => {
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.type = 'sine';
+      oscillator.frequency.value = frequency;
+      gain.gain.setValueAtTime(0.0001, start + offset);
+      gain.gain.exponentialRampToValueAtTime(0.25, start + offset + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + offset + 0.35);
+      oscillator.connect(gain).connect(context.destination);
+      oscillator.start(start + offset);
+      oscillator.stop(start + offset + 0.4);
+    });
+    announcementChimeEndsAt = Date.now() + 650;
+  } catch (error) {
+    console.warn('[WARN] Announcement chime is unavailable:', error.message);
+  }
+}
+
+function dismissAnnouncement() {
+  const dismissed = announcementQueue.shift();
+  if (dismissed) announcementAudio.delete(dismissed.id);
+  if (announcementPlayer && !announcementPlayer.paused) announcementPlayer.pause();
+  if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+  showCurrentAnnouncement();
+}
+
+async function initializeAnnouncementSettings() {
+  const form = document.getElementById('announcement-settings-form');
+  if (!form || form.dataset.initialized === 'true') return;
+  form.dataset.initialized = 'true';
+  const status = document.getElementById('announcement-settings-status');
+  const select = document.getElementById('announcement-tts-engine');
+  try {
+    const [settings, engines] = await Promise.all([
+      fetch('api/announcements/settings').then(response => response.json()),
+      fetch('api/announcements/tts-engines').then(response => (response.ok ? response.json() : [])).catch(() => [])
+    ]);
+    engines.forEach(engine => {
+      const option = document.createElement('option');
+      option.value = engine.entityId;
+      option.textContent = engine.name;
+      select.append(option);
+    });
+    if (settings.ttsEngine && ![...select.options].some(option => option.value === settings.ttsEngine)) {
+      const option = document.createElement('option');
+      option.value = settings.ttsEngine;
+      option.textContent = `${settings.ttsEngine} (not found)`;
+      select.append(option);
+    }
+    select.value = settings.ttsEngine || '';
+    document.getElementById('announcement-speak').checked = settings.speak;
+    document.getElementById('announcement-quiet-start').value = settings.quietStart;
+    document.getElementById('announcement-quiet-end').value = settings.quietEnd;
+    if (!engines.length) status.textContent = 'No Home Assistant voice found — the panel will use its built-in voice.';
+  } catch (error) {
+    status.textContent = 'Announcement settings could not be loaded.';
+  }
+  form.addEventListener('submit', event => {
+    event.preventDefault();
+    void requestAdminAuthorization({
+      title: 'Save announcements',
+      prompt: 'Verify parent access to continue.',
+      onAuthorized: saveAnnouncementSettings
+    });
+  });
+  document.getElementById('announcement-test')?.addEventListener('click', sendTestAnnouncement);
+}
+
+async function saveAnnouncementSettings() {
+  const status = document.getElementById('announcement-settings-status');
+  try {
+    await screenTimeRequest('api/announcements/settings', {
+      method: 'PUT',
+      body: JSON.stringify({
+        speak: document.getElementById('announcement-speak').checked,
+        ttsEngine: document.getElementById('announcement-tts-engine').value || null,
+        quietStart: document.getElementById('announcement-quiet-start').value,
+        quietEnd: document.getElementById('announcement-quiet-end').value
+      })
+    });
+    touchAdminSession();
+    status.textContent = 'Announcement settings saved.';
+  } catch (error) {
+    status.textContent = error.status === 403 && error.message === 'Parent session is not valid'
+      ? 'Parent check expired — tap Save again.' : error.message;
+  }
+}
+
+async function sendTestAnnouncement() {
+  const status = document.getElementById('announcement-settings-status');
+  try {
+    const response = await fetch('api/announcements', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: 'Test', message: 'This is how announcements look and sound on the panel.', icon: 'campaign' })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'The test announcement could not be sent.');
+    status.textContent = data.speak ? 'Sent — you should see and hear it now.'
+      : 'Sent — shown without sound (quiet hours, or speech is off).';
+  } catch (error) {
+    status.textContent = error.message;
+  }
+}
 
 function startAddonLivenessMonitor(addonVersion) {
   loadedAddonVersion = addonVersion || null;
@@ -3360,6 +3589,7 @@ function initializeSettingsPage() {
     }
 
     await initializeSchoolMenuSettings();
+    await initializeAnnouncementSettings();
     await initializeReceiptReaderSettings();
     await initializeScreenTimeSettings();
     await initializeFaceRecognitionSettings();

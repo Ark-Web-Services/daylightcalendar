@@ -16,6 +16,15 @@
   <div id="app" class="theme-light">
     <!-- Screen burn prevention overlay -->
     <div class="screen-dimmer" id="screen-dimmer" aria-hidden="true"></div>
+    <div id="announcement-card" class="announcement-card" role="alert" aria-live="assertive" hidden>
+      <i id="announcement-icon" class="material-icons announcement-icon" aria-hidden="true">campaign</i>
+      <div class="announcement-text">
+        <p id="announcement-title" class="announcement-title"></p>
+        <p id="announcement-message" class="announcement-message"></p>
+      </div>
+      <span id="announcement-count" class="announcement-count"></span>
+      <button type="button" id="announcement-dismiss" class="announcement-dismiss">Dismiss</button>
+    </div>
 
     <!-- Always visible clock display (when enabled) -->
     <div class="clock-display" id="clock-display">10:25 PM</div>

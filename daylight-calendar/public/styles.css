@@ -6429,3 +6429,83 @@ button.receipt-status-chip { min-height: 44px; cursor: pointer; }
   .school-menu-settings-grid { grid-template-columns: minmax(0, 1fr); }
   .school-menu-type { grid-template-columns: 24px minmax(0, 0.6fr) minmax(0, 1fr); }
 }
+
+/* Announcements: messages from Home Assistant automations (bus alerts etc.). Sits above the
+   screen dimmer and every modal, and never takes part in page layout, so it cannot cause scroll. */
+.announcement-card {
+  position: fixed;
+  top: var(--md-space-4);
+  left: 50%;
+  z-index: 10050;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--md-space-4);
+  width: min(960px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  box-sizing: border-box;
+  padding: var(--md-space-4);
+  border-radius: var(--md-shape-large);
+  background: var(--md-primary-container);
+  color: var(--md-on-primary-container);
+  box-shadow: var(--md-shadow-3);
+  transform: translateX(-50%);
+  overflow: hidden;
+}
+.announcement-card[hidden] { display: none; }
+.announcement-card.is-urgent {
+  background: var(--md-error-container);
+  color: var(--md-on-error-container);
+}
+.announcement-icon { font-size: clamp(2.5rem, 4vw, 3.5rem); }
+.announcement-text { min-width: 0; }
+.announcement-title {
+  margin: 0 0 var(--md-space-1);
+  font-size: clamp(1rem, 1.6vw, 1.35rem);
+  font-weight: 700;
+}
+.announcement-title:empty { display: none; }
+.announcement-message {
+  margin: 0;
+  font-size: clamp(1.4rem, 2.6vw, 2.25rem);
+  font-weight: 600;
+  line-height: 1.2;
+  overflow-wrap: break-word;
+}
+.announcement-count { font-size: 0.9rem; font-weight: 700; white-space: nowrap; }
+.announcement-count:empty { display: none; }
+.announcement-dismiss {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 var(--md-space-4);
+  border: 2px solid currentColor;
+  border-radius: var(--md-shape-large);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+@media (max-width: 760px) {
+  .announcement-card { grid-template-columns: auto minmax(0, 1fr); }
+  .announcement-count { grid-column: 1; }
+  .announcement-dismiss { grid-column: 2; justify-self: end; }
+}
+.announcement-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+  gap: var(--md-space-3);
+}
+.announcement-settings-grid select,
+.announcement-settings-grid input[type="time"] { width: 100%; min-width: 0; min-height: 44px; box-sizing: border-box; }
+.announcement-help {
+  margin: var(--md-space-3) 0 0;
+  padding: var(--md-space-2) var(--md-space-3);
+  border-radius: var(--md-shape-small);
+  background: var(--md-surface-2);
+  color: var(--md-on-surface);
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  overflow-x: auto;
+}
+.announcement-settings-status { min-height: 24px; color: var(--md-on-surface-variant); }

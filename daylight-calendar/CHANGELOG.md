@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.1.9.35] - 2026-09-30
+
+Announcements. Home Assistant automations can now put a message on the wall panel and say it out
+loud — the first use is "the school bus is almost at the stop". An automation fires the
+`daylight_announce` event (message, and optionally title, icon, priority and how long to show it);
+every panel shows a large card at the top of the screen with a short chime, wakes a dimmed screen,
+and speaks the message with Home Assistant's local voice (Piper) or, if there is none, the
+browser's own. Several announcements queue ("1 of 3"); urgent ones stay until dismissed.
+
+Settings has a new Announcements card: turn speech on or off, choose the voice, set quiet hours
+(21:00–07:00 by default; urgent announcements are still spoken), and send a test.
+
+Daylight's connection to Home Assistant now reconnects by itself if Home Assistant restarts, and
+re-subscribes to announcements when it does.
+
 ## [1.1.9.34] - 2026-09-30
 
 Parent access, with Face ID-style unlock.

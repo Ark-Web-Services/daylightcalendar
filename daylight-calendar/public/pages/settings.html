@@ -148,6 +148,51 @@
     </div>
 
     <div class="settings-section">
+      <h2>Announcements</h2>
+      <div class="settings-card" id="announcement-settings-card">
+        <p class="setting-description">Home Assistant automations can put a message on this panel and say it out loud — for example when the school bus is nearly at the stop.</p>
+        <form id="announcement-settings-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="announcement-speak">
+                <input type="checkbox" id="announcement-speak" name="speak">
+                Speak announcements
+              </label>
+              <p class="setting-description">Outside quiet hours. Urgent announcements are always spoken.</p>
+            </div>
+          </div>
+          <div class="announcement-settings-grid">
+            <div class="form-group">
+              <label for="announcement-tts-engine">Voice</label>
+              <select id="announcement-tts-engine">
+                <option value="">Automatic (Piper if installed)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="announcement-quiet-start">Quiet from</label>
+              <input type="time" id="announcement-quiet-start" required>
+            </div>
+            <div class="form-group">
+              <label for="announcement-quiet-end">Quiet until</label>
+              <input type="time" id="announcement-quiet-end" required>
+            </div>
+          </div>
+          <div id="announcement-settings-status" class="announcement-settings-status" role="status" aria-live="polite"></div>
+          <div class="form-actions">
+            <button type="button" id="announcement-test" class="btn btn-secondary"><i class="material-icons" aria-hidden="true">campaign</i> Test announcement</button>
+            <button type="submit" class="btn btn-primary"><i class="material-icons" aria-hidden="true">save</i> Save announcements</button>
+          </div>
+        </form>
+        <p class="setting-description">To announce from a Home Assistant automation, fire the <strong>daylight_announce</strong> event:</p>
+        <pre class="announcement-help">- event: daylight_announce
+  event_data:
+    message: "The bus is 5 minutes away"
+    icon: directions_bus        # optional
+    priority: urgent            # optional; spoken even in quiet hours</pre>
+      </div>
+    </div>
+
+    <div class="settings-section">
       <h2>Receipt reader</h2>
       <div class="settings-card" id="receipt-reader-settings-card">
         <h3>Local vision model</h3>

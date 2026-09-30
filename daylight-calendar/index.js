@@ -23,6 +23,10 @@ const {
   SchoolMenuError,
   createSchoolMenuService
 } = require('./scripts/school-menu-service');
+const {
+  AnnouncementError,
+  createAnnouncementService
+} = require('./scripts/announcement-service');
 
 // Main initialization function to handle async imports
 async function initializeApp() {
@@ -633,6 +637,70 @@ async function initializeApp() {
     } catch (error) {
       sendSchoolMenuError(res, error);
     }
+  });
+
+  const announcementService = createAnnouncementService({
+    readJsonFile,
+    writeJsonFile,
+    withHouseholdStorageLock,
+    fetch,
+    hassApiUrl,
+    getToken: () => process.env.SUPERVISOR_TOKEN || process.env.HASS_TOKEN || '',
+    emit: (eventName, payload) => io.emit(eventName, payload),
+    haAvailable: !isStandaloneDev
+  });
+
+  function sendAnnouncementError(res, error) {
+    const status = error instanceof AnnouncementError ? error.status : 500;
+    if (status >= 500) console.error('[ERROR] Announcements API:', error.message);
+    return res.status(status).json({ error: status >= 500 ? 'Announcements are unavailable right now.' : error.message });
+  }
+
+  app.post('/api/announcements', (req, res) => {
+    try {
+      res.status(201).json(announcementService.announce(req.body, 'panel'));
+    } catch (error) {
+      sendAnnouncementError(res, error);
+    }
+  });
+
+  app.get('/api/announcements/recent', (req, res) => {
+    res.json(announcementService.getRecent());
+  });
+
+  app.get('/api/announcements/settings', (req, res) => {
+    res.json(announcementService.getSettings());
+  });
+
+  app.put('/api/announcements/settings', async (req, res) => {
+    const auth = await withHouseholdStorageLock(async () => {
+      const screenTime = readScreenTime();
+      const result = authorizeAdmin(screenTime, req);
+      writeJsonFile('screen_time.json', screenTime);
+      return result;
+    });
+    if (!auth.ok) return res.status(auth.status).json(auth);
+    try {
+      res.json(await announcementService.saveSettings(req.body));
+    } catch (error) {
+      sendAnnouncementError(res, error);
+    }
+  });
+
+  app.get('/api/announcements/tts-engines', async (req, res) => {
+    try {
+      res.json(await announcementService.listTtsEngines());
+    } catch (error) {
+      sendAnnouncementError(res, error);
+    }
+  });
+
+  app.get('/api/announcements/:id/audio', (req, res) => {
+    const audio = announcementService.getAudio(req.params.id);
+    if (!audio) return res.status(404).json({ error: 'No audio for that announcement' });
+    res.set('Content-Type', 'audio/mpeg');
+    res.set('Cache-Control', 'no-store');
+    res.send(audio);
   });
 
   function sendReceiptError(res, error) {
@@ -1956,6 +2024,41 @@ async function initializeApp() {
       this.pendingCommands = new Map();
       this.isConnected = false;
       this.connectPromise = null;
+      // Event subscriptions outlive a single socket: they are re-sent after every reconnect.
+      this.subscriptions = []; // [{ eventType, handler }]
+      this.eventHandlers = new Map(); // subscription message id -> handler
+      this.reconnectTimer = null;
+      this.reconnectDelayMs = 5000;
+    }
+
+    subscribeEvents(eventType, handler) {
+      this.subscriptions.push({ eventType, handler });
+      if (this.isConnected) this.sendSubscription({ eventType, handler });
+      else this.connect().catch(error => {
+        console.warn(`[WS] Could not connect to subscribe to ${eventType}:`, error.message);
+        this.scheduleReconnect();
+      });
+    }
+
+    sendSubscription({ eventType, handler }) {
+      const id = this.idCounter++;
+      this.eventHandlers.set(id, handler);
+      this.pendingCommands.set(id, {
+        resolve: () => console.log(`[WS] Subscribed to ${eventType}`),
+        reject: error => console.error(`[WS] Subscribing to ${eventType} failed:`, error.message)
+      });
+      this.ws.send(JSON.stringify({ id, type: 'subscribe_events', event_type: eventType }));
+    }
+
+    scheduleReconnect() {
+      if (!this.subscriptions.length || this.reconnectTimer) return;
+      const delay = this.reconnectDelayMs;
+      this.reconnectDelayMs = Math.min(this.reconnectDelayMs * 2, 60000);
+      console.log(`[WS] Reconnecting in ${Math.round(delay / 1000)}s to keep event subscriptions alive`);
+      this.reconnectTimer = setTimeout(() => {
+        this.reconnectTimer = null;
+        this.connect().catch(() => this.scheduleReconnect());
+      }, delay);
     }
 
     async connect() {
@@ -1983,7 +2086,19 @@ async function initializeApp() {
             } else if (msg.type === 'auth_ok') {
               console.log('[WS] Auth successful!');
               this.isConnected = true;
+              this.reconnectDelayMs = 5000;
+              this.eventHandlers.clear();
+              this.subscriptions.forEach(subscription => this.sendSubscription(subscription));
               resolve();
+            } else if (msg.type === 'event') {
+              const handler = this.eventHandlers.get(msg.id);
+              if (handler) {
+                try {
+                  handler(msg.event);
+                } catch (error) {
+                  console.error('[WS] Event handler failed:', error.message);
+                }
+              }
             } else if (msg.type === 'auth_invalid') {
               console.error('[WS] Auth failed:', msg.message);
               this.isConnected = false;
@@ -2009,6 +2124,11 @@ async function initializeApp() {
             console.log('[WS] Connection closed');
             this.isConnected = false;
             this.connectPromise = null;
+            this.eventHandlers.clear();
+            // Commands in flight on a closed socket would otherwise wait forever.
+            this.pendingCommands.forEach(handler => handler.reject(new Error('Home Assistant connection closed')));
+            this.pendingCommands.clear();
+            this.scheduleReconnect();
           });
 
         } catch (err) {
@@ -4549,6 +4669,12 @@ async function initializeApp() {
     }
 
     console.log("[INFO] Development mode: " + (config.development_mode ? "ENABLED" : "DISABLED"));
+
+    // Home Assistant automations reach the wall panel through this event.
+    if (!isStandaloneDev) {
+      const client = getHaWsClient();
+      if (client) client.subscribeEvents('daylight_announce', event => announcementService.handleHaEvent(event));
+    }
 
     // In production mode with kiosk_mode enabled, start the web browser
     if (isProduction && config.kiosk_mode) {

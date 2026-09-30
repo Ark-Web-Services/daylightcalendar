@@ -191,6 +191,25 @@ login. Delete or stub that file before local dev if you don't want that.
   - Not yet reboot-tested. Every piece is persistent by design (switch, static IPs, firewall rules,
     env var, logon-triggered task), but it has not been proven through a restart.
 
+### Home Assistant changes made 2026-09-29/30
+
+- **Local voice**: add-ons `core_whisper` (speech-to-text, `stt.faster_whisper`, model `auto`) and
+  `core_piper` (text-to-speech, `tts.piper`, `en_US-lessac-medium`), both via the Wyoming
+  integration. Measured: a 3-word phrase transcribes in ~0.2 s ("purple tiger seven" -> "Purple
+  Tiger 7" — normalise digits before comparing); Piper returns an MP3 in ~1 s. `tts_get_url`
+  returns a `url` with the VM's NAT address (HA's `internal_url` is unset) — use the `path` and
+  fetch it through the Supervisor/core proxy instead.
+- **School-bus automation** `automation.school_bus_nearby_alphaportal` (id
+  `daylight_school_bus_nearby`): webhook trigger (local only, POST/PUT) -> fires
+  `daylight_announce` with title "School bus", icon `directions_bus`, message from the JSON body
+  or a default; 2-minute cooldown (`mode: single` + delay). The webhook id is a secret kept in
+  `~/.daylight-pm/bus-webhook-id` — not in the repo. Verified: POST -> 200 -> event on the bus.
+  The iPhone side is an iOS Shortcuts "Message" automation (sender = AlphaPortal, run immediately)
+  that POSTs to `http://192.168.1.118:8123/api/webhook/<id>`; it only works while the phone is on
+  home Wi-Fi until HA has remote access.
+- **Edge autoplay**: `HKLM\SOFTWARE\Policies\Microsoft\Edge\AutoplayAllowlist\1 =
+  http://localhost:8099` so the panel can speak announcements without a tap.
+
 ### Network limit: the HA VM cannot see the LAN's multicast (found 2026-09-29)
 
 The laptop is on **Wi-Fi only** (both Ethernet ports — onboard I219-LM and the DELL S2340T
@@ -261,6 +280,17 @@ of it is deployed.** See §7.
   Pineville ES, Breakfast + Lunch. `scripts/school-menu-service.js` caches per week under DATA_DIR
   and serves the last good copy (`stale: true`) when Nutrislice is unreachable. Calendar top-bar
   button -> modal; compact strip on Meals; Settings card with a school picker.
+- **Parent access, 1.1.9.34.** One parent-check sheet gates Settings and every parent-only action;
+  with no PIN, the first parent action creates one and resumes. `authorizeAdmin(state, req)` in
+  index.js accepts the route's PIN field or an `X-Daylight-Admin` session token (5 min sliding,
+  in memory, cleared on PIN change). Face unlock (`POST /api/admin/face-unlock`) takes 3 live
+  descriptors and matches them **server-side against every enrolled profile**, then requires the
+  winner to be in `adminProfileIds` — never filter to parents before matching, or a child who
+  resembles a parent unlocks as them. Parents default to HA admins/owner via `config/auth/list`
+  (works with the Supervisor token; live it resolves to the `admin` person). Recovery: a parent
+  face can set a new PIN, or add-on option `reset_parent_pin` (one-shot). Settings gating is a
+  household deterrent; the server checks are the real boundary. Port 8099 is forwarded on the
+  host's **127.0.0.1 only**, so `/api/face-profiles/descriptors` is not reachable from the LAN.
 
 ### Still open, from the teardown's ranked recommendations
 
