@@ -429,6 +429,36 @@ function createToolServer(dependencies, version) {
     return compactText({ forgotten: true, memory_id: memoryId.trim() });
   });
 
+  if (typeof dependencies.setPanelVolume === 'function') {
+    registerTool('set_panel_volume', {
+      description: 'Sets the Daylight wall panel speaker volume to an exact percentage from 0 to 100.',
+      inputSchema: { percent: z.number().int().min(0).max(100).describe('Exact wall panel volume percentage.') }
+    }, async ({ percent }) => {
+      await dependencies.setPanelVolume(percent);
+      return compactText({ percent });
+    });
+  }
+
+  if (typeof dependencies.getPanelVolume === 'function') {
+    registerTool('get_panel_volume', {
+      description: 'Returns the Daylight wall panel speaker volume percentage and mute state.',
+      inputSchema: {}
+    }, async () => compactText(await dependencies.getPanelVolume()));
+  }
+
+  if (typeof dependencies.showOnPanel === 'function') {
+    registerTool('show_on_panel', {
+      description: 'Opens a page or the school menu on the Daylight wall panel.',
+      inputSchema: {
+        page: z.enum(['calendar', 'chores', 'meals', 'lists', 'pantry', 'games', 'school_menu'])
+          .describe('Panel destination to show.')
+      }
+    }, async ({ page }) => {
+      await dependencies.showOnPanel(page);
+      return compactText({ showing: page });
+    });
+  }
+
   if (typeof dependencies.announce === 'function') {
     registerTool('announce_on_panel', {
       description: 'Shows a message on the Daylight wall panel and may speak it according to panel settings. Use for a household announcement; priority is normal or urgent.',
@@ -503,6 +533,7 @@ function mountMcpServer({ app, isStandaloneDev, version, dependencies }) {
 
 module.exports = {
   SUPERVISOR_MCP_CIDRS,
+  createToolServer,
   isAllowedMcpAddress,
   mountMcpServer
 };

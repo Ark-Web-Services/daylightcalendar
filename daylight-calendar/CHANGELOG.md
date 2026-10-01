@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.1.9.38] - 2026-10-01
+
+Voice on the wall panel. Say **"Hey Jarvis"** (or Okay Nabu, Hey Mycroft, Alexa, Hey Rhasspy —
+chosen in Settings) and the panel listens: a glowing orb appears at the bottom of the screen with
+what it heard and its answer in large captions.
+
+Everyday panel commands are handled instantly on the panel itself, without the AI: "set the volume
+to 40 percent", "turn it down", "louder", "mute", "show me the chores", "show the school menu",
+"dim the screen", "never mind". Volume changes the panel's real speaker volume. Anything else goes
+to Home Assistant's Family Assistant, which can use the calendar, chores, school menu, lists and
+household memory, and answers out loud; follow-up questions within a minute keep the conversation.
+
+Wake-word detection runs in Home Assistant (openWakeWord), speech recognition in Whisper and the
+voice in Piper — all on local hardware. A microphone button in the top bar stops listening on the
+panel instantly. Voice is off until a parent turns it on in Settings → Voice assistant. If the
+assistant's computer doesn't answer within 30 seconds, the panel says so instead of waiting.
+
 ## [1.1.9.37] - 2026-10-01
 
 Door check — a proof of concept, not a security product. The panel can verify a household member

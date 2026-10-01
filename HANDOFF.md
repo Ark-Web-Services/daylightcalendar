@@ -221,6 +221,20 @@ login. Delete or stub that file before local dev if you don't want that.
   `~/.daylight-pm`: `audio-state.ps1 [-SetLevel 0.7 -DefaultOnly]` (endpoints, run over SSH) and
   `probe-task.ps1` (read-only, runs it in the desktop session via a one-off scheduled task, which
   is the only place Edge's per-app audio session is visible — it shows "PLAYING NOW" mid-clip).
+- **Wake word**: add-on `core_openwakeword` (Wyoming, `wake_word.openwakeword`; okay_nabu,
+  hey_jarvis, hey_mycroft, alexa, hey_rhasspy). The pipeline's wake word is set by Daylight's Voice
+  settings (`wake_word_id`; HA's run API has no per-run selector). Daylight streams the panel mic
+  to `assist_pipeline/run` **wake_word -> wake_word only**, then does STT/agent/TTS itself, because
+  of home-assistant/core#176556 (non-streaming STT starved in satellite pipelines). Verified live
+  2026-10-01 with real HA: "Hey Jarvis… set the volume to forty percent" -> agent PUT 40 in ~1.3 s.
+  `~/.daylight-pm/wake-test.js file.wav` streams a WAV into the wake stage.
+- **Panel agent** (`C:\HAOS\panel-agent.ps1`, task `Daylight-PanelAgent`, logon + every 5 min,
+  IgnoreNew): `http://10.77.77.1:8097` `GET/PUT /volume`, `PUT /mute` — the panel's real Windows
+  volume. Bound to HA-Link only; firewall allows 10.77.77.2 only (same pattern as Ollama). Log
+  `C:\HAOS\panel-agent.log`. Daylight's voice fast path and MCP `set_panel_volume` use it.
+- **Family Assistant depends on the 192.168.1.245 Mac being awake.** Asleep, the Mac answers ping
+  via the sleep proxy (~400 ms) but Ollama is closed, and HA waits ~2 min per question. Daylight's
+  voice path gives up after 30 s with a plain message; fast panel commands don't need the LLM.
 - **MCP integration** (`mcp`, title `daylight-calendar`) pointed at
   `http://01a45dd4-daylight-calendar:8099/mcp` — this HA version's MCP client speaks **Streamable
   HTTP** (its form example is `http://example/mcp`); `/mcp/sse` is kept for older HA. It becomes a

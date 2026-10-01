@@ -2172,6 +2172,176 @@ main {
   display: block;
 }
 
+/* Voice is a fixed utility layer: it sits above the dimmer, never participates in a page's
+   geometry, and leaves the rest of the screen touchable. */
+.voice-mic-toggle {
+  position: fixed;
+  top: var(--md-space-2);
+  right: var(--md-space-3);
+  z-index: 10040;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--md-shape-xlarge);
+  background: var(--md-primary);
+  color: var(--md-on-primary);
+  box-shadow: var(--md-shadow-2);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.voice-mic-toggle.is-off {
+  background: var(--md-surface-variant);
+  color: var(--md-on-surface-variant);
+}
+
+.voice-mic-toggle.is-paused {
+  background: var(--md-primary-container);
+  color: var(--md-on-primary-container);
+}
+
+.voice-mic-toggle:focus-visible {
+  outline: 3px solid var(--md-on-surface);
+  outline-offset: 3px;
+}
+
+.voice-mic-toggle:active { transform: scale(0.94); }
+
+.voice-presence {
+  --voice-level: 0;
+  position: fixed;
+  bottom: clamp(16px, 3.5vh, 40px);
+  left: 50%;
+  z-index: 10030;
+  display: grid;
+  justify-items: center;
+  width: min(760px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  color: var(--md-on-surface);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translate(-50%, 18px) scale(0.94);
+  transition: opacity 240ms cubic-bezier(0.2, 0.8, 0.2, 1), transform 320ms cubic-bezier(0.2, 0.8, 0.2, 1), visibility 320ms;
+}
+
+.voice-presence.is-visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0) scale(1);
+}
+
+.voice-orb {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: clamp(82px, 8vw, 116px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--md-surface) 88%, transparent);
+  box-shadow: var(--md-shadow-4);
+  isolation: isolate;
+}
+
+.voice-orb-ring,
+.voice-orb-core {
+  position: absolute;
+  border-radius: 50%;
+}
+
+.voice-orb-ring {
+  inset: 7%;
+  background: var(--md-primary-container);
+  transform: scale(calc(0.86 + var(--voice-level) * 0.24));
+  transition: transform 80ms linear, background-color var(--md-transition-standard);
+}
+
+.voice-orb-ring-outer {
+  inset: -5%;
+  opacity: calc(0.28 + var(--voice-level) * 0.38);
+  background: color-mix(in srgb, var(--md-primary) 46%, transparent);
+}
+
+.voice-orb-ring-inner { box-shadow: inset 0 -10px 24px color-mix(in srgb, var(--md-primary) 28%, transparent); }
+
+.voice-orb-core {
+  inset: 27%;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  background: var(--md-primary);
+  color: var(--md-on-primary);
+  transform: scale(calc(0.92 + var(--voice-level) * 0.18));
+  transition: transform 80ms linear, background-color var(--md-transition-standard);
+}
+
+.voice-orb-core .material-icons { font-size: clamp(24px, 2.6vw, 34px); }
+
+.voice-presence[data-voice-state="listening"] .voice-orb-core,
+.voice-presence[data-voice-state="wake"] .voice-orb-core { background: var(--md-tertiary); color: var(--md-on-tertiary); }
+.voice-presence[data-voice-state="listening"] .voice-orb-ring,
+.voice-presence[data-voice-state="wake"] .voice-orb-ring { background: var(--md-tertiary-container); }
+.voice-presence[data-voice-state="error"] .voice-orb-core { background: var(--md-error); color: var(--md-on-error); }
+.voice-presence[data-voice-state="error"] .voice-orb-ring { background: var(--md-error-container); }
+
+.voice-presence[data-voice-state="thinking"] .voice-orb-ring-outer {
+  animation: voice-orbit 1.25s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.voice-caption {
+  display: grid;
+  gap: var(--md-space-1);
+  width: 100%;
+  max-height: min(210px, 28dvh);
+  margin-top: var(--md-space-3);
+  padding: var(--md-space-3) var(--md-space-5);
+  box-sizing: border-box;
+  border-radius: var(--md-shape-large);
+  background: var(--md-surface);
+  color: var(--md-on-surface);
+  box-shadow: var(--md-shadow-3);
+  text-align: center;
+  overflow: hidden;
+}
+
+.voice-presence:not(.has-caption) .voice-caption { width: auto; padding-inline: var(--md-space-4); }
+.voice-state-label { font-size: clamp(1rem, 1.7vw, 1.25rem); }
+.voice-heard-text,
+.voice-reply-text {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  font-size: clamp(1.1rem, 2.2vw, 1.65rem);
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.voice-heard-text { color: var(--md-on-surface-variant); }
+.voice-heard-text:empty,
+.voice-reply-text:empty { display: none; }
+
+@keyframes voice-orbit {
+  0% { transform: rotate(0deg) scale(0.92); }
+  50% { transform: rotate(180deg) scale(1.08); }
+  100% { transform: rotate(360deg) scale(0.92); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .voice-presence,
+  .voice-orb-ring,
+  .voice-orb-core,
+  .voice-mic-toggle { transition-duration: 1ms; }
+  .voice-presence[data-voice-state="thinking"] .voice-orb-ring-outer { animation: none; }
+  .voice-orb-ring,
+  .voice-orb-core { transform: none !important; }
+  .voice-orb-ring-outer { opacity: 0.42; }
+}
+
 /* Clock Display */
 .clock-display {
   position: fixed;
@@ -3284,6 +3454,89 @@ button.meal-slot.has-meal:focus-visible {
   color: var(--md-on-surface);
   display: block;
   margin-bottom: var(--md-space-2);
+}
+
+.voice-setting-toggle {
+  display: grid !important;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--md-space-3);
+  min-height: 52px;
+  margin: 0 0 var(--md-space-3) !important;
+  cursor: pointer;
+}
+
+.voice-setting-toggle input {
+  width: 24px;
+  height: 24px;
+  margin: 0 10px;
+}
+
+.voice-setting-toggle span { display: grid; gap: 2px; }
+.voice-setting-toggle small { color: var(--md-on-surface-variant); font-weight: 400; line-height: 1.35; }
+.voice-settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--md-space-4); }
+.voice-settings-grid select {
+  width: 100%;
+  min-height: 44px;
+  padding: var(--md-space-2) var(--md-space-3);
+  border: 1px solid var(--md-outline);
+  border-radius: var(--md-shape-small);
+  background: var(--md-surface);
+  color: var(--md-on-surface);
+  font: inherit;
+}
+
+.voice-sensitivity-row {
+  display: grid;
+  grid-template-columns: minmax(120px, auto) minmax(180px, 1fr) 52px;
+  align-items: center;
+  gap: var(--md-space-3);
+  min-height: 52px;
+  margin-bottom: var(--md-space-3);
+}
+.voice-sensitivity-row label { margin: 0 !important; font-weight: 600; }
+.voice-sensitivity-row input { width: 100%; min-height: 44px; accent-color: var(--md-primary); }
+.voice-sensitivity-row output { color: var(--md-on-surface-variant); font-weight: 700; text-align: right; }
+.voice-settings-status {
+  min-height: 24px;
+  margin: var(--md-space-2) 0;
+  padding: var(--md-space-2) var(--md-space-3);
+  border-radius: var(--md-shape-medium);
+  color: var(--md-on-surface-variant);
+  background: var(--md-surface-variant);
+}
+.voice-settings-status[data-status="listening"],
+.voice-settings-status[data-status="saved"] {
+  color: var(--md-on-tertiary-container);
+  background: var(--md-tertiary-container);
+}
+.voice-settings-status[data-status="wake-unavailable"],
+.voice-settings-status[data-status="ha-unreachable"],
+.voice-settings-status[data-status="mic-unavailable"],
+.voice-settings-status[data-status="save-error"] {
+  color: var(--md-on-error-container);
+  background: var(--md-error-container);
+}
+.voice-try-line {
+  display: flex;
+  align-items: center;
+  gap: var(--md-space-3);
+  min-height: 44px;
+  margin: var(--md-space-3) 0;
+  padding: var(--md-space-2) var(--md-space-3);
+  border-radius: var(--md-shape-medium);
+  background: var(--md-primary-container);
+  color: var(--md-on-primary-container);
+  font-weight: 600;
+}
+.voice-try-line .material-icons { flex: 0 0 auto; }
+#voice-assistant-settings-card .btn { min-height: 44px; }
+
+@media (max-width: 720px) {
+  .voice-settings-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .voice-sensitivity-row { grid-template-columns: minmax(0, 1fr) 52px; }
+  .voice-sensitivity-row label { grid-column: 1 / -1; }
+  .voice-caption { padding-inline: var(--md-space-3); }
 }
 
 /* Game modal */
@@ -6718,6 +6971,21 @@ button.receipt-status-chip { min-height: 44px; cursor: pointer; }
   overflow-x: auto;
 }
 .announcement-settings-status { min-height: 24px; color: var(--md-on-surface-variant); }
+
+/* Keep the fixed 44px privacy control clear of every page's top bar, including page-specific
+   header rules declared later in the cascade. This changes horizontal room only; page height and
+   the no-scroll kiosk layouts stay untouched. */
+.content-header,
+#calendar-content .calendar-topbar {
+  padding-right: calc(var(--md-space-4) + 52px);
+}
+
+@media (max-width: 720px) {
+  .content-header,
+  #calendar-content .calendar-topbar {
+    padding-right: calc(var(--md-space-2) + 52px);
+  }
+}
 
 /* Assistant memory is Settings-only, so its list may grow with the page while each row stays
    finger-friendly and readable in every theme. */

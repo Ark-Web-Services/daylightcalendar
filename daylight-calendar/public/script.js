@@ -181,6 +181,7 @@ function initializeAnnouncements() {
   // Relative to the page, so it works under Home Assistant ingress and on the kiosk's own origin.
   const basePath = window.location.pathname.replace(/[^/]*$/, '');
   announcementSocket = window.io({ path: `${basePath}socket.io` });
+  window.DaylightVoice?.attachSocket(announcementSocket);
   announcementSocket.on('announcement', receiveAnnouncement);
   announcementSocket.on('announcement-audio', receiveAnnouncementAudio);
 }
@@ -2679,9 +2680,22 @@ async function recordDoorAudio(levelBarId, durationMs = 4000) {
   if (!navigator.mediaDevices?.getUserMedia) throw new Error('Microphone access is not supported');
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
   if (!AudioContextClass) throw new Error('Audio capture is not supported');
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true }, video: false
-  });
+  const releaseVoiceMic = await window.DaylightVoice?.pauseForSharedMic();
+  let sharedMicReleased = false;
+  const resumeVoiceMic = async () => {
+    if (sharedMicReleased) return;
+    sharedMicReleased = true;
+    await releaseVoiceMic?.();
+  };
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true }, video: false
+    });
+  } catch (error) {
+    await resumeVoiceMic();
+    throw error;
+  }
   let context;
   let source;
   try {
@@ -2690,6 +2704,7 @@ async function recordDoorAudio(levelBarId, durationMs = 4000) {
   } catch (error) {
     stopMediaStream(stream);
     if (context?.state !== 'closed') await context.close().catch(() => {});
+    await resumeVoiceMic();
     throw error;
   }
   const chunks = [];
@@ -2712,6 +2727,7 @@ async function recordDoorAudio(levelBarId, durationMs = 4000) {
       level.parentElement?.setAttribute('aria-valuenow', '0');
     }
     if (context.state !== 'closed') await context.close().catch(() => {});
+    await resumeVoiceMic();
   };
 
   const result = new Promise(async (resolve, reject) => {
@@ -4130,10 +4146,12 @@ function initializeSettingsPage() {
       let audioContext = null;
       let analyser = null;
       let micLevelInterval = null;
+      let resumeVoiceAfterMicTest = null;
 
       startMicBtn.addEventListener('click', async () => {
         try {
           console.log('[INFO] Starting microphone test');
+          resumeVoiceAfterMicTest = await window.DaylightVoice?.pauseForSharedMic();
           micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
           audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -4160,6 +4178,8 @@ function initializeSettingsPage() {
           stopMicBtn.disabled = false;
         } catch (error) {
           console.error('[ERROR] Microphone access failed:', error);
+          await resumeVoiceAfterMicTest?.();
+          resumeVoiceAfterMicTest = null;
           showAppNotice('Microphone unavailable', `Microphone access failed: ${error.message}`);
         }
       });
@@ -4178,6 +4198,8 @@ function initializeSettingsPage() {
           clearInterval(micLevelInterval);
           micLevelInterval = null;
         }
+        void resumeVoiceAfterMicTest?.();
+        resumeVoiceAfterMicTest = null;
 
         const micLevelBar = document.getElementById('mic-level-bar');
         if (micLevelBar) {
@@ -4225,6 +4247,7 @@ function initializeSettingsPage() {
 
     await initializeSchoolMenuSettings();
     await initializeAnnouncementSettings();
+    await window.DaylightVoice?.initializeSettings();
     await initializeAssistantMemorySettings();
     await initializeReceiptReaderSettings();
     await initializeScreenTimeSettings();

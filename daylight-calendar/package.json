@@ -9,7 +9,7 @@
     "build": "webpack --mode production --env production",
     "clean": "bash ../.devcontainer/scripts/cleanup.sh",
     "validate": "bash ../.devcontainer/scripts/validate.sh",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node scripts/test-voice.js"
   },
   "repository": {
     "type": "git",

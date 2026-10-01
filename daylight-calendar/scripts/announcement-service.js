@@ -205,6 +205,18 @@ function createAnnouncementService({
     return Buffer.from(await audio.arrayBuffer());
   }
 
+  // Voice replies use the same Piper/tts_get_url path and the same bounded in-memory audio cache as
+  // announcements, but do not create a banner or a recent-announcement entry.
+  async function synthesizeSpeech(text) {
+    const message = typeof text === 'string' ? text.trim() : '';
+    if (!message || message.length > 2000 || !haAvailable || !getToken()) return null;
+    const id = randomUUID();
+    const buffer = await synthesize({ title: null, message }, getSettings());
+    if (!buffer) return null;
+    rememberAudio(id, buffer);
+    return `api/announcements/${id}/audio`;
+  }
+
   function getRecent() {
     return recent.slice();
   }
@@ -255,7 +267,7 @@ function createAnnouncementService({
     }
   }
 
-  return { getSettings, saveSettings, listTtsEngines, announce, handleHaEvent, getRecent, getAudio };
+  return { getSettings, saveSettings, listTtsEngines, synthesizeSpeech, announce, handleHaEvent, getRecent, getAudio };
 }
 
 module.exports = {

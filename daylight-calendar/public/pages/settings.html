@@ -148,6 +148,42 @@
     </div>
 
     <div class="settings-section">
+      <h2>Voice assistant</h2>
+      <div class="settings-card" id="voice-assistant-settings-card">
+        <form id="voice-settings-form">
+          <label class="voice-setting-toggle" for="voice-enabled">
+            <input type="checkbox" id="voice-enabled">
+            <span><strong>Listen for a wake word</strong><small>Audio streams to Home Assistant only while this panel is listening. Command audio is never saved.</small></span>
+          </label>
+          <div class="voice-settings-grid">
+            <div class="form-group">
+              <label for="voice-wake-word">Wake word</label>
+              <select id="voice-wake-word"><option value="hey_jarvis">Hey Jarvis</option></select>
+            </div>
+            <div class="form-group">
+              <label for="voice-agent">Assistant</label>
+              <select id="voice-agent"><option value="conversation.family_assistant">Family Assistant</option></select>
+            </div>
+          </div>
+          <div class="voice-sensitivity-row">
+            <label for="voice-sensitivity">Mic sensitivity</label>
+            <input type="range" id="voice-sensitivity" min="0" max="1" step="0.05" value="0.55">
+            <output id="voice-sensitivity-value" for="voice-sensitivity">55%</output>
+          </div>
+          <label class="voice-setting-toggle" for="voice-mute-while-dimmed">
+            <input type="checkbox" id="voice-mute-while-dimmed">
+            <span><strong>Mute while dimmed</strong><small>Stop wake-word audio while the screen-protection overlay is active.</small></span>
+          </label>
+          <p id="voice-settings-status" class="voice-settings-status" data-status="checking" role="status" aria-live="polite">Checking voice status…</p>
+          <p class="voice-try-line"><i class="material-icons" aria-hidden="true">record_voice_over</i><span>Try it: Say “Hey Jarvis, set the volume to 50 percent.”</span></p>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary"><i class="material-icons" aria-hidden="true">save</i> Save voice assistant</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="settings-section">
       <h2>Announcements</h2>
       <div class="settings-card" id="announcement-settings-card">
         <p class="setting-description">Home Assistant automations can put a message on this panel and say it out loud — for example when the school bus is nearly at the stop.</p>

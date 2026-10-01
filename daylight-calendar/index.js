@@ -32,6 +32,12 @@ const {
   mountDoorCheckRoutes
 } = require('./scripts/door-check-service');
 const { mountMcpServer } = require('./scripts/mcp-server');
+const { HaWebSocketClient } = require('./scripts/ha-websocket-client');
+const {
+  VoiceError,
+  createPanelController,
+  createVoiceService
+} = require('./scripts/voice-service');
 
 // Main initialization function to handle async imports
 async function initializeApp() {
@@ -159,7 +165,10 @@ async function initializeApp() {
       remember: memory => rememberHouseholdFact(memory),
       getMemories: () => readHouseholdMemories(),
       forget: memoryId => forgetHouseholdMemory(memoryId),
-      announce: input => announcementService.announce(input, 'assistant')
+      announce: input => announcementService.announce(input, 'assistant'),
+      setPanelVolume: percent => panelController.setVolume(percent),
+      getPanelVolume: () => panelController.getVolume(),
+      showOnPanel: page => panelController.showOnPanel(page)
     }
   });
 
@@ -723,6 +732,26 @@ async function initializeApp() {
     haAvailable: !isStandaloneDev
   });
 
+  const panelController = createPanelController({
+    fetch,
+    panelAgentUrl: process.env.PANEL_VOLUME_AGENT_URL || 'http://10.77.77.1:8097',
+    isStandaloneDev,
+    emitToPanels: (eventName, payload) => io.emit(eventName, payload)
+  });
+
+  const voiceService = createVoiceService({
+    readJsonFile,
+    writeJsonFile,
+    withHouseholdStorageLock,
+    fetch,
+    hassApiUrl,
+    getToken: () => isStandaloneDev ? '' : (process.env.SUPERVISOR_TOKEN || process.env.HASS_TOKEN || ''),
+    getHaWsClient,
+    panelController,
+    synthesizeSpeech: text => announcementService.synthesizeSpeech(text),
+    isStandaloneDev
+  });
+
   const doorCheckService = createDoorCheckService({
     readJsonFile,
     writeJsonFile,
@@ -799,6 +828,35 @@ async function initializeApp() {
     res.set('Content-Type', 'audio/mpeg');
     res.set('Cache-Control', 'no-store');
     res.send(audio);
+  });
+
+  app.get('/api/voice/settings', async (req, res) => {
+    try {
+      res.json(await voiceService.getSettingsPayload());
+    } catch (error) {
+      res.status(503).json({ error: 'Voice settings are unavailable right now.' });
+    }
+  });
+
+  app.put('/api/voice/settings', async (req, res) => {
+    const auth = await withHouseholdStorageLock(async () => {
+      const screenTime = readScreenTime();
+      const result = authorizeAdmin(screenTime, req);
+      writeJsonFile('screen_time.json', screenTime);
+      return result;
+    });
+    if (!auth.ok) return res.status(auth.status).json(auth);
+    try {
+      res.json(await voiceService.saveSettings(req.body));
+    } catch (error) {
+      const status = error instanceof VoiceError ? error.status : 500;
+      if (status >= 500) console.error('[VOICE] Could not save voice settings:', error.message);
+      res.status(status).json({ error: status >= 500 ? 'Voice settings could not be saved right now.' : error.message });
+    }
+  });
+
+  app.get('/api/voice/status', (req, res) => {
+    res.json(voiceService.getStatus());
   });
 
   function sendReceiptError(res, error) {
@@ -2148,147 +2206,6 @@ async function initializeApp() {
     };
   }
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // HA WebSocket Client for Advanced APIs (Person/User Management)
-  // ─────────────────────────────────────────────────────────────────────────────
-  class HaWebSocketClient {
-    constructor(url, token) {
-      this.url = url.replace('http', 'ws') + '/websocket';
-      this.token = token;
-      this.ws = null;
-      this.idCounter = 1;
-      this.pendingCommands = new Map();
-      this.isConnected = false;
-      this.connectPromise = null;
-      // Event subscriptions outlive a single socket: they are re-sent after every reconnect.
-      this.subscriptions = []; // [{ eventType, handler }]
-      this.eventHandlers = new Map(); // subscription message id -> handler
-      this.reconnectTimer = null;
-      this.reconnectDelayMs = 5000;
-    }
-
-    subscribeEvents(eventType, handler) {
-      this.subscriptions.push({ eventType, handler });
-      if (this.isConnected) this.sendSubscription({ eventType, handler });
-      else this.connect().catch(error => {
-        console.warn(`[WS] Could not connect to subscribe to ${eventType}:`, error.message);
-        this.scheduleReconnect();
-      });
-    }
-
-    sendSubscription({ eventType, handler }) {
-      const id = this.idCounter++;
-      this.eventHandlers.set(id, handler);
-      this.pendingCommands.set(id, {
-        resolve: () => console.log(`[WS] Subscribed to ${eventType}`),
-        reject: error => console.error(`[WS] Subscribing to ${eventType} failed:`, error.message)
-      });
-      this.ws.send(JSON.stringify({ id, type: 'subscribe_events', event_type: eventType }));
-    }
-
-    scheduleReconnect() {
-      if (!this.subscriptions.length || this.reconnectTimer) return;
-      const delay = this.reconnectDelayMs;
-      this.reconnectDelayMs = Math.min(this.reconnectDelayMs * 2, 60000);
-      console.log(`[WS] Reconnecting in ${Math.round(delay / 1000)}s to keep event subscriptions alive`);
-      this.reconnectTimer = setTimeout(() => {
-        this.reconnectTimer = null;
-        this.connect().catch(() => this.scheduleReconnect());
-      }, delay);
-    }
-
-    async connect() {
-      if (this.isConnected) return;
-      if (this.connectPromise) return this.connectPromise;
-
-      this.connectPromise = new Promise((resolve, reject) => {
-        try {
-          console.log(`[WS] Connecting to HA WebSocket: ${this.url}`);
-          this.ws = new WebSocket(this.url);
-
-          this.ws.on('open', () => {
-            console.log('[WS] Connection opened, waiting for auth...');
-          });
-
-          this.ws.on('message', (data) => {
-            const msg = JSON.parse(data);
-
-            if (msg.type === 'auth_required') {
-              console.log('[WS] Auth required, sending token...');
-              this.ws.send(JSON.stringify({
-                type: 'auth',
-                access_token: this.token
-              }));
-            } else if (msg.type === 'auth_ok') {
-              console.log('[WS] Auth successful!');
-              this.isConnected = true;
-              this.reconnectDelayMs = 5000;
-              this.eventHandlers.clear();
-              this.subscriptions.forEach(subscription => this.sendSubscription(subscription));
-              resolve();
-            } else if (msg.type === 'event') {
-              const handler = this.eventHandlers.get(msg.id);
-              if (handler) {
-                try {
-                  handler(msg.event);
-                } catch (error) {
-                  console.error('[WS] Event handler failed:', error.message);
-                }
-              }
-            } else if (msg.type === 'auth_invalid') {
-              console.error('[WS] Auth failed:', msg.message);
-              this.isConnected = false;
-              reject(new Error(msg.message));
-            } else if (msg.type === 'result') {
-              const handler = this.pendingCommands.get(msg.id);
-              if (handler) {
-                if (msg.success) handler.resolve(msg.result);
-                else handler.reject(new Error(msg.error ? msg.error.message : 'Unknown error'));
-                this.pendingCommands.delete(msg.id);
-              }
-            }
-          });
-
-          this.ws.on('error', (err) => {
-            console.error('[WS] Error:', err.message);
-            this.isConnected = false;
-            this.connectPromise = null;
-            reject(err);
-          });
-
-          this.ws.on('close', () => {
-            console.log('[WS] Connection closed');
-            this.isConnected = false;
-            this.connectPromise = null;
-            this.eventHandlers.clear();
-            // Commands in flight on a closed socket would otherwise wait forever.
-            this.pendingCommands.forEach(handler => handler.reject(new Error('Home Assistant connection closed')));
-            this.pendingCommands.clear();
-            this.scheduleReconnect();
-          });
-
-        } catch (err) {
-          reject(err);
-        }
-      });
-
-      return this.connectPromise;
-    }
-
-    async sendCommand(type, payload = {}) {
-      if (!this.isConnected) await this.connect();
-
-      return new Promise((resolve, reject) => {
-        const id = this.idCounter++;
-        this.pendingCommands.set(id, { resolve, reject });
-
-        const command = { id, type, ...payload };
-        console.log(`[WS] Sending command: ${type} (ID: ${id})`);
-        this.ws.send(JSON.stringify(command));
-      });
-    }
-  }
-
   // Initialize generic WS client
   let haWsClient = null;
   function getHaWsClient() {
@@ -2300,7 +2217,7 @@ async function initializeApp() {
       }
       // WebSocket URL is base API URL without /api
       const baseUrl = hassApiUrl.replace(/\/api$/, '');
-      haWsClient = new HaWebSocketClient(baseUrl + '/api', token);
+      haWsClient = new HaWebSocketClient(baseUrl + '/api', token, { WebSocketClass: WebSocket });
     }
     return haWsClient;
   }
@@ -2530,6 +2447,7 @@ async function initializeApp() {
   // Socket.io connection handling
   io.on('connection', (socket) => {
     console.log('[INFO] Client connected to socket.io');
+    voiceService.attachSocket(socket);
 
     // Function to send initial data to a newly connected client
     function sendInitialData(socket) {

@@ -16,6 +16,21 @@
   <div id="app" class="theme-light">
     <!-- Screen burn prevention overlay -->
     <div class="screen-dimmer" id="screen-dimmer" aria-hidden="true"></div>
+    <button type="button" id="voice-mic-toggle" class="voice-mic-toggle is-off" aria-label="Turn voice listening on" aria-pressed="false" title="Voice listening is off">
+      <i class="material-icons" aria-hidden="true">mic_off</i>
+    </button>
+    <div id="voice-presence" class="voice-presence" data-voice-state="idle" aria-live="polite">
+      <div id="voice-orb" class="voice-orb" role="status" aria-label="Voice assistant idle">
+        <span class="voice-orb-ring voice-orb-ring-outer" aria-hidden="true"></span>
+        <span class="voice-orb-ring voice-orb-ring-inner" aria-hidden="true"></span>
+        <span class="voice-orb-core" aria-hidden="true"><i class="material-icons">graphic_eq</i></span>
+      </div>
+      <div class="voice-caption">
+        <strong id="voice-state-label" class="voice-state-label"></strong>
+        <p id="voice-heard-text" class="voice-heard-text"></p>
+        <p id="voice-reply-text" class="voice-reply-text"></p>
+      </div>
+    </div>
     <div id="announcement-card" class="announcement-card" role="alert" aria-live="assertive" hidden>
       <i id="announcement-icon" class="material-icons announcement-icon" aria-hidden="true">campaign</i>
       <div class="announcement-text">
@@ -423,6 +438,9 @@
   <script src="js/sidebar-fix.js"></script>
   <script src="js/calendar-styles.js"></script>
   <script src="js/audio-utils.js"></script>
+  <script src="js/voice-vad.js"></script>
+  <script src="js/voice-presence.js"></script>
+  <script src="js/voice-client.js"></script>
   <script src="script.js"></script>
 </body>
 </html>
