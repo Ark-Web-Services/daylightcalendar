@@ -214,6 +214,13 @@ login. Delete or stub that file before local dev if you don't want that.
 - **Edge autoplay and mic**: `HKLM\SOFTWARE\Policies\Microsoft\Edge\AutoplayAllowlist\1` and
   `...\AudioCaptureAllowedUrls\1` = `http://localhost:8099`, so the panel can speak announcements
   without a tap and use the microphone for the door-check PoC. Same one-origin scope as the camera.
+- **Panel audio** goes out through **"Speakers (DELL S2340T Audio)"** — the monitor's *USB*
+  audio, the Windows default output. Its Windows endpoint volume **is** the speaker volume (set to
+  70% on 2026-10-01 at the owner's request). DDC/CI is enabled in the monitor menu but the S2340T
+  ignores VCP 0x62 writes and always reads 100, so don't use DDC for volume. Tools in
+  `~/.daylight-pm`: `audio-state.ps1 [-SetLevel 0.7 -DefaultOnly]` (endpoints, run over SSH) and
+  `probe-task.ps1` (read-only, runs it in the desktop session via a one-off scheduled task, which
+  is the only place Edge's per-app audio session is visible — it shows "PLAYING NOW" mid-clip).
 - **MCP integration** (`mcp`, title `daylight-calendar`) pointed at
   `http://01a45dd4-daylight-calendar:8099/mcp` — this HA version's MCP client speaks **Streamable
   HTTP** (its form example is `http://example/mcp`); `/mcp/sse` is kept for older HA. It becomes a
