@@ -184,7 +184,7 @@ login. Delete or stub that file before local dev if you don't want that.
   - **Firewall**: `Ollama - HA VM only (allow)` admits only `10.77.77.2`; `Ollama - everything else
     (block)` and `Ollama - IPv6 (block)` cover all other IPv4/IPv6. Block beats allow in Windows
     Firewall, so a stray "Allow access?" prompt can never expose the model to the LAN. Verified: LAN
-    requests to 192.168.1.118:11434 get no response. (Windows rejects `::/0`; use the full range.)
+    requests to 192.168.1.241:11434 (was .118) get no response. (Windows rejects `::/0`; use the full range.)
   - **In HA**: Ollama integration at `http://10.77.77.1:11434`, AI Task entity
     `ai_task.receipt_reader_local` (num_ctx 8192, keep_alive 120 s so RAM is freed after use).
     Verified end to end: HA -> model -> answer in 12 s.
@@ -225,11 +225,20 @@ login. Delete or stub that file before local dev if you don't want that.
   `http://01a45dd4-daylight-calendar:8099/mcp` — this HA version's MCP client speaks **Streamable
   HTTP** (its form example is `http://example/mcp`); `/mcp/sse` is kept for older HA. It becomes a
   selectable "LLM API" in any conversation agent's options (enable it next to "Assist").
-- **Assist pipeline "Home Assistant"**: STT `stt.faster_whisper` (en), TTS `tts.piper`
-  (`en_US-lessac-medium`). The conversation agent is still the built-in intent agent — the plan is
-  the Anthropic integration once the owner creates an API key (it must not be created or typed by
-  an agent), with "Assist" + "daylight-calendar" enabled as LLM APIs, then set as this pipeline's
-  agent. Siri reaches it through the HA iPhone app's "Assist" Shortcuts action.
+- **Assist pipeline "Home Assistant"** (the preferred one): STT `stt.faster_whisper`, TTS
+  `tts.piper` (`en_US-lessac-medium`), conversation agent **`conversation.family_assistant`**,
+  "prefer local intents" on (simple device commands skip the LLM). Siri reaches it through the HA
+  iPhone app's "Assist" Shortcuts action.
+- **Family Assistant** = HA Ollama integration (entry `01M3WCMM2T44KXFXDHHGN24FQV`) pointed at the
+  owner's **Apple Silicon Ollama server `http://192.168.1.245:11434`** (Ollama 0.34.1; models
+  qwen3.6:35b-a3b, qwen3.8:27b, gemma4:31b, nemotron-3.5-lightning:30b, muse-glimmer:30b). Model
+  `qwen3.6:35b-a3b-q4_K_M` (MoE, ~3B active): tool call + spoken answer in **~2–5 s warm**, 13 s
+  cold load; `keep_alive` 3600 s, `num_ctx` 16384, `think` false, LLM APIs **Assist +
+  daylight-calendar (MCP)**. The prompt makes it call `recall` before saying it doesn't know (it
+  skipped recall until told to) and forbids inventing relationships. The same question on the
+  Latitude's CPU took 45 s — don't move the agent there. The HA VM can't resolve `.local` names,
+  so this is by IP: if `.245` changes, update the Ollama entry (or reserve the IP on the gateway).
+  Test: `~/.daylight-pm/assist-run.js "question"` runs text through the real pipeline.
 
 ### The Latitude's address is not fixed — use its hostname (found 2026-09-30)
 
