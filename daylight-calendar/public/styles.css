@@ -6034,6 +6034,7 @@ button.receipt-status-chip { min-height: 44px; cursor: pointer; }
 
 /* School menus: a compact calendar entry point, glanceable meal cards, and a
    settings workflow that remains comfortable on the wall touchscreen. */
+.calendar-door-button,
 .calendar-school-menu-button,
 .school-menu-day-button {
   display: inline-flex;
@@ -6050,6 +6051,7 @@ button.receipt-status-chip { min-height: 44px; cursor: pointer; }
   touch-action: manipulation;
 }
 
+.calendar-door-button,
 .calendar-school-menu-button {
   flex: 0 0 auto;
   min-width: 44px;
@@ -6058,9 +6060,12 @@ button.receipt-status-chip { min-height: 44px; cursor: pointer; }
   white-space: nowrap;
 }
 
+.calendar-door-button[hidden],
 .calendar-school-menu-button[hidden] { display: none; }
+.calendar-door-button:active,
 .calendar-school-menu-button:active,
 .school-menu-day-button:active { background: var(--md-secondary-container); }
+.calendar-door-button:focus-visible,
 .calendar-school-menu-button:focus-visible,
 .school-menu-day-button:focus-visible,
 .school-menu-settings-grid input:focus-visible,
@@ -6068,6 +6073,210 @@ button.receipt-status-chip { min-height: 44px; cursor: pointer; }
 .school-menu-type input:focus-visible {
   outline: 3px solid var(--md-primary);
   outline-offset: 2px;
+}
+
+/* Door check is a protected, glanceable kiosk flow. It owns the viewport and never scrolls. */
+.door-check-modal { z-index: 3000; }
+.door-check-sheet {
+  display: flex;
+  width: 100vw;
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 0;
+  background: var(--md-surface);
+  color: var(--md-on-surface);
+}
+.door-check-header {
+  display: flex;
+  min-height: 72px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--md-space-4);
+  padding: var(--md-space-3) var(--md-space-5);
+  border-bottom: 1px solid var(--md-outline-variant);
+  background: var(--md-surface-1);
+}
+.door-check-header h2,
+.door-check-header p { margin: 0; }
+.door-check-header h2 { font-size: clamp(1.35rem, 2.5vw, 2rem); }
+.door-check-header p { margin-top: var(--md-space-1); color: var(--md-on-surface-variant); }
+.door-check-close {
+  display: inline-flex;
+  width: 48px;
+  min-width: 48px;
+  height: 48px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--md-shape-xlarge);
+  background: var(--md-surface-variant);
+  color: var(--md-on-surface);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.door-check-close:focus-visible,
+.door-result-actions .btn:focus-visible { outline: 3px solid var(--md-primary); outline-offset: 2px; }
+.door-check-body { flex: 1; min-height: 0; overflow: hidden; }
+.door-stage {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+  padding: clamp(var(--md-space-4), 3vw, var(--md-space-7));
+}
+.door-stage[hidden] { display: none; }
+.door-face-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(280px, 0.7fr);
+  align-items: center;
+  gap: clamp(var(--md-space-4), 4vw, var(--md-space-8));
+}
+.door-camera-frame {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: var(--md-shape-xlarge);
+  background: var(--md-contrast-dark);
+  box-shadow: var(--md-shadow-2);
+}
+.door-camera-frame video { display: block; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+.door-camera-guide {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(48%, 320px);
+  aspect-ratio: 0.78;
+  transform: translate(-50%, -50%);
+  border: 4px solid var(--md-primary);
+  border-radius: 48%;
+  box-shadow: var(--md-shadow-2);
+}
+.door-stage-copy,
+.door-voice-stage,
+.door-result-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  text-align: center;
+}
+.door-stage-icon { color: var(--md-primary); font-size: clamp(3.5rem, 8vw, 7rem); }
+.door-stage h3 { margin: var(--md-space-3) 0 var(--md-space-2); font-size: clamp(2rem, 5vw, 4.5rem); line-height: 1.05; }
+.door-stage p { max-width: 36ch; margin: 0; color: var(--md-on-surface-variant); font-size: clamp(1rem, 2vw, 1.5rem); }
+.door-voice-stage { gap: var(--md-space-3); }
+.door-voice-stage .door-phrase { max-width: 16ch; margin: 0; text-wrap: balance; }
+.door-countdown { min-height: 1.2em; color: var(--md-primary) !important; font-size: clamp(3.5rem, 10vw, 8rem) !important; font-weight: 800; line-height: 1; }
+.door-level {
+  width: min(520px, 80%);
+  height: 22px;
+  overflow: hidden;
+  border-radius: var(--md-shape-xlarge);
+  background: var(--md-surface-variant);
+}
+.door-level span { display: block; width: 100%; height: 100%; background: var(--md-primary); transform: scaleX(0); transform-origin: left center; transition: transform 80ms linear; }
+.door-result-icon { color: var(--md-success); font-size: clamp(6rem, 18vw, 13rem); }
+.door-result-stage.is-failure .door-result-icon { color: var(--md-error); }
+.door-result-actions { display: flex; gap: var(--md-space-3); margin-top: var(--md-space-6); }
+.door-result-actions .btn { min-width: 160px; min-height: 52px; }
+
+/* Door settings inherit the established Settings language while keeping every control touchable. */
+.door-settings-heading,
+.door-attempts-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--md-space-3);
+}
+.door-poc-label {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  padding: 0 var(--md-space-2);
+  border-radius: var(--md-shape-xlarge);
+  background: var(--md-secondary-container);
+  color: var(--md-on-secondary-container);
+  font-size: 0.75rem;
+  vertical-align: middle;
+}
+.door-settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--md-space-3); margin-top: var(--md-space-3); }
+.door-settings-grid select,
+.door-passphrase-row input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: var(--md-space-2) var(--md-space-3);
+  border: 1px solid var(--md-outline);
+  border-radius: var(--md-shape-small);
+  background: var(--md-surface);
+  color: var(--md-on-surface);
+  font: inherit;
+}
+.door-allowed-fieldset { min-width: 0; margin: var(--md-space-3) 0; padding: 0; border: 0; }
+.door-allowed-fieldset legend { margin-bottom: var(--md-space-2); color: var(--md-on-surface); font-weight: 700; }
+.door-allowed-profiles { display: flex; flex-wrap: wrap; gap: var(--md-space-2); }
+#settings-content .door-allowed-profile {
+  display: inline-flex !important;
+  min-height: 48px;
+  align-items: center;
+  gap: var(--md-space-2);
+  margin: 0;
+  padding: var(--md-space-1) var(--md-space-3);
+  border: 1px solid var(--md-outline);
+  border-radius: var(--md-shape-xlarge);
+  background: var(--md-surface-2);
+}
+.door-allowed-profile input { width: 24px; height: 24px; }
+.door-passphrase-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: var(--md-space-3); }
+.door-passphrase-row .btn { min-height: 44px; margin-bottom: var(--md-space-3); }
+.door-test-panel { margin: var(--md-space-3) 0; padding: var(--md-space-3); border-radius: var(--md-shape-large); background: var(--md-surface-2); color: var(--md-on-surface); }
+.door-test-panel[hidden] { display: none; }
+.door-test-panel .door-level { margin: var(--md-space-2) 0; }
+.door-test-panel p { margin: 0; }
+.door-attempts-heading { align-items: center; margin-top: var(--md-space-5); }
+.door-attempts-heading h4 { margin: 0; }
+.door-attempts-heading .btn { min-height: 44px; }
+.door-check-attempts { display: grid; gap: var(--md-space-2); margin-top: var(--md-space-2); }
+.door-attempt {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--md-space-2);
+  padding: var(--md-space-2) var(--md-space-3);
+  border-radius: var(--md-shape-medium);
+  background: var(--md-surface-2);
+  color: var(--md-on-surface);
+}
+.door-attempt small { color: var(--md-on-surface-variant); }
+.door-attempt.is-verified strong { color: var(--md-success); }
+.door-attempt.is-failed strong { color: var(--md-error); }
+.door-proof-note { margin: var(--md-space-4) 0 0; padding: var(--md-space-3); border-radius: var(--md-shape-medium); background: var(--md-tertiary-container); color: var(--md-on-tertiary-container); }
+
+@media (max-width: 1100px) {
+  .door-face-stage { grid-template-columns: minmax(0, 1.2fr) minmax(220px, 0.8fr); }
+  .calendar-door-button span,
+  .calendar-school-menu-button span { display: none; }
+  .calendar-door-button,
+  .calendar-school-menu-button { width: 44px; min-width: 44px; flex-basis: 44px; padding: 0; }
+  .calendar-status { display: none; }
+}
+
+@media (orientation: portrait) {
+  .door-face-stage { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; }
+  .door-stage-copy { padding-block: var(--md-space-4); }
+  .door-stage-copy .door-stage-icon { font-size: 4rem; }
+  .door-settings-grid,
+  .door-passphrase-row { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .door-check-sheet { animation: none; transition: none; }
+  .door-level span { transition: none; }
 }
 
 .school-menu-modal-content {

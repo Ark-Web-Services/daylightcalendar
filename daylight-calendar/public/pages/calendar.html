@@ -8,6 +8,10 @@
   </div>
   <h1 id="calendar-view-title" class="calendar-view-title" aria-live="polite">Loading…</h1>
   <div class="calendar-topbar-end">
+    <button type="button" id="door-check-button" class="calendar-door-button" hidden>
+      <i class="material-icons" aria-hidden="true">door_front</i>
+      <span>Door</span>
+    </button>
     <button type="button" id="school-menu-button" class="calendar-school-menu-button" hidden>
       <i class="material-icons" aria-hidden="true">restaurant_menu</i>
       <span>School menu</span>
@@ -33,6 +37,51 @@
 <main>
   <div id="calendar"></div>
 </main>
+
+<div id="door-check-modal" class="modal door-check-modal" role="dialog" aria-modal="true" aria-labelledby="door-check-title">
+  <div class="modal-content door-check-sheet">
+    <div class="door-check-header">
+      <div>
+        <h2 id="door-check-title">Door check</h2>
+        <p id="door-check-step-label">Look at the camera</p>
+      </div>
+      <button type="button" class="door-check-close modal-close" aria-label="Close door check">
+        <i class="material-icons" aria-hidden="true">close</i>
+      </button>
+    </div>
+    <div class="door-check-body">
+      <section id="door-face-stage" class="door-stage door-face-stage" aria-labelledby="door-face-heading">
+        <div class="door-camera-frame">
+          <video id="door-check-video" autoplay muted playsinline></video>
+          <div class="door-camera-guide" aria-hidden="true"></div>
+        </div>
+        <div class="door-stage-copy">
+          <i class="material-icons door-stage-icon" aria-hidden="true">face</i>
+          <h3 id="door-face-heading">Look at the camera</h3>
+          <p id="door-face-status" aria-live="polite">Starting camera…</p>
+        </div>
+      </section>
+
+      <section id="door-voice-stage" class="door-stage door-voice-stage" hidden aria-labelledby="door-voice-heading">
+        <i class="material-icons door-stage-icon" aria-hidden="true">record_voice_over</i>
+        <p id="door-countdown" class="door-countdown" aria-live="assertive"></p>
+        <h3 id="door-voice-heading" class="door-phrase">Say the words shown here</h3>
+        <div id="door-level" class="door-level" role="progressbar" aria-label="Live microphone level" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="door-level-bar"></span></div>
+        <p id="door-voice-status" aria-live="polite">Get ready…</p>
+      </section>
+
+      <section id="door-result-stage" class="door-stage door-result-stage" hidden aria-labelledby="door-result-heading">
+        <i id="door-result-icon" class="material-icons door-result-icon" aria-hidden="true">check_circle</i>
+        <h3 id="door-result-heading" tabindex="-1">Verified</h3>
+        <p id="door-result-reason" aria-live="assertive"></p>
+        <div class="door-result-actions">
+          <button type="button" id="door-try-again" class="btn btn-primary">Try again</button>
+          <button type="button" class="btn btn-secondary modal-close">Close</button>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
 
 <div id="school-menu-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="school-menu-title">
   <div class="modal-content school-menu-modal-content">

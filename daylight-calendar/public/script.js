@@ -93,6 +93,14 @@ let parentCheckStream = null;
 let parentCheckTimer = null;
 let parentCheckRunId = 0;
 let parentCheckStreak = { profileId: null, descriptors: [] };
+let doorCheckSettingsSnapshot = null;
+let doorCheckFlow = null;
+let doorCheckStream = null;
+let doorCheckTimer = null;
+let doorCheckRunId = 0;
+let activeDoorAudioCapture = null;
+let doorVoiceTestRunId = 0;
+let doorCheckLastFocus = null;
 
 const ADDON_LIVENESS_POLL_MS = 60 * 1000;
 const ADDON_LIVENESS_MAX_BACKOFF_MS = 5 * 60 * 1000;
@@ -605,6 +613,7 @@ function initializeCalendarPage() {
       setupCalendar();
     }
     await initializeSchoolMenuCalendar();
+    await initializeDoorCheckCalendar();
     console.log('[INFO] Calendar page initialized');
   }, 100);
 }
@@ -2488,6 +2497,386 @@ function stopParentCheckCamera({ preservePanel = false } = {}) {
   if (!preservePanel) setParentCheckFaceVisible(false);
 }
 
+async function doorCheckRequest(url, options = {}) {
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(adminSession?.token ? { 'X-Daylight-Admin': adminSession.token } : {}),
+      ...(options.headers || {})
+    }
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    if (response.status === 403 && data.error === 'Parent session is not valid') clearAdminSession();
+    const error = new Error(data.error || 'Door check is unavailable');
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+
+async function initializeDoorCheckCalendar() {
+  const button = document.getElementById('door-check-button');
+  if (!button) return;
+  if (button.dataset.bound !== 'true') {
+    button.dataset.bound = 'true';
+    button.addEventListener('click', openDoorCheck);
+    document.getElementById('door-try-again')?.addEventListener('click', openDoorCheck);
+    document.getElementById('door-check-modal')?.addEventListener('keydown', trapDoorCheckFocus);
+  }
+  try {
+    doorCheckSettingsSnapshot = await doorCheckRequest('api/door-check/settings');
+    button.hidden = !doorCheckSettingsSnapshot.enabled;
+  } catch (error) {
+    button.hidden = true;
+    console.warn('[WARN] Door check settings could not be loaded:', error.message);
+  }
+}
+
+function showDoorStage(stage) {
+  for (const name of ['face', 'voice', 'result']) {
+    const element = document.getElementById(`door-${name}-stage`);
+    if (element) element.hidden = name !== stage;
+  }
+  const label = document.getElementById('door-check-step-label');
+  if (label) label.textContent = stage === 'face' ? 'Look at the camera' : stage === 'voice' ? 'Speak clearly' : 'Result';
+}
+
+async function openDoorCheck() {
+  const modal = document.getElementById('door-check-modal');
+  if (!modal) return;
+  stopDoorCheckMedia();
+  const runId = ++doorCheckRunId;
+  doorCheckFlow = { runId, descriptors: [], faceProfileId: null, faceName: null, settings: null, users: [] };
+  showDoorStage('face');
+  document.getElementById('door-face-status').textContent = 'Starting camera…';
+  document.getElementById('door-result-stage')?.classList.remove('is-failure');
+  if (!modal.classList.contains('show') || !modal.contains(document.activeElement)) {
+    doorCheckLastFocus = document.activeElement;
+  }
+  modal.classList.add('show');
+  setDoorCheckBackgroundInert(true);
+  window.setTimeout(() => modal.querySelector('.door-check-close')?.focus(), 0);
+  try {
+    const [settings, descriptors, users] = await Promise.all([
+      doorCheckRequest('api/door-check/settings'),
+      doorCheckRequest('api/face-profiles/descriptors'),
+      doorCheckRequest('api/users')
+    ]);
+    if (runId !== doorCheckRunId || !modal.classList.contains('show')) return;
+    if (!settings.enabled) throw new Error('Door check is turned off');
+    doorCheckSettingsSnapshot = settings;
+    faceDescriptorSnapshot = descriptors;
+    doorCheckFlow.settings = settings;
+    doorCheckFlow.users = Array.isArray(users) ? users : [];
+    const allowed = new Set(settings.allowedProfileIds || []);
+    const hasAllowedEnrollment = [...allowed].some(id => descriptors.profiles?.[id]?.descriptors?.length);
+    if (!hasAllowedEnrollment) throw new Error('No allowed faces are enrolled');
+    const faceapi = await loadFaceModels();
+    if (runId !== doorCheckRunId || !modal.classList.contains('show')) return;
+    buildFaceMatcher(faceapi);
+    const video = document.getElementById('door-check-video');
+    doorCheckStream = await openPreferredFaceCamera(video, descriptors.deviceId);
+    if (runId !== doorCheckRunId || !modal.classList.contains('show')) {
+      stopMediaStream(doorCheckStream);
+      doorCheckStream = null;
+      return;
+    }
+    document.getElementById('door-face-status').textContent = 'Hold still for a moment';
+    scheduleDoorCheckFrame(runId, 300);
+  } catch (error) {
+    if (runId !== doorCheckRunId) return;
+    showDoorCheckResult({ verified: false, reasons: [error.message] });
+  }
+}
+
+function scheduleDoorCheckFrame(runId, delay = 450) {
+  if (doorCheckTimer) window.clearTimeout(doorCheckTimer);
+  doorCheckTimer = window.setTimeout(() => runDoorCheckFrame(runId), delay);
+}
+
+async function runDoorCheckFrame(runId) {
+  const flow = doorCheckFlow;
+  if (runId !== doorCheckRunId || !doorCheckStream || !flow || flow.faceProfileId) return;
+  try {
+    const video = document.getElementById('door-check-video');
+    if (video?.readyState >= 2) {
+      const detections = await window.faceapi.detectAllFaces(
+        video,
+        new window.faceapi.TinyFaceDetectorOptions({ inputSize: 160, scoreThreshold: FACE_DETECT_MIN_SCORE })
+      ).withFaceLandmarks(true).withFaceDescriptors();
+      if (runId !== doorCheckRunId || !doorCheckFlow) return;
+      const detection = detections.length === 1 && detections[0].detection.score >= FACE_DETECT_MIN_SCORE ? detections[0] : null;
+      const winner = detection ? getUnambiguousFaceWinner(detection.descriptor) : null;
+      const allowed = new Set(flow.settings.allowedProfileIds || []);
+      if (!winner || !allowed.has(winner)) {
+        flow.descriptors = [];
+        flow.faceProfileId = null;
+        document.getElementById('door-face-status').textContent = detections.length > 1
+          ? 'One person at a time, please' : 'Looking for an allowed person…';
+      } else if (!flow.descriptors.length || flow.pendingProfileId === winner) {
+        flow.pendingProfileId = winner;
+        flow.descriptors.push(Array.from(detection.descriptor));
+        document.getElementById('door-face-status').textContent = `Checking… ${flow.descriptors.length} of 3`;
+      } else {
+        flow.pendingProfileId = winner;
+        flow.descriptors = [Array.from(detection.descriptor)];
+      }
+      if (flow.descriptors.length >= 3) {
+        flow.faceProfileId = winner;
+        flow.faceName = flow.users.find(user => user.id === winner)?.name || 'there';
+        document.getElementById('door-face-status').textContent = `Hi, ${flow.faceName}`;
+        window.setTimeout(() => beginDoorVoiceCheck(runId), 650);
+        return;
+      }
+    }
+  } catch (error) {
+    console.warn('[WARN] Door face frame failed:', error);
+    document.getElementById('door-face-status').textContent = 'Camera frame missed — hold still';
+  }
+  scheduleDoorCheckFrame(runId);
+}
+
+function waitDoorCountdown(runId) {
+  return new Promise((resolve, reject) => {
+    let count = 3;
+    const label = document.getElementById('door-countdown');
+    const tick = () => {
+      if (runId !== doorCheckRunId || !doorCheckFlow) return reject(new Error('Door check closed'));
+      if (count === 0) {
+        label.textContent = '';
+        resolve();
+        return;
+      }
+      label.textContent = String(count);
+      count -= 1;
+      window.setTimeout(tick, 1000);
+    };
+    tick();
+  });
+}
+
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return window.btoa(binary);
+}
+
+function sampleLevel(samples) {
+  if (!samples.length) return 0;
+  let sum = 0;
+  for (const sample of samples) sum += sample * sample;
+  return Math.min(100, Math.sqrt(sum / samples.length) * 260);
+}
+
+async function recordDoorAudio(levelBarId, durationMs = 4000) {
+  if (!window.DaylightAudio) throw new Error('Audio encoder is unavailable');
+  if (!navigator.mediaDevices?.getUserMedia) throw new Error('Microphone access is not supported');
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) throw new Error('Audio capture is not supported');
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true }, video: false
+  });
+  let context;
+  let source;
+  try {
+    context = new AudioContextClass();
+    source = context.createMediaStreamSource(stream);
+  } catch (error) {
+    stopMediaStream(stream);
+    if (context?.state !== 'closed') await context.close().catch(() => {});
+    throw error;
+  }
+  const chunks = [];
+  const level = document.getElementById(levelBarId);
+  let node = null;
+  let workletUrl = null;
+  let timer = null;
+  let settled = false;
+
+  const cleanup = async () => {
+    if (timer) window.clearTimeout(timer);
+    timer = null;
+    try { source.disconnect(); } catch (error) { /* already disconnected */ }
+    try { node?.disconnect(); } catch (error) { /* already disconnected */ }
+    if (node && 'onaudioprocess' in node) node.onaudioprocess = null;
+    if (workletUrl) URL.revokeObjectURL(workletUrl);
+    stopMediaStream(stream);
+    if (level) {
+      level.style.transform = 'scaleX(0)';
+      level.parentElement?.setAttribute('aria-valuenow', '0');
+    }
+    if (context.state !== 'closed') await context.close().catch(() => {});
+  };
+
+  const result = new Promise(async (resolve, reject) => {
+    const receive = values => {
+      const samples = values instanceof Float32Array ? values : new Float32Array(values);
+      chunks.push(new Float32Array(samples));
+      if (level) {
+        const value = Math.round(sampleLevel(samples));
+        level.style.transform = `scaleX(${value / 100})`;
+        level.parentElement?.setAttribute('aria-valuenow', String(value));
+      }
+    };
+    try {
+      if (context.audioWorklet && typeof window.AudioWorkletNode === 'function') {
+        const sourceCode = `class DaylightPcmCapture extends AudioWorkletProcessor { process(inputs) { const samples = inputs[0] && inputs[0][0]; if (samples) this.port.postMessage(samples.slice(0)); return true; } } registerProcessor('daylight-pcm-capture', DaylightPcmCapture);`;
+        workletUrl = URL.createObjectURL(new Blob([sourceCode], { type: 'text/javascript' }));
+        await context.audioWorklet.addModule(workletUrl);
+        node = new AudioWorkletNode(context, 'daylight-pcm-capture');
+        node.port.onmessage = event => receive(event.data);
+      } else {
+        node = context.createScriptProcessor(4096, 1, 1);
+        node.onaudioprocess = event => receive(event.inputBuffer.getChannelData(0));
+      }
+      source.connect(node);
+      node.connect(context.destination);
+      await context.resume();
+      activeDoorAudioCapture = {
+        cancel: async () => {
+          if (settled) return;
+          settled = true;
+          await cleanup();
+          reject(new Error('Recording stopped'));
+        }
+      };
+      timer = window.setTimeout(async () => {
+        if (settled) return;
+        settled = true;
+        const length = chunks.reduce((total, chunk) => total + chunk.length, 0);
+        const merged = new Float32Array(length);
+        let offset = 0;
+        chunks.forEach(chunk => { merged.set(chunk, offset); offset += chunk.length; });
+        const pcm = window.DaylightAudio.downsampleMono(merged, context.sampleRate, 16000);
+        const wav = window.DaylightAudio.encodePcm16Wav(pcm, 16000);
+        await cleanup();
+        resolve(arrayBufferToBase64(wav));
+      }, durationMs);
+    } catch (error) {
+      settled = true;
+      await cleanup();
+      reject(error);
+    }
+  });
+
+  try {
+    return await result;
+  } finally {
+    activeDoorAudioCapture = null;
+  }
+}
+
+async function beginDoorVoiceCheck(runId) {
+  const flow = doorCheckFlow;
+  if (runId !== doorCheckRunId || !flow) return;
+  try {
+    if (flow.settings.mode !== 'passphrase') {
+      flow.challenge = await doorCheckRequest('api/door-check/challenge', { method: 'POST', body: '{}' });
+    }
+    if (runId !== doorCheckRunId || !doorCheckFlow) return;
+    showDoorStage('voice');
+    let passphraseAudio = null;
+    let challengeAudio = null;
+    if (flow.settings.mode === 'passphrase' || flow.settings.mode === 'both') {
+      document.getElementById('door-voice-heading').textContent = 'Say the family passphrase';
+      document.getElementById('door-voice-status').textContent = 'Recording starts after the countdown';
+      await waitDoorCountdown(runId);
+      document.getElementById('door-voice-status').textContent = 'Listening…';
+      passphraseAudio = await recordDoorAudio('door-level-bar');
+    }
+    if (flow.settings.mode === 'challenge' || flow.settings.mode === 'both') {
+      document.getElementById('door-voice-heading').textContent = `Say: ${flow.challenge.phrase}`;
+      document.getElementById('door-voice-status').textContent = flow.settings.mode === 'both'
+        ? 'Now say the random phrase after the countdown' : 'Recording starts after the countdown';
+      await waitDoorCountdown(runId);
+      document.getElementById('door-voice-status').textContent = 'Listening…';
+      challengeAudio = await recordDoorAudio('door-level-bar');
+    }
+    if (runId !== doorCheckRunId || !doorCheckFlow) return;
+    document.getElementById('door-voice-status').textContent = 'Checking face and voice…';
+    const primaryAudio = flow.settings.mode === 'challenge' ? challengeAudio : passphraseAudio;
+    const result = await doorCheckRequest('api/door-check/verify', {
+      method: 'POST',
+      body: JSON.stringify({
+        ...(flow.challenge ? { challengeId: flow.challenge.challengeId } : {}),
+        descriptors: flow.descriptors.slice(-3),
+        audio: primaryAudio,
+        ...(flow.settings.mode === 'both' ? { challengeAudio } : {})
+      })
+    });
+    if (runId === doorCheckRunId) showDoorCheckResult(result);
+  } catch (error) {
+    if (runId === doorCheckRunId && doorCheckFlow) showDoorCheckResult({ verified: false, reasons: [error.message] });
+  }
+}
+
+function showDoorCheckResult(result) {
+  stopDoorCheckCameraStream();
+  showDoorStage('result');
+  const stage = document.getElementById('door-result-stage');
+  const icon = document.getElementById('door-result-icon');
+  const heading = document.getElementById('door-result-heading');
+  const reason = document.getElementById('door-result-reason');
+  const verified = result?.verified === true;
+  stage?.classList.toggle('is-failure', !verified);
+  if (icon) icon.textContent = verified ? 'check_circle' : 'cancel';
+  if (heading) heading.textContent = verified ? `Verified — ${result.name || 'welcome'}` : 'Not verified';
+  if (reason) reason.textContent = verified ? 'Face and voice matched.' : (result?.reasons?.[0] || "Didn't catch that — try again");
+  window.setTimeout(() => heading?.focus(), 0);
+}
+
+function stopDoorCheckCameraStream() {
+  if (doorCheckTimer) window.clearTimeout(doorCheckTimer);
+  doorCheckTimer = null;
+  stopMediaStream(doorCheckStream);
+  doorCheckStream = null;
+  const video = document.getElementById('door-check-video');
+  if (video?.srcObject) {
+    stopMediaStream(video.srcObject);
+    video.srcObject = null;
+  }
+}
+
+function trapDoorCheckFocus(event) {
+  if (event.key !== 'Tab') return;
+  const modal = event.currentTarget;
+  const controls = [...modal.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+    .filter(element => !element.hidden && element.offsetParent !== null);
+  if (!controls.length) return;
+  const first = controls[0];
+  const last = controls[controls.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
+function setDoorCheckBackgroundInert(inert) {
+  const modal = document.getElementById('door-check-modal');
+  const siblings = modal?.parentElement ? [...modal.parentElement.children].filter(element => element !== modal) : [];
+  [document.getElementById('sidebar'), ...siblings].filter(Boolean)
+    .forEach(element => element.toggleAttribute('inert', inert));
+}
+
+function stopDoorCheckMedia() {
+  doorCheckRunId += 1;
+  if (doorCheckTimer) window.clearTimeout(doorCheckTimer);
+  doorCheckTimer = null;
+  if (activeDoorAudioCapture) void activeDoorAudioCapture.cancel();
+  activeDoorAudioCapture = null;
+  stopDoorCheckCameraStream();
+  doorCheckFlow = null;
+}
+
 async function loadGamesPageData({ resumeActive = true } = {}) {
   const status = document.getElementById('games-page-status');
   try {
@@ -3317,6 +3706,169 @@ function renderFaceProfileSettings() {
     </div>`).join('') : '<p class="setting-description">Add household profiles before enrolling faces.</p>';
 }
 
+async function initializeDoorCheckSettings() {
+  const form = document.getElementById('door-check-settings-form');
+  if (!form || form.dataset.bound === 'true') return;
+  form.dataset.bound = 'true';
+  form.addEventListener('submit', event => {
+    event.preventDefault();
+    void requestAdminAuthorization({
+      title: 'Save door check',
+      prompt: 'Verify parent access to change door check settings.',
+      onAuthorized: saveDoorCheckSettings
+    });
+  });
+  document.getElementById('door-test-voice')?.addEventListener('click', () => {
+    void requestAdminAuthorization({
+      title: 'Test door check voice',
+      prompt: 'Verify parent access before testing the family passphrase.',
+      onAuthorized: testDoorCheckVoice
+    });
+  });
+  document.getElementById('door-refresh-attempts')?.addEventListener('click', loadDoorCheckAttempts);
+  await loadDoorCheckSettings();
+  if (hasActiveAdminSession()) await loadDoorCheckAttempts();
+}
+
+function setDoorCheckSettingsStatus(message, kind = '') {
+  const status = document.getElementById('door-check-settings-status');
+  if (!status) return;
+  status.textContent = message;
+  status.classList.toggle('is-error', kind === 'error');
+  status.classList.toggle('is-success', kind === 'success');
+}
+
+async function loadDoorCheckSettings() {
+  try {
+    const [settings, engines, faces] = await Promise.all([
+      doorCheckRequest('api/door-check/settings'),
+      doorCheckRequest('api/door-check/stt-engines').catch(() => []),
+      faceProfilesSnapshot ? Promise.resolve(faceProfilesSnapshot) : faceProfileRequest('api/face-profiles')
+    ]);
+    doorCheckSettingsSnapshot = settings;
+    document.getElementById('door-check-enabled').checked = settings.enabled;
+    document.getElementById('door-check-mode').value = settings.mode;
+    document.getElementById('door-check-state').textContent = settings.enabled ? 'Enabled' : 'Off by default';
+    document.getElementById('door-check-passphrase').value = '';
+    document.getElementById('door-check-passphrase-state').textContent = settings.passphraseSet
+      ? 'A hashed passphrase is stored. Leave blank to keep it.' : 'No passphrase set.';
+
+    const engineSelect = document.getElementById('door-check-stt-engine');
+    engineSelect.innerHTML = '<option value="">Automatic (Faster Whisper if installed)</option>' +
+      engines.map(engine => `<option value="${escapeHtml(engine.entityId)}">${escapeHtml(engine.name)}</option>`).join('');
+    if (settings.sttEngine && !engines.some(engine => engine.entityId === settings.sttEngine)) {
+      engineSelect.insertAdjacentHTML('beforeend', `<option value="${escapeHtml(settings.sttEngine)}">${escapeHtml(settings.sttEngine)} (not found)</option>`);
+    }
+    engineSelect.value = settings.sttEngine || '';
+
+    const allowed = new Set(settings.allowedProfileIds || []);
+    const enrolled = (faces.profiles || []).filter(profile => profile.enrolled);
+    const container = document.getElementById('door-check-allowed-profiles');
+    container.innerHTML = enrolled.length ? enrolled.map(profile => `
+      <label class="door-allowed-profile">
+        <input type="checkbox" value="${escapeHtml(profile.profileId)}" data-door-profile${allowed.has(profile.profileId) ? ' checked' : ''}>
+        <span>${escapeHtml(profile.name || 'Unnamed')}</span>
+      </label>`).join('') : '<p class="setting-description">Enroll at least one face above.</p>';
+    setDoorCheckSettingsStatus('');
+  } catch (error) {
+    setDoorCheckSettingsStatus(error.message, 'error');
+  }
+}
+
+async function saveDoorCheckSettings() {
+  const submit = document.querySelector('#door-check-settings-form [type="submit"]');
+  if (submit) submit.disabled = true;
+  setDoorCheckSettingsStatus('Saving…');
+  try {
+    const passphrase = document.getElementById('door-check-passphrase').value;
+    const payload = {
+      enabled: document.getElementById('door-check-enabled').checked,
+      mode: document.getElementById('door-check-mode').value,
+      allowedProfileIds: [...document.querySelectorAll('[data-door-profile]:checked')].map(input => input.value),
+      sttEngine: document.getElementById('door-check-stt-engine').value || null,
+      ...(passphrase.trim() ? { passphrase } : {})
+    };
+    await doorCheckRequest('api/door-check/settings', { method: 'PUT', body: JSON.stringify(payload) });
+    touchAdminSession();
+    await loadDoorCheckSettings();
+    const calendarButton = document.getElementById('door-check-button');
+    if (calendarButton) calendarButton.hidden = !payload.enabled;
+    setDoorCheckSettingsStatus('Door check settings saved.', 'success');
+  } catch (error) {
+    setDoorCheckSettingsStatus(error.message, 'error');
+  } finally {
+    if (submit) submit.disabled = false;
+  }
+}
+
+async function loadDoorCheckAttempts() {
+  const container = document.getElementById('door-check-attempts');
+  if (!container) return;
+  try {
+    const attempts = await doorCheckRequest('api/door-check/attempts');
+    const names = new Map((faceProfilesSnapshot?.profiles || []).map(profile => [profile.profileId, profile.name]));
+    container.innerHTML = attempts.length ? attempts.slice(0, 10).map(attempt => {
+      const time = new Date(attempt.time);
+      const who = attempt.profile ? (names.get(attempt.profile) || attempt.profile) : 'Unknown person';
+      const reason = attempt.result === 'verified' ? 'Face + voice' : (attempt.reasons?.[0] || 'Not verified');
+      return `<div class="door-attempt is-${attempt.result === 'verified' ? 'verified' : 'failed'}">
+        <span><strong>${attempt.result === 'verified' ? 'Verified' : 'Failed'}</strong> · ${escapeHtml(who)}<br><small>${escapeHtml(reason)}</small></span>
+        <time datetime="${escapeHtml(attempt.time)}">${escapeHtml(Number.isNaN(time.getTime()) ? '' : time.toLocaleString())}</time>
+      </div>`;
+    }).join('') : 'No attempts yet.';
+  } catch (error) {
+    container.textContent = error.message;
+  }
+}
+
+async function testDoorCheckVoice() {
+  const panel = document.getElementById('door-test-panel');
+  const prompt = document.getElementById('door-test-prompt');
+  const result = document.getElementById('door-test-result');
+  const button = document.getElementById('door-test-voice');
+  panel.hidden = false;
+  result.textContent = '';
+  button.disabled = true;
+  const runId = ++doorVoiceTestRunId;
+  try {
+    const settings = await doorCheckRequest('api/door-check/settings');
+    let challenge = null;
+    if (settings.mode !== 'passphrase') challenge = await doorCheckRequest('api/door-check/challenge', { method: 'POST', body: '{}' });
+    const capture = async message => {
+      prompt.textContent = message;
+      for (let count = 3; count >= 1; count -= 1) {
+        if (runId !== doorVoiceTestRunId || !document.getElementById('settings-content')?.classList.contains('active-content')) {
+          throw new Error('Voice test stopped');
+        }
+        result.textContent = String(count);
+        await new Promise(resolve => window.setTimeout(resolve, 1000));
+      }
+      if (runId !== doorVoiceTestRunId) throw new Error('Voice test stopped');
+      result.textContent = 'Listening…';
+      return recordDoorAudio('door-test-level-bar');
+    };
+    const audio = await capture(settings.mode === 'challenge'
+      ? `Say: ${challenge.phrase}` : 'Say the family passphrase after the countdown.');
+    const challengeAudio = settings.mode === 'both'
+      ? await capture(`Now say: ${challenge.phrase}`) : null;
+    result.textContent = 'Transcribing…';
+    const checked = await doorCheckRequest('api/door-check/test-voice', {
+      method: 'POST',
+      body: JSON.stringify({
+        audio,
+        ...(challenge ? { challengeId: challenge.challengeId } : {}),
+        ...(challengeAudio ? { challengeAudio } : {})
+      })
+    });
+    touchAdminSession();
+    result.innerHTML = `<strong>${checked.match ? 'Match' : 'No match'}</strong> · Heard: “${escapeHtml(checked.transcript || 'nothing')}”${checked.challengeTranscript ? ` · Challenge: “${escapeHtml(checked.challengeTranscript)}”` : ''}`;
+  } catch (error) {
+    result.textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+}
+
 async function populateFaceCameraOptions({ requestPermission = false } = {}) {
   const select = document.getElementById('face-camera-device');
   if (!select || !navigator.mediaDevices?.enumerateDevices) return;
@@ -3677,6 +4229,7 @@ function initializeSettingsPage() {
     await initializeReceiptReaderSettings();
     await initializeScreenTimeSettings();
     await initializeFaceRecognitionSettings();
+    await initializeDoorCheckSettings();
 
     // Re-setup modals for settings page (generic closers)
     setupModals();
@@ -3707,10 +4260,15 @@ function stopCameraTest() {
 }
 
 function handleCameraPageChange(target) {
+  if (target !== 'calendar-content' && document.getElementById('door-check-modal')?.classList.contains('show')) {
+    closeModal(document.getElementById('door-check-modal'));
+  }
   if (target !== 'games-content') {
     stopFaceRecognitionCamera({ clearBanner: true });
   }
   if (target !== 'settings-content') {
+    doorVoiceTestRunId += 1;
+    if (activeDoorAudioCapture) void activeDoorAudioCapture.cancel();
     const enrollmentModal = document.getElementById('face-enrollment-modal');
     if (enrollmentModal?.classList.contains('show')) closeModal(enrollmentModal);
     else stopFaceEnrollmentCamera();
@@ -3726,6 +4284,8 @@ function handleCameraPageChange(target) {
 
 function handleCameraVisibilityChange() {
   if (document.hidden) {
+    doorVoiceTestRunId += 1;
+    stopDoorCheckMedia();
     stopParentCheckCamera();
     stopFaceRecognitionCamera({ clearBanner: true });
     const enrollmentModal = document.getElementById('face-enrollment-modal');
@@ -3798,6 +4358,10 @@ function initializeSidebar() {
             activateTab(item);
             if (document.getElementById('screen-time-settings-form')) await loadScreenTimeSettings();
             if (document.getElementById('face-recognition-settings-form')) await loadFaceRecognitionSettings();
+            if (document.getElementById('door-check-settings-form')) {
+              await loadDoorCheckSettings();
+              await loadDoorCheckAttempts();
+            }
           }
         });
         return;
@@ -4177,6 +4741,12 @@ function closeModal(modal) {
     stopParentCheckCamera();
     parentCheckFlow = null;
     parentCheckPin = '';
+  }
+  if (modal.id === 'door-check-modal') {
+    stopDoorCheckMedia();
+    setDoorCheckBackgroundInert(false);
+    if (doorCheckLastFocus?.isConnected) doorCheckLastFocus.focus();
+    doorCheckLastFocus = null;
   }
 
   // A game spends time only while its modal is open. Blank the iframe first so

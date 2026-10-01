@@ -27,6 +27,10 @@ const {
   AnnouncementError,
   createAnnouncementService
 } = require('./scripts/announcement-service');
+const {
+  createDoorCheckService,
+  mountDoorCheckRoutes
+} = require('./scripts/door-check-service');
 const { mountMcpServer } = require('./scripts/mcp-server');
 
 // Main initialization function to handle async imports
@@ -161,15 +165,23 @@ async function initializeApp() {
 
   const standardJsonParser = express.json();
   const receiptUploadJsonParser = express.json({ limit: '17mb' });
+  // `both` mode carries two independently capped recordings; base64 adds roughly one third.
+  const doorAudioJsonParser = express.json({ limit: '1200kb' });
   app.use((req, res, next) => {
     const isReceiptUpload = req.method === 'POST' && req.path === '/api/receipts';
-    const parser = isReceiptUpload ? receiptUploadJsonParser : standardJsonParser;
+    const isDoorAudioUpload = req.method === 'POST' &&
+      (req.path === '/api/door-check/verify' || req.path === '/api/door-check/test-voice');
+    const parser = isReceiptUpload ? receiptUploadJsonParser
+      : isDoorAudioUpload ? doorAudioJsonParser : standardJsonParser;
     parser(req, res, error => {
       if (error && isReceiptUpload) {
         const message = error.type === 'entity.too.large'
           ? 'The receipt image must be 12 MB or smaller.'
           : 'The receipt upload must be valid JSON.';
         return res.status(400).json({ error: message });
+      }
+      if (error && isDoorAudioUpload) {
+        return res.status(400).json({ error: 'Door check audio must be 400 KB or smaller.' });
       }
       return error ? next(error) : next();
     });
@@ -709,6 +721,31 @@ async function initializeApp() {
     getToken: () => process.env.SUPERVISOR_TOKEN || process.env.HASS_TOKEN || '',
     emit: (eventName, payload) => io.emit(eventName, payload),
     haAvailable: !isStandaloneDev
+  });
+
+  const doorCheckService = createDoorCheckService({
+    readJsonFile,
+    writeJsonFile,
+    withHouseholdStorageLock,
+    fetch,
+    hassApiUrl,
+    getToken: () => isStandaloneDev ? '' : (process.env.SUPERVISOR_TOKEN || process.env.HASS_TOKEN || ''),
+    getUsers: () => fetchHaUsers(),
+    getFaceState: () => readFaceProfiles(),
+    matchFaceDescriptor: (descriptor, allowedProfileIds, faceState) =>
+      getServerFaceWinner(descriptor, faceState, allowedProfileIds),
+    announce: (input, source) => announcementService.announce(input, source)
+  });
+
+  mountDoorCheckRoutes({
+    app,
+    service: doorCheckService,
+    authorizeAdmin: req => withHouseholdStorageLock(async () => {
+      const screenTime = readScreenTime();
+      const result = authorizeAdmin(screenTime, req);
+      writeJsonFile('screen_time.json', screenTime);
+      return result;
+    })
   });
 
   function sendAnnouncementError(res, error) {

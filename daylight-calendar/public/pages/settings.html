@@ -337,6 +337,67 @@
           </div>
         </form>
       </div>
+
+      <div class="settings-card" id="door-check-settings-card">
+        <div class="door-settings-heading">
+          <div>
+            <h3>Door check <span class="door-poc-label">Proof of concept</span></h3>
+            <p class="setting-description">Verify an enrolled person with their face and Home Assistant’s local speech-to-text.</p>
+          </div>
+          <span id="door-check-state" class="screen-time-pin-state">Loading…</span>
+        </div>
+        <form id="door-check-settings-form">
+          <label class="screen-time-toggle" for="door-check-enabled">
+            <input type="checkbox" id="door-check-enabled">
+            <span><strong>Enable Door on Calendar</strong><small>Shows the Door button on the wall panel.</small></span>
+          </label>
+          <div class="door-settings-grid">
+            <div class="form-group">
+              <label for="door-check-mode">Voice check</label>
+              <select id="door-check-mode">
+                <option value="challenge">Random phrase</option>
+                <option value="passphrase">Family passphrase</option>
+                <option value="both">Passphrase, then random phrase</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="door-check-stt-engine">Speech-to-text engine</label>
+              <select id="door-check-stt-engine">
+                <option value="">Automatic (Faster Whisper if installed)</option>
+              </select>
+            </div>
+          </div>
+          <fieldset class="door-allowed-fieldset">
+            <legend>Who may pass</legend>
+            <div id="door-check-allowed-profiles" class="door-allowed-profiles" aria-live="polite">Loading enrolled people…</div>
+          </fieldset>
+          <div class="door-passphrase-row">
+            <div class="form-group">
+              <label for="door-check-passphrase">Set or change family passphrase</label>
+              <input id="door-check-passphrase" type="password" autocomplete="new-password" maxlength="120" placeholder="2–8 words">
+              <p id="door-check-passphrase-state" class="setting-description">No passphrase set.</p>
+            </div>
+            <button type="button" id="door-test-voice" class="btn btn-secondary">
+              <i class="material-icons" aria-hidden="true">mic</i> Test my voice
+            </button>
+          </div>
+          <div id="door-test-panel" class="door-test-panel" hidden>
+            <p id="door-test-prompt"></p>
+            <div id="door-test-level" class="door-level" role="progressbar" aria-label="Live microphone level" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="door-test-level-bar"></span></div>
+            <p id="door-test-result" aria-live="polite"></p>
+          </div>
+          <div id="door-check-settings-status" class="screen-time-settings-status" role="status" aria-live="polite"></div>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary"><i class="material-icons" aria-hidden="true">save</i> Save door check</button>
+          </div>
+        </form>
+        <div class="door-attempts-heading">
+          <h4>Recent attempts</h4>
+          <button type="button" id="door-refresh-attempts" class="btn btn-secondary"><i class="material-icons" aria-hidden="true">refresh</i> Refresh</button>
+        </div>
+        <div id="door-check-attempts" class="door-check-attempts">No attempts yet.</div>
+        <p class="door-proof-note"><strong>Proof of concept.</strong> A photo or a recording can fool face or voice checks on their own; the random phrase stops replayed recordings, not a person holding a photo. Nothing here unlocks a door until a lock and an automation are added.</p>
+      </div>
     </div>
 
     <div class="settings-section">

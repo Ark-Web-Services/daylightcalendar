@@ -16,10 +16,10 @@ Supervised** — it cannot run on HA Container/Core.
 
 | Thing | Where |
 |---|---|
-| Host | Windows 11 Pro, Dell Latitude 7490, `192.168.1.118` |
-| Shell | `ssh user@192.168.1.118` (key `~/.ssh/id_ed25519`), runs **elevated** |
+| Host | Windows 11 Pro, Dell Latitude 7490, **`desktop-ukk61k7.local`** (mDNS; DHCP address changes — was .118, now .132) |
+| Shell | `ssh user@desktop-ukk61k7.local` (key `~/.ssh/id_ed25519`), runs **elevated** |
 | HA | HAOS 18.2 in Hyper-V VM `HomeAssistant`, NAT via Default Switch |
-| HA URL | `http://192.168.1.118:8123/` |
+| HA URL | `http://desktop-ukk61k7.local:8123/` |
 | Add-on slug | `01a45dd4_daylight_calendar` |
 | Repo | `https://github.com/Ark-Web-Services/daylightcalendar` (public) |
 
@@ -39,7 +39,7 @@ You need a **fresh HA long-lived access token** (HA profile → Security → Cre
 previous session's token was session-local and is gone.
 
 `/api/hassio/*` REST returns 401 in HA 2026.x. Drive the Supervisor over the **WebSocket API**
-instead: connect `ws://192.168.1.118:8123/api/websocket`, auth with the token, then send
+instead: connect `ws://desktop-ukk61k7.local:8123/api/websocket`, auth with the token, then send
 `{"type":"supervisor/api","endpoint":"/store/reload","method":"post"}`. Useful endpoints:
 `/store/reload`, `/store/addons/<slug>/update`, `/addons/<slug>/info`, `/supervisor/info`.
 
@@ -209,10 +209,34 @@ login. Delete or stub that file before local dev if you don't want that.
   or a default; 2-minute cooldown (`mode: single` + delay). The webhook id is a secret kept in
   `~/.daylight-pm/bus-webhook-id` — not in the repo. Verified: POST -> 200 -> event on the bus.
   The iPhone side is an iOS Shortcuts "Message" automation (sender = AlphaPortal, run immediately)
-  that POSTs to `http://192.168.1.118:8123/api/webhook/<id>`; it only works while the phone is on
+  that POSTs to `http://desktop-ukk61k7.local:8123/api/webhook/<id>`; it only works while the phone is on
   home Wi-Fi until HA has remote access.
-- **Edge autoplay**: `HKLM\SOFTWARE\Policies\Microsoft\Edge\AutoplayAllowlist\1 =
-  http://localhost:8099` so the panel can speak announcements without a tap.
+- **Edge autoplay and mic**: `HKLM\SOFTWARE\Policies\Microsoft\Edge\AutoplayAllowlist\1` and
+  `...\AudioCaptureAllowedUrls\1` = `http://localhost:8099`, so the panel can speak announcements
+  without a tap and use the microphone for the door-check PoC. Same one-origin scope as the camera.
+- **MCP integration** (`mcp`, title `daylight-calendar`) pointed at
+  `http://01a45dd4-daylight-calendar:8099/mcp` — this HA version's MCP client speaks **Streamable
+  HTTP** (its form example is `http://example/mcp`); `/mcp/sse` is kept for older HA. It becomes a
+  selectable "LLM API" in any conversation agent's options (enable it next to "Assist").
+- **Assist pipeline "Home Assistant"**: STT `stt.faster_whisper` (en), TTS `tts.piper`
+  (`en_US-lessac-medium`). The conversation agent is still the built-in intent agent — the plan is
+  the Anthropic integration once the owner creates an API key (it must not be created or typed by
+  an agent), with "Assist" + "daylight-calendar" enabled as LLM APIs, then set as this pipeline's
+  agent. Siri reaches it through the HA iPhone app's "Assist" Shortcuts action.
+
+### The Latitude's address is not fixed — use its hostname (found 2026-09-30)
+
+The laptop gets its LAN address from the AT&T gateway (`192.168.1.254`) by DHCP. On 2026-09-30 it
+lost power (see below), the gateway handed `.118` to another device, and the laptop came back as
+`.132`. Everything that named `.118` broke silently. Use **`desktop-ukk61k7.local`** (Windows
+answers mDNS; same SSH host key `SHA256:dK1xSk9q…UJQ8`), and ask the owner for a DHCP reservation
+on the gateway (IP Allocation, MAC `14:4F:8A:FE:FD:AD`) — that needs the gateway's access code.
+
+**Power loss, 2026-09-30 12:10**: Kernel-Power 41 with bugcheck 0, no power-button press, no dump =
+the power was cut. The battery reads 0% on AC, so any blip on the charger or outlet turns the
+laptop off instantly. It powered back on by itself and everything recovered (HA, add-on, kiosk,
+Ollama), but its clock came back ~40 min behind until time sync fixed it. A replacement battery or a
+small UPS would remove the risk.
 
 ### Network limit: the HA VM cannot see the LAN's multicast (found 2026-09-29)
 
@@ -344,6 +368,11 @@ of it is deployed.** See §7.
     awards, claim races — only shows up under that kind of check.
   - Background the dev server in a **detached subshell** `( ... &)` or the agent's shell call
     hangs. Kill it with `lsof -ti:PORT | xargs kill -9` afterwards.
+- **2026-09-30: codex hung twice on task 12** (announcements) — both times right after loading
+  its `impeccable` frontend skill, no file edited, log silent for 15+ minutes, no model usage. The
+  same config worked before and after (tasks 10, 11, 13). Claude wrote task 12 directly. Always run
+  `~/.daylight-pm/codex-watch.sh <task> 600` next to a codex run: it kills codex after 10 silent
+  minutes, so a hang costs 10 minutes instead of an hour.
 - Still verify with `git diff` and your own curl rather than trusting the completion report. Doing
   so caught nothing false this session, but it is cheap.
 - **Match edits by content, not indentation.** Several scripted edits failed because indentation

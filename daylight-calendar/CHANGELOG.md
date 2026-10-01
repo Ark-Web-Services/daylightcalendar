@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.1.9.37] - 2026-10-01
+
+Door check — a proof of concept, not a security product. The panel can verify a household member
+by face **and** voice, entirely on local hardware: a new Door button on the Calendar opens a
+full-screen check that recognises the person on the panel's camera, then asks them to say a random
+phrase ("cedar toast cherry sixteen") or the family passphrase. Home Assistant's own Whisper add-on
+transcribes it; if face and voice both match, Daylight fires the Home Assistant event
+`daylight_door_verified` (with the person's name), or `daylight_door_check_failed` if not — the hook
+an automation would use to unlock a door once a smart lock is connected. Nothing unlocks anything
+yet.
+
+Settings has a Door check card: turn it on, choose random phrase, passphrase or both, pick who may
+pass, set the passphrase (stored only as a scrypt hash), test your voice, and see recent attempts.
+Audio is processed in memory and never saved; the attempt log keeps only time, person, result and
+reason. The random phrase defeats a replayed recording; neither check alone stops someone holding a
+photo, which the card says plainly.
+
 ## [1.1.9.36] - 2026-09-30
 
 Daylight can now be the family's context for Home Assistant's AI assistant. It runs a Model
