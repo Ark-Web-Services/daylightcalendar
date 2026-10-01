@@ -27,6 +27,7 @@ const {
   AnnouncementError,
   createAnnouncementService
 } = require('./scripts/announcement-service');
+const { transcribeViaPipeline } = require('./scripts/ha-pipeline-stt');
 const {
   createDoorCheckService,
   mountDoorCheckRoutes
@@ -739,6 +740,14 @@ async function initializeApp() {
     emitToPanels: (eventName, payload) => io.emit(eventName, payload)
   });
 
+  // Speech-to-text goes over Home Assistant's websocket: from inside the add-on the REST STT
+  // endpoint is rejected by the Supervisor's Core proxy (400), websocket audio is not.
+  const transcribeViaHa = isStandaloneDev ? undefined : buffer => {
+    const client = getHaWsClient();
+    if (!client) throw new Error('Home Assistant is not connected');
+    return transcribeViaPipeline(client, buffer);
+  };
+
   const voiceService = createVoiceService({
     readJsonFile,
     writeJsonFile,
@@ -749,6 +758,7 @@ async function initializeApp() {
     getHaWsClient,
     panelController,
     synthesizeSpeech: text => announcementService.synthesizeSpeech(text),
+    transcribeAudio: transcribeViaHa,
     isStandaloneDev
   });
 
@@ -763,7 +773,8 @@ async function initializeApp() {
     getFaceState: () => readFaceProfiles(),
     matchFaceDescriptor: (descriptor, allowedProfileIds, faceState) =>
       getServerFaceWinner(descriptor, faceState, allowedProfileIds),
-    announce: (input, source) => announcementService.announce(input, source)
+    announce: (input, source) => announcementService.announce(input, source),
+    transcribeAudio: transcribeViaHa
   });
 
   mountDoorCheckRoutes({

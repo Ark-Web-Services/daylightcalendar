@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.9.39] - 2026-10-01
+
+Fixes "speech recognition error" after the wake word. Inside the add-on, Home Assistant's
+speech-to-text web endpoint is only reachable through the Supervisor's proxy, which rejects it
+(HTTP 400) — so every spoken command failed on the real panel even though the wake word worked.
+Speech is now transcribed over Home Assistant's websocket, the same connection the wake word
+already streams through. The Door check's voice step had the same problem and is fixed too.
+
 ## [1.1.9.38] - 2026-10-01
 
 Voice on the wall panel. Say **"Hey Jarvis"** (or Okay Nabu, Hey Mycroft, Alexa, Hey Rhasspy —
