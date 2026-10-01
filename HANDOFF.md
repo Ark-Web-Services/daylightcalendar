@@ -228,6 +228,14 @@ login. Delete or stub that file before local dev if you don't want that.
   of home-assistant/core#176556 (non-streaming STT starved in satellite pipelines). Verified live
   2026-10-01 with real HA: "Hey Jarvis… set the volume to forty percent" -> agent PUT 40 in ~1.3 s.
   `~/.daylight-pm/wake-test.js file.wav` streams a WAV into the wake stage.
+- **Never call HA's REST STT from the add-on.** `POST {hassApiUrl}/stt/<engine>` goes through
+  the Supervisor's Core proxy and answers **400** (found 2026-10-01: every spoken command failed
+  live while the wake word worked; it had only been tested against HA directly). Use
+  `scripts/ha-pipeline-stt.js` (Assist pipeline, STT stage only, over the websocket — binary
+  frames do pass the proxy). Lesson: anything that goes through `http://supervisor/core` must be
+  verified on the live add-on, not a dev copy pointed at HA. `~/.daylight-pm/voice-probe.js`
+  (socket.io via `ssh -fN -L 18099:127.0.0.1:8099 user@desktop-ukk61k7.local`) sends a WAV as a
+  voice command to the live add-on.
 - **Panel agent** (`C:\HAOS\panel-agent.ps1`, task `Daylight-PanelAgent`, logon + every 5 min,
   IgnoreNew): `http://10.77.77.1:8097` `GET/PUT /volume`, `PUT /mute` — the panel's real Windows
   volume. Bound to HA-Link only; firewall allows 10.77.77.2 only (same pattern as Ollama). Log
