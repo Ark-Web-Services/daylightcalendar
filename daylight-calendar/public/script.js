@@ -9,6 +9,8 @@ let weatherTemperatureUnit = '°';
 let weatherPrecipitationUnit = '';
 let activeWeatherPopover = null;
 let calendar;
+let calendarCurrentDay = null;
+let clockTimer = null;
 let calendarSizeObserver = null;
 let calendarSizeAnimationFrame = null;
 let calendarLastObservedSize = { width: 0, height: 0 };
@@ -602,7 +604,7 @@ function initializeCalendarPage() {
   // Wait for elements to be available in the DOM
   setTimeout(async () => {
     // Update time and weather first
-    updateTime();
+    updateClock();
     fetchWeather();
 
     // People load independently; events remain visible until their filters are ready.
@@ -4357,6 +4359,7 @@ function initializeSidebar() {
     contentFrame.style.display = 'block';
 
     if (target === 'calendar-content') {
+      updateClock();
       setTimeout(async () => {
         const hasCalendars = await refreshCalendarAvailability();
         if (!hasCalendars) return;
@@ -4426,7 +4429,7 @@ function initializeGlobalUI() {
 
   // Start the clock
   updateClock();
-  setInterval(updateClock, 1000);
+  if (!clockTimer) clockTimer = setInterval(updateClock, 1000);
 }
 
 function setupAppDialog() {
@@ -4663,10 +4666,13 @@ async function persistDisplaySettings() {
 }
 
 function updateClock() {
+  const now = new Date();
   const clockDisplay = document.getElementById('clock-display');
   if (clockDisplay) {
-    clockDisplay.textContent = moment().format('h:mm A');
+    clockDisplay.textContent = moment(now).format('h:mm A');
   }
+  updateTime(now);
+  if (syncCalendarDay(now)) refreshCalendarData();
 }
 
 function setupModals() {
@@ -4919,6 +4925,7 @@ function setupCalendar() {
       }
     });
 
+    calendarCurrentDay = getLocalCalendarDay(new Date());
     calendar.render();
     initializeCalendarTopbar();
     updateCalendarTopbar();
@@ -5229,9 +5236,7 @@ async function fetchDisplaySettings() {
 }
 
 // Update time display
-function updateTime() {
-  const now = new Date();
-
+function updateTime(now = new Date()) {
   // Format time based on configuration
   let timeFormat = 'h:mm A';
   if (window.appConfig && window.appConfig.time_format === '24h') {
@@ -7818,8 +7823,32 @@ const CALENDAR_REFRESH_MS = 5 * 60 * 1000;
 let calendarRefreshTimer = null;
 let calendarVisibilityHooked = false;
 
+function getLocalCalendarDay(date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function syncCalendarDay(now = new Date()) {
+  if (!calendar) return false;
+  const today = getLocalCalendarDay(now);
+  const previousDay = calendarCurrentDay;
+  if (previousDay && today.getTime() === previousDay.getTime()) return false;
+
+  if (previousDay) {
+    // Follow today across day/week/month boundaries, but keep a period the user
+    // deliberately browsed to. currentStart/End exclude month-view padding days.
+    const { currentStart, currentEnd } = calendar.view;
+    if (previousDay >= currentStart && previousDay < currentEnd) calendar.today();
+    calendar.render();
+    updateCalendarTopbar();
+  }
+  calendarCurrentDay = today;
+  return Boolean(previousDay);
+}
+
 function refreshCalendarData() {
   try {
+    updateTime();
+    syncCalendarDay();
     if (typeof calendar !== 'undefined' && calendar) calendar.refetchEvents();
     if (typeof fetchWeather === 'function') fetchWeather();
   } catch (err) {
@@ -7830,6 +7859,7 @@ function refreshCalendarData() {
 function startCalendarAutoRefresh() {
   // The page loader re-enters pages, so guard against stacking timers.
   stopCalendarAutoRefresh();
+  syncCalendarDay();
 
   if (document.visibilityState !== 'hidden') {
     calendarRefreshTimer = setInterval(refreshCalendarData, CALENDAR_REFRESH_MS);
@@ -7847,6 +7877,11 @@ function startCalendarAutoRefresh() {
         }
       }
     });
+    const refreshOnResume = () => {
+      if (document.visibilityState !== 'hidden') refreshCalendarData();
+    };
+    window.addEventListener('focus', refreshOnResume);
+    window.addEventListener('pageshow', refreshOnResume);
   }
 }
 

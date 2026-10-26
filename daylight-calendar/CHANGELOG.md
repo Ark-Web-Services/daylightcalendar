@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.9.40] - 2026-10-26
+
+The calendar now advances automatically at local midnight and catches up immediately
+when the panel wakes or returns to Calendar. The clock and date stay current, and dates
+you deliberately browse to are preserved. The existing five-minute event and weather
+refresh continues, with browser regression checks for rollover, sleep, time zones,
+daylight saving time, and poll pause/resume.
+
 ## [1.1.9.39] - 2026-10-01
 
 Fixes "speech recognition error" after the wake word. Inside the add-on, Home Assistant's
