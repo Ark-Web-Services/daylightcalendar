@@ -102,8 +102,10 @@ Jarvis owns the existing `conversation.family_assistant` entity ID, preserving
 Daylight settings and external references. The previous unavailable agent was
 retained as `conversation.family_assistant_legacy`. The preferred Assist
 pipeline uses the preserved ID with Whisper, Piper and local intents retained.
-Live checks: arithmetic through HA in 4.6 seconds; a household list question
-successfully executed Daylight tools and answered in 14.4 seconds.
+Add-on 1.1.9.41 is installed and running. Live checks: arithmetic through HA
+in 4.6 seconds; a household list question successfully executed Daylight tools
+and answered in 14.4 seconds. A recorded question through the live add-on
+completed transcription, Jarvis inference and Piper reply audio in 6.7 seconds.
 
 ## Tests
 
