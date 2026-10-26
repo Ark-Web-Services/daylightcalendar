@@ -437,3 +437,29 @@ Deploy (Supervisor API over the HA websocket, `supervisor/api`):
 The wall panel reloads itself when `addon_version` changes, so no one has to touch it.
 Verify after each deploy: every `/api/*` route used by the release answers 200 through ingress,
 and data under `/data` is intact.
+
+
+### Jarvis routing deployed 2026-10-26
+
+- The old Family Assistant Mac endpoint was unreachable; its restored entity caused
+  HA HTTP 400 (`invalid agent ID`). This was separate from the fixed STT proxy error.
+- Windows host now runs `C:\HAOS\jarvis-router\jarvis-router.js`, scheduled task
+  `Daylight-JarvisRouter`, limited user, private HA-Link `10.77.77.1:11435`.
+  Config and rotated logs live in the same folder; installer is in the repo.
+- HA Ollama entry `01M5W403MHSAKFD4Z93W7HMHTZ`, model `jarvis-auto:latest`,
+  agent named Jarvis, Assist + Daylight MCP tools. Jarvis uses the preserved
+  entity ID `conversation.family_assistant`; the old unavailable agent is
+  `conversation.family_assistant_legacy`. The preferred Assist pipeline retains
+  Whisper/Piper, hey_jarvis and local intents.
+- Router probes every 30 s without inference: local tags/tool support, Codex login,
+  HTTPS reachability, model catalog. Requests use cached readiness, never probe.
+  Snapshots expire at 90 s; inference failures cool down 60 s. `/health` reports
+  `nextRoute`, last successful provider, timestamps and readiness evidence.
+  Cloud quota/entitlement is confirmed only by actual inference; probes cannot
+  guarantee it. Codex uses the existing ChatGPT login, no separate API key.
+- Current usable route is `gpt-6-luna` (low reasoning); `gpt-5.6-luna` backup.
+  Local-first Mac model candidates remain configured and are skipped while down.
+  The Windows receipt model remains independent.
+- Add-on 1.1.9.41 adds background conversation-entity checks and native HA fallback
+  for an unavailable/rejected agent, avoiding another request-time probe. It does
+  not replay ambiguous timed-out household actions. See host/README.md for rollback.

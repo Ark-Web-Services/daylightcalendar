@@ -762,6 +762,8 @@ async function initializeApp() {
     isStandaloneDev
   });
 
+  voiceService.startAgentMonitor();
+
   const doorCheckService = createDoorCheckService({
     readJsonFile,
     writeJsonFile,

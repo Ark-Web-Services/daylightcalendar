@@ -221,6 +221,60 @@ async function testCommandPaths() {
   assert(panel.sent.some(item => item.name === 'voice:reply' && item.payload.audioUrl === 'api/announcements/test/audio'));
 }
 
+async function testAgentFallback() {
+  const calls = [];
+  let statusRequests = 0;
+  let selectedState = 'unavailable';
+  let selectedStatus = 200;
+  const voice = createVoiceService(serviceDependencies({
+    getHaWsClient: () => null,
+    transcribeAudio: async () => 'what is happening tomorrow',
+    fetch: async (url, options) => {
+      if (url.endsWith('/states')) { statusRequests += 1; return { ok: true, json: async () => [
+        { entity_id: 'conversation.family_assistant', state: selectedState, attributes: {} },
+        { entity_id: 'conversation.home_assistant', state: 'unknown', attributes: {} }
+      ] }; }
+      const input = JSON.parse(options.body);
+      calls.push(input);
+      if (input.agent_id === 'conversation.family_assistant' && selectedStatus !== 200) {
+        return { ok: false, status: selectedStatus };
+      }
+      return { ok: true, status: 200, json: async () => ({ conversation_id: 'native-session',
+        response: { response_type: 'error', speech: { plain: { speech: 'I did not understand.' } } } }) };
+    }
+  }));
+  await voice.refreshAgents();
+  const panel = new FakePanelSocket('fallback-panel');
+  await voice.handleCommand(panel, fakeWav());
+  assert.equal(statusRequests, 1, 'conversation uses the background snapshot without a request-time health call');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].agent_id, 'conversation.home_assistant', 'skip unavailable configured agent');
+  assert(panel.sent.some(event => event.name === 'voice:reply' && /AI assistant is offline/.test(event.payload.text)));
+  selectedState = 'ready';
+  selectedStatus = 400;
+  await voice.refreshAgents();
+  calls.length = 0;
+  await voice.handleCommand(panel, fakeWav());
+  assert.equal(calls.length, 2, 'invalid agent 400 falls through to HA');
+  assert.equal(calls[0].conversation_id, undefined, 'native session is not passed to the primary agent');
+  assert.equal(calls[1].conversation_id, 'native-session', 'native conversation can continue');
+  calls.length = 0;
+  await voice.handleCommand(panel, fakeWav());
+  assert.equal(calls.length, 1, 'invalid agent is on cooldown');
+
+  const failed = createVoiceService(serviceDependencies({
+    getHaWsClient: () => null,
+    transcribeAudio: async () => 'turn on the kitchen light',
+    fetch: async url => url.endsWith('/states')
+      ? { ok: true, json: async () => [{ entity_id: 'conversation.family_assistant', state: 'ready' }] }
+      : { ok: false, status: 500 }
+  }));
+  await failed.refreshAgents();
+  panel.sent = [];
+  await failed.handleCommand(panel, fakeWav());
+  assert(panel.sent.some(event => event.name === 'voice:error' && /temporarily unavailable/.test(event.payload.message)));
+}
+
 async function testMcpTools() {
   const calls = [];
   const dependencies = {
@@ -254,6 +308,7 @@ async function main() {
   testVad();
   await testWakeBridge();
   await testCommandPaths();
+  await testAgentFallback();
   await testMcpTools();
   console.log('Voice tests passed: parser, VAD, wake bridge, commands, conversation reuse, and MCP.');
 }

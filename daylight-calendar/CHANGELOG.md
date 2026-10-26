@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.1.9.41] - 2026-10-26
+
+Jarvis skips unavailable conversation agents instead of failing with HTTP 400, with
+native Home Assistant fallback for supported commands. Conversation availability is
+checked in the background every 30 seconds, avoiding health-probe delays during voice
+requests. Agent changes keep their own conversation sessions, and failed actions are
+not replayed. Corrects the wake-word pipeline update parameter for current HA.
+
+Includes the Windows-host Jarvis router: token-free background service/model/login
+checks, cached local-first routing, fast Codex CLI fallback through the existing login,
+failure cooldowns and automatic recovery. Home Assistant retains its household tools.
+
 ## [1.1.9.40] - 2026-10-26
 
 The calendar now advances automatically at local midnight and catches up immediately

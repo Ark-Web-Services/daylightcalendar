@@ -1,0 +1,32 @@
+{
+  "host": "10.77.77.1",
+  "port": 11435,
+  "allowedAddresses": [
+    "10.77.77.1",
+    "10.77.77.2",
+    "127.0.0.1",
+    "::1"
+  ],
+  "codexJs": "C:\\Users\\User\\AppData\\Roaming\\npm\\node_modules\\@openai\\codex\\bin\\codex.js",
+  "codexModels": [
+    "gpt-6-luna",
+    "gpt-5.6-luna"
+  ],
+  "localModels": [
+    {
+      "url": "http://192.168.1.245:11434",
+      "model": "qwen3.8:27b-mlx"
+    },
+    {
+      "url": "http://192.168.1.245:11434",
+      "model": "muse-glimmer:30b-mlx"
+    }
+  ],
+  "localTimeoutMs": 7000,
+  "codexTimeoutMs": 10000,
+  "totalTimeoutMs": 25000,
+  "cooldownMs": 60000,
+  "healthIntervalMs": 30000,
+  "healthMaxAgeMs": 90000,
+  "probeTimeoutMs": 1500
+}

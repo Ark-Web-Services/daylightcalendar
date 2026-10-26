@@ -10,6 +10,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   enabled: false,
   wakeWordId: 'hey_jarvis',
   agentId: 'conversation.family_assistant',
+  fallbackAgentIds: ['conversation.jarvis', 'conversation.home_assistant'],
   sensitivity: 0.55,
   muteWhileDimmed: false
 });
@@ -34,6 +35,9 @@ function normalizeSettings(value) {
       ? input.wakeWordId : DEFAULT_SETTINGS.wakeWordId,
     agentId: typeof input.agentId === 'string' && /^conversation\.[a-z0-9_]+$/.test(input.agentId)
       ? input.agentId : DEFAULT_SETTINGS.agentId,
+    fallbackAgentIds: Array.isArray(input.fallbackAgentIds)
+      ? [...new Set(input.fallbackAgentIds.filter(id => typeof id === 'string' && /^conversation\.[a-z0-9_]+$/.test(id)))].slice(0, 5)
+      : [...DEFAULT_SETTINGS.fallbackAgentIds],
     sensitivity: Number.isFinite(Number(input.sensitivity))
       ? Math.max(0, Math.min(1, Number(input.sensitivity))) : DEFAULT_SETTINGS.sensitivity,
     muteWhileDimmed: input.muteWhileDimmed === true
@@ -58,6 +62,11 @@ function validateSettingsInput(input) {
   if (input.sensitivity !== undefined &&
     (!Number.isFinite(Number(input.sensitivity)) || Number(input.sensitivity) < 0 || Number(input.sensitivity) > 1)) {
     throw new VoiceError('sensitivity must be between 0 and 1');
+  }
+  if (input.fallbackAgentIds !== undefined && (!Array.isArray(input.fallbackAgentIds) ||
+      input.fallbackAgentIds.length > 5 || input.fallbackAgentIds.some(id =>
+        typeof id !== 'string' || !/^conversation\.[a-z0-9_]+$/.test(id)))) {
+    throw new VoiceError('fallbackAgentIds must contain at most five conversation entity ids');
   }
 }
 
@@ -190,6 +199,12 @@ function createVoiceService({
 }) {
   const panels = new Map();
   const conversations = new Map();
+  const agentCooldowns = new Map();
+  let lastRoute = null;
+  let cachedAgents = null;
+  let agentsCheckedAt = 0;
+  let agentRefresh = null;
+  let agentMonitor = null;
   let binaryFailureLogged = false;
 
   function readSettings() {
@@ -220,13 +235,30 @@ function createVoiceService({
 
   async function listAgents() {
     if (isStandaloneDev || !getToken()) return [{ entityId: DEFAULT_SETTINGS.agentId, name: 'Family Assistant' }];
-    const response = await fetch(`${hassApiUrl}/states`, {
+    const response = await fetchWithin(`${hassApiUrl}/states`, {
       headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' }
-    });
+    }, 2000, 'Home Assistant agent status is unavailable.');
     if (!response.ok) throw new VoiceError(`Home Assistant answered ${response.status}`, 502);
     const states = await response.json();
-    return (Array.isArray(states) ? states : []).filter(state => String(state.entity_id).startsWith('conversation.'))
-      .map(state => ({ entityId: state.entity_id, name: state.attributes?.friendly_name || state.entity_id }));
+    const agents = (Array.isArray(states) ? states : []).filter(state => String(state.entity_id).startsWith('conversation.'))
+      .map(state => ({ entityId: state.entity_id, name: state.attributes?.friendly_name || state.entity_id,
+        // Conversation state is a last-use timestamp; 'unknown' can mean never used yet.
+        available: state.state !== 'unavailable' && state.attributes?.restored !== true }));
+    cachedAgents = agents;
+    agentsCheckedAt = now();
+    return agents;
+  }
+
+  function refreshAgents() {
+    if (!agentRefresh) agentRefresh = listAgents().catch(() => null).finally(() => { agentRefresh = null; });
+    return agentRefresh;
+  }
+
+  function startAgentMonitor() {
+    if (isStandaloneDev || agentMonitor) return;
+    void refreshAgents();
+    agentMonitor = setInterval(() => { void refreshAgents(); }, 30000);
+    agentMonitor.unref();
   }
 
   async function getSettingsPayload() {
@@ -235,7 +267,7 @@ function createVoiceService({
       listWakeWords().catch(() => []),
       listAgents().catch(() => [])
     ]);
-    return { ...settings, wakeWords, agents, status: publicStatus().status };
+    return { ...settings, wakeWords, agents, status: publicStatus().status, lastRoute, agentsCheckedAt };
   }
 
   async function selectPipelineWakeWord(wakeWordId) {
@@ -249,7 +281,7 @@ function createVoiceService({
     if (pipeline.wake_word_entity === WAKE_WORD_ENTITY && pipeline.wake_word_id === wakeWordId) return;
     const update = { ...pipeline, wake_word_entity: WAKE_WORD_ENTITY, wake_word_id: wakeWordId };
     delete update.id;
-    await client.sendCommand('assist_pipeline/pipeline/update', { pipeline: pipeline.id, ...update });
+    await client.sendCommand('assist_pipeline/pipeline/update', { pipeline_id: pipeline.id, ...update });
   }
 
   async function saveSettings(input) {
@@ -404,16 +436,39 @@ function createVoiceService({
     return result.text.trim();
   }
 
-  async function converse(text, agentId, conversationId) {
+  async function converse(text, agentId, conversationId, previousAgentId = agentId) {
     if (injectedConversation) return injectedConversation({ text, agentId, conversationId });
-    // 30 s covers a cold model load (~13 s on the household's Ollama server) plus the answer.
-    const response = await fetchWithin(`${hassApiUrl}/conversation/process`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, agent_id: agentId, language: 'en', ...(conversationId ? { conversation_id: conversationId } : {}) })
-    }, 30000, 'The assistant isn’t answering right now. The computer that runs it may be asleep.');
-    if (!response.ok) throw new VoiceError(`Family Assistant answered ${response.status}`, 502);
-    return response.json();
+    // The monitor maintains this snapshot outside the voice request. If it is stale,
+    // try the configured route directly instead of making the household wait on a probe.
+    const agents = now() - agentsCheckedAt < 90000 ? cachedAgents : null;
+    const candidates = [...new Set([agentId, ...readSettings().fallbackAgentIds])];
+    for (const candidate of candidates) {
+      if ((agentCooldowns.get(candidate) || 0) > now()) continue;
+      if (agents && !agents.some(agent => agent.entityId === candidate && agent.available !== false)) continue;
+      // Conversation IDs belong to an agent. Never replay another agent's session on fallback.
+      const reusableId = candidate === previousAgentId ? conversationId : null;
+      const response = await fetchWithin(`${hassApiUrl}/conversation/process`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, agent_id: candidate, language: 'en', ...(reusableId ? { conversation_id: reusableId } : {}) })
+      }, 30000, 'The AI assistant is not answering. Panel controls such as volume and navigation still work.');
+      if (response.status === 400 || response.status === 404) {
+        // HA rejects a restored or removed agent with 400 before running it.
+        agentCooldowns.set(candidate, now() + 60000);
+        continue;
+      }
+      // A timeout or server failure can follow a completed household action. Do not replay it
+      // against another agent; model failover happens inside the router, before tools execute.
+      if (!response.ok) throw new VoiceError('The AI assistant is temporarily unavailable. Panel controls still work.', 502);
+      const result = await response.json();
+      const degraded = candidate === 'conversation.home_assistant' && candidate !== agentId;
+      if (degraded && result?.response?.response_type === 'error') {
+        result.response.speech = { plain: { speech: 'My AI assistant is offline. I can still handle supported home commands, volume, and panel navigation.' } };
+      }
+      lastRoute = { agentId: candidate, fallback: candidate !== agentId, at: new Date(now()).toISOString() };
+      return { ...result, agent_id: candidate };
+    }
+    throw new VoiceError('No assistant is available right now. Panel controls such as volume and navigation still work.', 503);
   }
 
   async function runFastCommand(command, socket) {
@@ -474,9 +529,10 @@ function createVoiceService({
         const settings = readSettings();
         const previous = conversations.get(socket.id);
         const reusableId = previous && now() - previous.usedAt < 60000 ? previous.id : null;
-        const result = await converse(transcript, settings.agentId, reusableId);
-        const conversationId = result?.conversation_id || reusableId || randomUUID();
-        conversations.set(socket.id, { id: conversationId, usedAt: now() });
+        const result = await converse(transcript, settings.agentId, reusableId, previous?.agentId || settings.agentId);
+        const sameAgent = !result.agent_id || result.agent_id === (previous?.agentId || settings.agentId);
+        const conversationId = result?.conversation_id || (sameAgent && reusableId) || randomUUID();
+        conversations.set(socket.id, { id: conversationId, agentId: result.agent_id || settings.agentId, usedAt: now() });
         const reply = result?.response?.speech?.plain?.speech;
         if (typeof reply !== 'string' || !reply.trim()) throw new VoiceError('The assistant returned no spoken answer', 502);
         await speakReply(socket, reply.trim());
@@ -510,7 +566,8 @@ function createVoiceService({
     });
   }
 
-  return { attachSocket, getSettingsPayload, getStatus: publicStatus, readSettings, saveSettings, handleCommand };
+  return { attachSocket, getSettingsPayload, getStatus: publicStatus, readSettings, saveSettings, handleCommand,
+    refreshAgents, startAgentMonitor, stopAgentMonitor: () => { clearInterval(agentMonitor); agentMonitor = null; } };
 }
 
 module.exports = {
