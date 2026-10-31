@@ -7061,3 +7061,63 @@ button.receipt-status-chip { min-height: 44px; cursor: pointer; }
   .assistant-memory-item { grid-template-columns: minmax(0, 1fr); }
   .assistant-memory-delete { justify-self: stretch; }
 }
+
+/* Chore assignment and movement: the same controls serve touch and keyboard. */
+.chore-board-actions { display: flex; flex-wrap: wrap; align-items: end; gap: var(--md-space-2); margin-top: var(--md-space-2); }
+.chore-board-actions .btn { min-height: 44px; padding: var(--md-space-1) var(--md-space-2); text-transform: none; letter-spacing: normal; }
+.chore-move-field { display: grid; gap: 2px; flex: 1 1 110px; min-width: 0; color: var(--md-on-surface-variant); font-size: 0.75rem; }
+.chore-move-field select { width: 100%; min-width: 0; min-height: 44px; padding: var(--md-space-1) var(--md-space-2); font: inherit; font-size: 0.875rem; color: var(--md-on-surface); background: var(--md-surface); border: 1px solid var(--md-outline); border-radius: var(--md-shape-small); }
+.chore-move-field select:focus-visible, .chore-drag-handle:focus-visible, .chore-lane-pages button:focus-visible { outline: 2px solid var(--md-primary); outline-offset: 2px; }
+.chore-drag-handle, .chore-lane-pages button { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 44px; width: 44px; min-height: 44px; padding: 0; border: 0; border-radius: var(--md-shape-small); color: var(--md-on-surface-variant); background: transparent; }
+.chore-drag-handle { cursor: grab; touch-action: none; }
+.chore-drag-handle:active { cursor: grabbing; }
+.chore-drag-handle:hover, .chore-lane-pages button:hover:not(:disabled) { background: var(--md-surface-2); color: var(--md-on-surface); }
+.chore-lane-pages button:disabled { opacity: 0.4; }
+.chore-lane-pages { display: inline-flex; align-items: center; margin-left: auto; font-size: 0.75rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.chore-lane-pages[hidden], #chores-content .chore-card[hidden], .chore-board-message[hidden] { display: none; }
+#chores-content .chore-board-interactive .lane-content { overflow: hidden; scrollbar-gutter: auto; }
+#chores-content .chore-board-interactive .lane-header { flex-wrap: wrap; }
+#chores-content .chore-board-interactive .chore-card { flex-shrink: 0; }
+#chores-content .kanban-lane.is-drop-target { outline: 3px solid var(--md-primary); outline-offset: -3px; background: var(--md-primary-container); }
+#chores-content .chore-card.is-dragging { opacity: 0.5; }
+.chore-lane-empty { color: var(--md-on-surface-variant); line-height: 1.5; padding: var(--md-space-2); font-size: 0.875rem; }
+.chore-board-message { flex: 0 0 auto; margin: 0 0 var(--md-space-2); color: var(--md-on-surface-variant); font-size: 0.875rem; }
+.chore-board-message.is-error { color: var(--md-on-error-container); background: var(--md-error-container); padding: var(--md-space-2); border-radius: var(--md-shape-small); }
+.chore-assignment-help, .chore-optional { color: var(--md-on-surface-variant); font-size: 0.875rem; }
+.chore-assignment-help { flex: 1 1 100%; margin: 0 0 var(--md-space-2); }
+.chore-assignees { flex-wrap: wrap; gap: var(--md-space-1); }
+.chore-assignees .chore-assignee { margin-right: 0; }
+.chore-owner-name { color: var(--md-on-surface); margin-right: var(--md-space-1); }
+#chores-content .chore-card .chore-header { gap: var(--md-space-1); }
+#chores-content .chore-card .chore-title { overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  #chores-content .chore-card .chore-header { flex-wrap: wrap; }
+  #chores-content .chore-card .chore-title { flex-basis: 100%; order: -1; }
+  #chores-content .chore-board-actions { gap: var(--md-space-1); }
+  #chores-content .chore-assign-button { width: 100%; }
+}
+
+.chore-lane-switcher { display: none; }
+@media (max-width: 700px) {
+  /* Give this board usable phone width without changing the saved sidebar state. */
+  #app:has(#chores-content.active-content) #sidebar { width: 60px; min-width: 60px; }
+  #app:has(#chores-content.active-content) #sidebar-logo { justify-content: center; padding: var(--md-space-3); }
+  #app:has(#chores-content.active-content) #sidebar span { display: none; }
+  #app:has(#chores-content.active-content) #sidebar .tab-item { justify-content: center; padding: 15px 0; }
+  #app:has(#chores-content.active-content) #sidebar .tab-item i { margin-right: 0; }
+  #app:has(#chores-content.active-content) #main-content-area { width: calc(100% - 60px); min-width: 0; }
+  #chores-content .content-header { padding: var(--md-space-2); }
+  #chores-content .content-scrollable { padding: var(--md-space-2); }
+  #chores-content .stars-rewards { padding: var(--md-space-2); }
+  #chores-content .profile-stars { padding: var(--md-space-1) var(--md-space-2); }
+  #chores-content .routines-content { display: none; }
+  #chores-content #chore-board { grid-template-columns: minmax(0, 1fr); }
+  #chores-content .kanban-lane:not(.is-active-lane) { display: none; }
+  #chores-content .chore-card .chore-header { flex-wrap: nowrap; }
+  #chores-content .chore-card .chore-title { flex-basis: auto; order: initial; }
+  #chores-content .chore-assign-button { width: auto; }
+  .chore-lane-switcher { display: flex; flex: 0 0 auto; gap: var(--md-space-1); margin-bottom: var(--md-space-2); }
+  .chore-lane-tab { display: inline-flex; align-items: center; justify-content: center; gap: var(--md-space-1); flex: 1 1 0; min-width: 0; min-height: 44px; padding: var(--md-space-1); font: inherit; font-size: 0.8125rem; color: var(--md-on-surface-variant); background: var(--md-surface); border: 1px solid var(--md-outline); border-radius: var(--md-shape-small); }
+  .chore-lane-tab[aria-pressed="true"], .chore-lane-tab.is-drop-target { color: var(--md-on-primary-container); background: var(--md-primary-container); border-color: var(--md-primary); }
+  .chore-lane-tab:focus-visible { outline: 2px solid var(--md-primary); outline-offset: 2px; }
+}

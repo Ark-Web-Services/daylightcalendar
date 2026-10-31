@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.9.43] - 2026-10-30
+
+Unassigned chores now start in Up for Grabs. Assign or reassign a person from any
+active card or its details, and move chores between Up for Grabs, To Do and Done
+by drag and drop or the Move to control. Touch dragging uses a dedicated handle.
+Phone column buttons and per-column paging keep chores reachable on small screens.
+Movements persist assignment and status together, preserve chore details, report
+errors, and reject a stale simultaneous claim.
+
 ## [1.1.9.42] - 2026-10-30
 
 Fixes saved chores disappearing from Daylight: request Home Assistant's service

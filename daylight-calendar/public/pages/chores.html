@@ -33,10 +33,10 @@
           </div>
           <div class="form-row">
             <div class="form-group">
-              <label for="assigneeName">Assign to</label>
+              <label>Assign to <span class="chore-optional">(optional)</span></label>
               <div id="chore-assignee-options" class="chore-profile-options" aria-label="Assign chore to profiles"></div>
             </div>
-            <div class="form-group chore-grabs-option"><label class="settings-checkbox"><input type="checkbox" id="chore-up-for-grabs" name="upForGrabs"> Up for grabs</label></div>
+            <p class="chore-assignment-help">Leave everyone unchecked to put this chore in Up for Grabs.</p>
             <div class="form-group">
               <label for="dueDate">Due Date</label>
               <input type="date" id="dueDate" name="dueDate">
@@ -61,6 +61,7 @@
     <div id="routines-content" class="routines-content" aria-live="polite"></div>
   </section>
 
+  <p id="chore-board-message" class="chore-board-message" role="status" hidden></p>
   <!-- Kanban Board for Chores -->
   <div id="chore-board" class="kanban-board">
     <!-- Lanes will be generated dynamically by JavaScript -->
@@ -110,7 +111,7 @@
     </div>
   </div>
 
-  <div id="claim-chore-modal" class="modal"><div class="modal-content"><div class="modal-header"><h3>Claim Chore</h3><button class="modal-close" type="button" aria-label="Close">&times;</button></div><div class="modal-body"><p id="claim-chore-message">Who is claiming this?</p><div id="claim-profile-options" class="claim-profile-options"></div><p id="claim-chore-error" class="form-error" role="alert"></p></div></div></div>
+  <div id="claim-chore-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="chore-assignment-title"><div class="modal-content"><div class="modal-header"><h3 id="chore-assignment-title">Assign chore</h3><button class="modal-close" type="button" aria-label="Close">&times;</button></div><div class="modal-body"><p id="claim-chore-message">Who is claiming this?</p><div id="claim-profile-options" class="claim-profile-options"></div><p id="claim-chore-error" class="form-error" role="alert"></p></div></div></div>
 
   <div id="chore-detail-modal" class="modal" aria-labelledby="chore-detail-title">
     <div class="modal-content">

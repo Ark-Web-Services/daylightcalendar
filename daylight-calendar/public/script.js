@@ -731,7 +731,7 @@ function initializeChoresPage() {
               assignedProfileIds,
               dueDate: choreData.dueDate || null,
               starValue: Number(choreData.starValue),
-              upForGrabs: document.getElementById('chore-up-for-grabs')?.checked === true
+              upForGrabs: assignedProfileIds.length === 0
             })
           });
 
@@ -5567,13 +5567,12 @@ async function fetchAndDisplayChores() {
   console.log('[INFO] fetchAndDisplayChores called - fetching and displaying chores');
 
   const choreBoard = document.getElementById('chore-board');
-  if (!choreBoard) return;
+  if (!choreBoard || choreBoard.dataset.dragging === 'true' || choreBoard.dataset.moving === 'true') return;
 
   try {
     const response = await fetch('api/chores');
-    if (!response.ok) throw new Error('Failed to fetch chores');
-
     const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to fetch chores');
     const chores = data.items || [];
     const entityId = data.entityId;
 
@@ -5610,8 +5609,6 @@ async function fetchAndDisplayChores() {
                   ${(chore.dueDate || chore.due) ? `<span class="chore-due">Due: ${escapeHtml(formatChoreDueDate(chore.dueDate || chore.due))}</span>` : ''}
                   ${renderChoreProgress(chore)}
                 </div>
-                ${chore.upForGrabs === true && !(chore.assignedProfileIds || []).length ? `<button type="button" class="btn btn-primary claim-chore-btn" data-claim-chore="${escapeHtml(chore.uid)}">Claim</button>` : ''}
-                ${chore.upForGrabs !== true && (chore.assignedProfileIds || []).length ? `<button type="button" class="btn btn-secondary release-chore-btn" data-release-chore="${escapeHtml(chore.uid)}">Release to household</button>` : ''}
               </article>
             `).join('')}
           </div>
@@ -5622,6 +5619,7 @@ async function fetchAndDisplayChores() {
     choreBoard.innerHTML = boardHTML;
     console.log('[INFO] Chore board populated with real data');
     choreBoard.onclick = async event => {
+      if (event.target.closest('[data-chore-actions], .chore-drag-handle')) return;
       const claimButton = event.target.closest('[data-claim-chore]');
       if (claimButton) return openClaimChore(claimButton.dataset.claimChore, chores.find(chore => chore.uid === claimButton.dataset.claimChore));
       const releaseButton = event.target.closest('[data-release-chore]');
@@ -5657,12 +5655,13 @@ async function fetchAndDisplayChores() {
       event.preventDefault();
       openChoreDetail(chores.find(chore => (chore.uid || chore.summary) === card.dataset.choreId), entityId);
     };
+    setupChoreBoardControls(choreBoard, chores, entityId);
     loadStarsAndRewards();
     loadRoutines();
 
   } catch (error) {
     console.error('[ERROR] Error fetching chores:', error);
-    choreBoard.innerHTML = `<div class="error-message">Failed to load chores: ${error.message}</div>`;
+    choreBoard.innerHTML = `<div class="error-message">Failed to load chores: ${escapeHtml(error.message)}</div>`;
   }
 }
 
@@ -5674,7 +5673,7 @@ function formatChoreDueDate(value) {
 function renderChoreProfiles(profileIds) {
   const profiles = profileIds.map(id => choreProfiles.find(profile => profile.id === id)).filter(Boolean);
   if (!profiles.length) return '<span class="chore-unassigned">Unassigned</span>';
-  return `<span class="chore-assignees">${profiles.map(profile => `<span class="chore-assignee" title="${escapeHtml(profile.name)}" style="--profile-color:${escapeHtml(getValidCalendarColor(profile.color))}">${escapeHtml(getProfileInitials(profile.name))}</span>`).join('')}</span>`;
+  return `<span class="chore-assignees">${profiles.map(profile => `<span class="chore-assignee" title="${escapeHtml(profile.name)}" style="--profile-color:${escapeHtml(getValidCalendarColor(profile.color))}">${escapeHtml(getProfileInitials(profile.name))}</span><span class="chore-owner-name">${escapeHtml(profile.name || 'Unnamed')}</span>`).join('')}</span>`;
 }
 
 function renderChoreProgress(chore) {
@@ -5715,6 +5714,8 @@ function openChoreDetail(chore, entityId) {
       </li>`).join('')}</ul>` : ''}
       <form class="subtask-add-form" data-detail-add-subtask><label class="sr-only" for="detail-subtask-new">Add a step</label><input id="detail-subtask-new" name="text" maxlength="160" placeholder="Add a step"><button type="submit" class="btn btn-secondary">Add step</button></form>
     </section>`;
+
+  setupChoreDetailControls(content, chore, entityId);
 
   const refresh = async () => {
     await fetchAndDisplayChores();

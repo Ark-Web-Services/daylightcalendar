@@ -998,12 +998,13 @@ async function initializeApp() {
       .filter(item => item && typeof item.id === 'string' && typeof item.text === 'string')
       .map((item, index) => ({ id: item.id, text: item.text.trim(), checked: item.checked === true, position: Number.isInteger(item.position) ? item.position : index }))
       .filter(item => item.text) : [];
+    const assignedProfileIds = Array.isArray(meta.assignedProfileIds)
+      ? [...new Set(meta.assignedProfileIds.filter(id => typeof id === 'string' && id.trim()))] : [];
     return {
-      assignedProfileIds: Array.isArray(meta.assignedProfileIds)
-        ? [...new Set(meta.assignedProfileIds.filter(id => typeof id === 'string' && id.trim()))] : [],
+      assignedProfileIds,
       starValue: Number.isInteger(meta.starValue) && meta.starValue > 0
         ? meta.starValue : settings.defaultStarValue,
-      upForGrabs: meta.upForGrabs === true,
+      upForGrabs: assignedProfileIds.length === 0,
       dueDate: typeof meta.dueDate === 'string' && meta.dueDate ? meta.dueDate : null,
       createdAt: typeof meta.createdAt === 'string' ? meta.createdAt : new Date().toISOString(),
       lastStatus: typeof meta.lastStatus === 'string' ? meta.lastStatus : null,
@@ -3406,6 +3407,59 @@ async function initializeApp() {
       res.json(saved);
     } catch (error) {
       console.error('[ERROR] Error saving chore metadata:', error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // All board movements share one serialized path, including assignment and HA status.
+  app.post('/api/chores/:uid/move', async (req, res) => {
+    const { lane, assignedProfileIds, expectedLane } = req.body;
+    const lanes = ['up-for-grabs', 'needs_action', 'completed'];
+    if (!lanes.includes(lane) || (expectedLane !== undefined && !lanes.includes(expectedLane))) {
+      return res.status(400).json({ error: 'Choose Up for Grabs, To Do, or Done' });
+    }
+    if (assignedProfileIds !== undefined && (!Array.isArray(assignedProfileIds) || !(await validateProfileIds(assignedProfileIds)))) {
+      return res.status(400).json({ error: 'Choose a household member to assign this chore' });
+    }
+    try {
+      // Account for any completion before changing its owner.
+      await getMergedChores();
+      const moved = await withHouseholdStorageLock(async () => {
+        const result = await fetchTodoItems();
+        if (result.error) throw new Error(result.error);
+        const item = result.items.find(candidate => candidate.uid === req.params.uid);
+        if (!item) return { status: 404, error: 'This chore no longer exists. Refresh the board.' };
+        const meta = readChoreMeta();
+        const current = normalizeChoreMeta(meta[item.uid]);
+        const currentLane = item.status === 'completed' ? 'completed'
+          : current.assignedProfileIds.length ? 'needs_action' : 'up-for-grabs';
+        if (expectedLane && expectedLane !== currentLane) {
+          return { status: 409, error: 'This chore has moved since you opened it. Refresh the board and try again.' };
+        }
+        const owners = lane === 'up-for-grabs' ? [] : (assignedProfileIds ?? current.assignedProfileIds);
+        if (lane === 'needs_action' && !owners.length) {
+          return { status: 400, error: 'Choose who will do this chore before moving it to To Do' };
+        }
+        const status = lane === 'completed' ? 'completed' : 'needs_action';
+        if (status !== item.status) {
+          if (isStandaloneDev) {
+            item.status = status;
+            if (status === 'completed') item.completed_at = new Date().toISOString();
+            else delete item.completed_at;
+          } else {
+            await callHaApi('/services/todo/update_item', {
+              method: 'POST', body: JSON.stringify({ entity_id: result.entityId, item: item.uid, status })
+            });
+          }
+        }
+        meta[item.uid] = { ...current, assignedProfileIds: [...new Set(owners)], upForGrabs: !owners.length };
+        writeJsonFile('chore_meta.json', meta);
+        return { success: true };
+      });
+      if (moved.error) return res.status(moved.status).json({ error: moved.error });
+      const chores = await getMergedChores();
+      res.json({ success: true, chore: chores.find(item => item.uid === req.params.uid) });
+    } catch (error) {
       res.status(500).json({ error: error.message });
     }
   });

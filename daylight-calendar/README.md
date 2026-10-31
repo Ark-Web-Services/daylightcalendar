@@ -126,6 +126,16 @@ Throughout the interface, you'll encounter modal dialogs for various actions. Th
 
 This provides a flexible and intuitive user experience across all devices.
 
+### Assigning and moving chores
+
+New unassigned chores appear in **Up for Grabs**. Tap **Assign** on a card (or in
+chore details) and choose a person to move it to **To Do**. Use **Reassign** to
+change the person. Drag a card between columns, use its touch drag handle, or
+choose a destination from **Move to**. Moving back to Up for Grabs clears the
+assignment; moving to Done completes the chore. On phones, use the column buttons
+above the board. Arrow buttons page through a column when it has more chores
+than fit on screen.
+
 ### Kiosk Mode
 
 When `kiosk_mode` is enabled (default), the add-on will:
