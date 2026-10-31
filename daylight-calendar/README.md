@@ -74,6 +74,13 @@ Option | Description | Default
 `locale` | Language/locale setting | `en-US`
 `time_format` | 12h or 24h time format | `12h`
 `kiosk_mode` | Run in fullscreen kiosk mode on the connected display | `true`
+`todo_entity_id` | Home Assistant to-do list used for chores | `todo.daylight_chores`
+
+Create a **Local to-do** list named **Daylight Chores** in Home Assistant's
+**To-do lists → Create list** before adding chores. To use an existing chore list,
+set `todo_entity_id` in the add-on configuration to its entity ID. Daylight never
+automatically selects a shopping list. Titles and completion status live in Home
+Assistant; assignments, stars, due dates and subtasks persist in the add-on's `/data`.
 
 ## Detailed Setup Guide
 

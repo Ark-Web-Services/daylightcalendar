@@ -34,6 +34,7 @@ const {
 } = require('./scripts/door-check-service');
 const { mountMcpServer } = require('./scripts/mcp-server');
 const { HaWebSocketClient } = require('./scripts/ha-websocket-client');
+const { createChoreTodoService } = require('./scripts/chore-todo-service');
 const {
   VoiceError,
   createPanelController,
@@ -327,12 +328,12 @@ async function initializeApp() {
       try {
         const response = await axios(axiosConfig);
 
-        // If we got a 401/403, throw to trigger next attempt
-        if (response.status === 401 || response.status === 403) {
+        // Never turn a rejected HA service call into a successful Daylight save.
+        if (response.status >= 400) {
           throw {
             response,
-            message: `Request failed with status ${response.status}`,
-            isAuthError: true
+            message: response.data?.message || `Request failed with status ${response.status}`,
+            isAuthError: response.status === 401 || response.status === 403
           };
         }
 
@@ -351,6 +352,9 @@ async function initializeApp() {
         return await attemptRequest(baseUrl, false);
       } catch (error) {
         lastError = error;
+        if (error.response?.status >= 400 && error.response.status < 500 && !error.isAuthError) {
+          throw error;
+        }
         // Check if we should try legacy header on this same URL
         if (error.isAuthError && isProduction) {
           try {
@@ -2152,53 +2156,20 @@ async function initializeApp() {
     return standaloneTodoItems;
   }
 
-  // Function to fetch todo items
+  const choreTodoService = createChoreTodoService({
+    callHaApi,
+    getEntityId: () => config.todo_entity_id
+  });
+
+  // Read only the configured chore list; never silently choose a shopping list.
   async function fetchTodoItems() {
     if (isStandaloneDev) {
       return { entityId: 'todo.daylight_mock', items: getStandaloneTodoItems() };
     }
-    // 1. Determine which entity to use
-    let todoEntityId = config.todo_entity_id;
-
-    if (!todoEntityId) {
-      console.log('[INFO] No todo_entity_id configured, searching for one...');
-      try {
-        const states = await callHaApi('/states');
-        const todoEntity = states.find(entity => entity.entity_id.startsWith('todo.'));
-        if (todoEntity) {
-          todoEntityId = todoEntity.entity_id;
-          console.log(`[INFO] Found todo entity: ${todoEntityId}`);
-        } else {
-          console.log('[WARN] No todo entities found in Home Assistant.');
-          return { error: 'No todo entities found' };
-        }
-      } catch (error) {
-        console.error('[ERROR] Failed to fetch states to find todo entity:', error.message);
-        return { error: 'Failed to find todo entity' };
-      }
-    }
-
-    // 2. Call todo.get_items service
     try {
-      console.log(`[INFO] Fetching items for ${todoEntityId}`);
-      // Note: As of HA 2023.7, REST API returns service response
-      const response = await callHaApi('/services/todo/get_items', {
-        method: 'POST',
-        body: JSON.stringify({ entity_id: todoEntityId })
-      });
-
-      // Response format should be { "todo.entity_id": { "items": [...] } }
-      if (response && response[todoEntityId]) {
-        return {
-          entityId: todoEntityId,
-          items: response[todoEntityId].items || []
-        };
-      } else {
-        console.warn('[WARN] Unexpected response format from todo.get_items:', JSON.stringify(response));
-        return { entityId: todoEntityId, items: [] };
-      }
+      return await choreTodoService.getItems();
     } catch (error) {
-      console.error(`[ERROR] Failed to fetch todo items for ${todoEntityId}:`, error.message);
+      console.error('[ERROR] Failed to fetch chores:', error.message);
       return { error: error.message };
     }
   }
@@ -3358,20 +3329,14 @@ async function initializeApp() {
       return res.status(400).json({ error: 'Star value must be a positive integer' });
     }
 
-    // Use provided entityId or find one
-    let targetEntityId = entityId;
-    if (!targetEntityId) {
-      // Quick lookup if not provided
-      const todoData = await fetchTodoItems();
-      if (todoData.entityId) {
-        targetEntityId = todoData.entityId;
-      } else {
-        return res.status(500).json({ error: 'No todo entity available' });
-      }
+    const before = await fetchTodoItems();
+    if (before.error) return res.status(502).json({ error: before.error });
+    const targetEntityId = before.entityId;
+    if (entityId && entityId !== targetEntityId) {
+      return res.status(400).json({ error: 'Chores must be added to the configured chore list' });
     }
 
     try {
-      const before = await fetchTodoItems();
       const existingUids = new Set((before.items || []).map(todo => todo.uid));
       if (isStandaloneDev) {
         getStandaloneTodoItems().push({
@@ -3389,8 +3354,14 @@ async function initializeApp() {
         });
       }
       const after = await fetchTodoItems();
+      if (after.error) {
+        return res.status(502).json({ error: 'The chore was sent to Home Assistant, but could not be read back. Refresh before adding it again.' });
+      }
       const created = (after.items || []).find(todo => !existingUids.has(todo.uid) && todo.summary === item) ||
-        (after.items || []).find(todo => !existingUids.has(todo.uid));
+        null;
+      if (!created?.uid) {
+        return res.status(502).json({ error: 'Home Assistant did not confirm the new chore. Refresh before adding it again.' });
+      }
       let metadataSaved = false;
       if (created?.uid) {
         await withHouseholdStorageLock(async () => {
@@ -3540,15 +3511,11 @@ async function initializeApp() {
     const { itemId } = req.params;
     const { status, item, entityId } = req.body; // status: 'completed' or 'needs_action'
 
-    // Use provided entityId or find one
-    let targetEntityId = entityId;
-    if (!targetEntityId) {
-      const todoData = await fetchTodoItems();
-      if (todoData.entityId) {
-        targetEntityId = todoData.entityId;
-      } else {
-        return res.status(500).json({ error: 'No todo entity available' });
-      }
+    const todoData = await fetchTodoItems();
+    if (todoData.error) return res.status(502).json({ error: todoData.error });
+    const targetEntityId = todoData.entityId;
+    if (entityId && entityId !== targetEntityId) {
+      return res.status(400).json({ error: 'Chores must be updated in the configured chore list' });
     }
 
     try {

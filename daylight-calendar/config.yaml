@@ -1,5 +1,5 @@
 name: "Daylight Calendar"
-version: "1.1.9.41"
+version: "1.1.9.42"
 slug: "daylight_calendar"
 description: "A beautiful fullscreen calendar display for your Home Assistant touchscreen"
 url: "https://github.com/Ark-Web-Services/daylightcalendar"
@@ -20,6 +20,7 @@ options:
   time_format: "12h"
   development_mode: false
   reset_parent_pin: false
+  todo_entity_id: "todo.daylight_chores"
 schema:
   theme: "str"
   show_weather: "bool"
@@ -28,6 +29,7 @@ schema:
   time_format: "str"
   development_mode: "bool"
   reset_parent_pin: "bool"
+  todo_entity_id: "str?"
 ports:
   8099/tcp: 8099
 hassio_api: true

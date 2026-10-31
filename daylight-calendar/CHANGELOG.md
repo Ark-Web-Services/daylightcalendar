@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.9.42] - 2026-10-30
+
+Fixes saved chores disappearing from Daylight: request Home Assistant's service
+response and read its `service_response` envelope. Chores use the configured
+`todo_entity_id` (default `todo.daylight_chores`), never the first available list.
+Missing lists, malformed responses and rejected saves now report errors instead
+of displaying an empty board or claiming success.
+
 ## [1.1.9.41] - 2026-10-26
 
 Jarvis skips unavailable conversation agents instead of failing with HTTP 400, with
